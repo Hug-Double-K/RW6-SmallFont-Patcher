@@ -1,3 +1,5 @@
+NanumSmall85Medium
+NanumSmall80Medium
 MapTest
-NanumSmall80Body
 NanumSmall85Body
+NanumSmall80Body
