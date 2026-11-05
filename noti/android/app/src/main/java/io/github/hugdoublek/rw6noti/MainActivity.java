@@ -26,7 +26,7 @@ import com.xiaomi.xms.wearable.node.Node;
 public class MainActivity extends Activity {
 
     private Prefs prefs;
-    private TextView status, log, sizeLabel;
+    private TextView status, log, sizeLabel, diag;
     private ImageView preview;
     private Node node;
 
@@ -82,6 +82,12 @@ public class MainActivity extends Activity {
         log = text("");
         root.addView(log);
 
+        root.addView(section("5. 마지막 카톡 알림 분석 (사진 문제 확인용)"));
+        diag = text("");
+        diag.setTextSize(12);
+        diag.setTextIsSelectable(true);
+        root.addView(diag);
+
         ScrollView sv = new ScrollView(this);
         sv.addView(root);
         setContentView(sv);
@@ -98,6 +104,7 @@ public class MainActivity extends Activity {
         boolean listener = isListenerEnabled();
         status.setText("알림 접근: " + (listener ? "허용됨" : "꺼짐 ← 먼저 허용하세요") + "\n워치: 확인 중…");
         log.setText("최근 전송: " + prefs.lastLog());
+        diag.setText(prefs.diag());
         Wearable.getNodeApi(this).getConnectedNodes()
                 .addOnSuccessListener(nodes -> {
                     node = (nodes == null || nodes.isEmpty()) ? null : nodes.get(0);

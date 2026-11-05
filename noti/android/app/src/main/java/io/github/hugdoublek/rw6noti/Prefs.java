@@ -38,6 +38,9 @@ public final class Prefs {
     public boolean photoOnly() { return sp.getBoolean("photoOnly", true); }
     public void setPhotoOnly(boolean v) { sp.edit().putBoolean("photoOnly", v).apply(); }
 
+    public String diag() { return sp.getString("diag", "아직 받은 카톡 없음"); }
+    public void setDiag(String v) { sp.edit().putString("diag", v).apply(); }
+
     public String lastLog() { return sp.getString("lastLog", "-"); }
     public void setLastLog(String v) { sp.edit().putString("lastLog", v).apply(); }
 

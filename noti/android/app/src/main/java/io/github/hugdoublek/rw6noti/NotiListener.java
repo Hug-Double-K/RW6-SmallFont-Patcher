@@ -44,6 +44,7 @@ public class NotiListener extends NotificationListenerService {
 
         Notification n = sbn.getNotification();
         if (n == null) return;
+        if (Prefs.KAKAO.equals(pkg)) prefs.setDiag(diagnose(sbn));
         // 묶음 요약, 진행 중(음악·다운로드 등) 알림은 건너뜀
         if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
         if ((n.flags & Notification.FLAG_ONGOING_EVENT) != 0) return;
@@ -105,6 +106,30 @@ public class NotiListener extends NotificationListenerService {
         }
         final String summary = appName + " / " + sender;
         WatchSender.send(this, b64, (ok, msg) -> prefs.setLastLog(now() + " " + summary + " → " + msg));
+    }
+
+    /** 카톡 알림에 사진 정보가 어떻게 담겨 오는지 기록 (원인 확인용) */
+    private String diagnose(StatusBarNotification sbn) {
+        StringBuilder b = new StringBuilder(now()).append("\n");
+        Notification n = sbn.getNotification();
+        Bundle ex = n.extras;
+        b.append("요약알림=").append((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0);
+        b.append(" / 내용=").append(ex == null ? "-" : str(ex.getCharSequence(Notification.EXTRA_TEXT))).append("\n");
+        if (ex == null) return b.toString();
+        b.append("항목: ").append(ex.keySet()).append("\n");
+        b.append("큰사진=").append(ex.get(Notification.EXTRA_PICTURE) != null);
+        if (Build.VERSION.SDK_INT >= 31) b.append(" / 큰사진아이콘=").append(ex.get(Notification.EXTRA_PICTURE_ICON) != null);
+        Parcelable[] msgs = ex.getParcelableArray(Notification.EXTRA_MESSAGES);
+        b.append(" / 메시지수=").append(msgs == null ? 0 : msgs.length).append("\n");
+        if (msgs != null && msgs.length > 0 && msgs[msgs.length - 1] instanceof Bundle) {
+            Bundle last = (Bundle) msgs[msgs.length - 1];
+            b.append("마지막메시지 항목: ").append(last.keySet()).append("\n");
+            b.append("type=").append(last.getString("type"));
+            Object uri = last.get("uri");
+            b.append(" / uri=").append(uri == null ? "없음" : String.valueOf(uri).replaceAll("(?<=://[^/]{0,40}/).*", "…"));
+            if (uri instanceof Uri) b.append(" / 읽기=").append(loadUri((Uri) uri) != null ? "성공" : "실패");
+        }
+        return b.toString();
     }
 
     private Bitmap bigPicture(Bundle ex) {
