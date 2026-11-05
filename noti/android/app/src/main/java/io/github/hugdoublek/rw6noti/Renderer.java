@@ -22,13 +22,14 @@ import java.util.Locale;
  */
 public final class Renderer {
     public static final int WIDTH = 432;
-    private static final int PAD = 18;
+    private static final int PAD = 14;          // 카드 안쪽 여백 (기존 18)
+    private static final float HEADER_SCALE = 0.85f; // 앱 아이콘·헤더 줄 크기 (기존 대비 85%)
     private static final int MAX_HEIGHT = 1800;
 
     public static Bitmap render(Drawable icon, String appName, String convTitle, String sender,
                                 String body, Bitmap picture, int fontSize, long when) {
         int fs = Math.max(14, fontSize);
-        int smallFs = Math.round(fs * 0.78f);
+        int smallFs = Math.round(fs * 0.78f * HEADER_SCALE);
         int senderFs = Math.round(fs * 1.05f);
         int contentW = WIDTH - PAD * 2;
 
@@ -42,13 +43,13 @@ public final class Renderer {
             header = convTitle + " · " + time;
         }
 
-        int iconSize = Math.round(smallFs * 1.6f);
+        int iconSize = Math.round(fs * 0.78f * 1.6f * HEADER_SCALE);
         List<String> headerLines = wrap(header, small, contentW - iconSize - 10, 1);
         List<String> senderLines = wrap(sender == null ? "" : sender, senderP, contentW, 2);
         List<String> bodyLines = wrap(body == null ? "" : body, bodyP, contentW, 0);
 
         float lhSmall = lineHeight(small), lhSender = lineHeight(senderP), lhBody = lineHeight(bodyP);
-        float y = PAD + Math.max(iconSize, lhSmall) + 10;
+        float y = PAD + Math.max(iconSize, lhSmall) + 6;
         float senderH = senderLines.isEmpty() || senderLines.get(0).isEmpty() ? 0 : senderLines.size() * lhSender + 6;
 
         Bitmap pic = null;
