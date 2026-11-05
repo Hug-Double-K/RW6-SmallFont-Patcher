@@ -3,6 +3,7 @@
 레드미 워치 6 내수판(miwear.watch.p65)용 **알림 본문 축소 폰트 패치** 배포 저장소입니다.
 
 - 패치 방식·도구·로더는 [maga32/RedmiWatch6-ResourcePatcher](https://github.com/maga32/RedmiWatch6-ResourcePatcher)(룽즈님)를 그대로 사용하고, 받아오는 주소만 이 저장소로 바꿨습니다.
+- 룽즈님께 감사를 드립니다.
 - 폰트: 나눔고딕(SIL OFL 1.1, 라이선스 `font/License/`)을 글리프·자간·행간 85% / 80%로 축소한 수정본.
 
 | 패치 이름 | MiSans-Regular | MiSans-Medium | MiSans-Demibold |
