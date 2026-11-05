@@ -26,6 +26,11 @@ import java.util.Map;
 public class NotiListener extends NotificationListenerService {
 
     private final Map<String, String> lastSent = new HashMap<>();
+    /** 시스템이 이 서비스에 연결돼 있는지 (앱 업데이트 후 끊기는 일이 잦음) */
+    static volatile boolean connected = false;
+
+    @Override public void onListenerConnected() { connected = true; new Prefs(this).setLastLog(now() + " 알림 수신 서비스 연결됨"); }
+    @Override public void onListenerDisconnected() { connected = false; }
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
@@ -40,11 +45,11 @@ public class NotiListener extends NotificationListenerService {
         if (sbn == null) return;
         Prefs prefs = new Prefs(this);
         String pkg = sbn.getPackageName();
+        if (Prefs.KAKAO.equals(pkg)) prefs.setDiag(diagnose(sbn));
         if (!prefs.wants(pkg)) return;
 
         Notification n = sbn.getNotification();
         if (n == null) return;
-        if (Prefs.KAKAO.equals(pkg)) prefs.setDiag(diagnose(sbn));
         // 묶음 요약, 진행 중(음악·다운로드 등) 알림은 건너뜀
         if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
         if ((n.flags & Notification.FLAG_ONGOING_EVENT) != 0) return;

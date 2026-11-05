@@ -1,0 +1,35 @@
+<template>
+  <div class="main">
+    <!-- 사진 알림 한 건. 뒤로 = 오른쪽으로 스와이프, '끄기' = 이 알림 삭제 -->
+    <scroll style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
+      <image src="{{ uri }}" style="width: 100%" />
+    </scroll>
+    <text class="btn off" @click="remove">끄기</text>
+  </div>
+</template>
+
+<script>
+import app from '@system.app'
+import file from '@system.file'
+import router from '@system.router'
+
+export default {
+  protected: {
+    uri: '',
+    arrival: '0',
+  },
+  remove() {
+    const self = this
+    const done = () => {
+      // 알림으로 열린 경우엔 기본 알림의 '무시'처럼 앱을 닫고, 목록에서 연 경우엔 목록으로
+      if (self.arrival === '1') app.terminate()
+      else router.back()
+    }
+    file.delete({ uri: self.uri, success: done, fail: done, complete() {} })
+  },
+}
+</script>
+
+<style>
+  @import '../../common/common.css';
+</style>

@@ -1,13 +1,5 @@
 <template>
-  <div style="width: 100%; height: 100%; flex-direction: column">
-  <div class="main" if="{{ popup }}">
-    <!-- 새 사진 알림 / 목록에서 누른 카드: 기본 알림처럼 크게 보여주고 '끄기'로 닫음 -->
-    <scroll style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
-      <image src="{{ popup }}" style="width: 100%" />
-    </scroll>
-    <text class="btn off" @click="closePopup">끄기</text>
-  </div>
-  <div class="main" else>
+  <div class="main">
     <div class="head">
       <text class="head-btn" @click="deleteToggle">{{ notis ? (deleteOn ? "X" : "-") : "" }}</text>
       <text class="head-title" @click="scrollToTop">사진 알림 {{ notis }}</text>
@@ -23,12 +15,10 @@
       <text if="{{ status }}" style="font-size: 20px; color: #888888; margin-top: 10px">{{ status }}</text>
     </scroll>
   </div>
-  </div>
 </template>
 
 <script>
 import app from '@system.app'
-import vibrator from '@system.vibrator'
 import file from '@system.file'
 import storage from '@system.storage'
 import interconnect from '@system.interconnect'
@@ -44,8 +34,6 @@ export default {
     notis: 0,
     deleteOn: false,
     status: '',
-    popup: '',
-    popupFromArrival: false,
     receiving: {},
     setting: {},
   },
@@ -85,10 +73,8 @@ export default {
             uri,
             buffer: self.decode(r.data),
             success() {
-              // 진동은 워치 기본 알림(+워치 방해금지 설정)이 담당하므로 여기서는 울리지 않음
-              // 새 알림은 바로 크게 띄움 → '끄기'를 누르면 앱이 닫힘
-              self.popup = uri
-              self.popupFromArrival = true
+              // 진동은 워치 기본 알림(+워치 방해금지)이 담당. 새 사진은 바로 크게 띄움
+              router.push({ uri: '/pages/detail', params: { uri, arrival: '1' } })
             },
             fail(e) { self.status = `저장 실패: ${e}` },
             complete() { delete self.receiving[part.name]; self.refreshList() },
@@ -138,20 +124,10 @@ export default {
     try { file.delete({ uri: li.uri }) } catch (e) {}
   },
 
-  openSettings() { router.push({ uri: '/pages/settings' }) },
 
   openPopup(li) {
     if (this.deleteOn) return
-    this.popup = li.uri
-    this.popupFromArrival = false
-  },
-
-  closePopup() {
-    const fromArrival = this.popupFromArrival
-    this.popup = ''
-    this.popupFromArrival = false
-    // 알림으로 열린 경우엔 기본 알림의 '무시'처럼 앱을 닫는다. 목록에서 연 경우엔 목록으로 돌아감
-    if (fromArrival) app.terminate()
+    router.push({ uri: '/pages/detail', params: { uri: li.uri, arrival: '0' } })
   },
 
   canVibrate() {

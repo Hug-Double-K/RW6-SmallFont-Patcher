@@ -46,6 +46,7 @@ public final class Renderer {
         int iconSize = Math.round(fs * 0.78f * 1.6f * HEADER_SCALE);
         List<String> headerLines = wrap(header, small, contentW - iconSize - 10, 1);
         List<String> senderLines = wrap(sender == null ? "" : sender, senderP, contentW, 2);
+        if (picture != null && body != null && body.contains("사진을 보냈습니다")) body = ""; // 사진이 보이면 안내문은 생략
         List<String> bodyLines = wrap(body == null ? "" : body, bodyP, contentW, 0);
 
         float lhSmall = lineHeight(small), lhSender = lineHeight(senderP), lhBody = lineHeight(bodyP);
@@ -111,11 +112,30 @@ public final class Renderer {
         return bmp;
     }
 
-    /** 미리보기·테스트용 */
+    /** 미리보기·테스트용: 사진이 든 카드 */
     public static Bitmap sample(int fontSize) {
-        return render(null, "카카오톡", null, "김민수",
-                "오늘 저녁 7시에 강남역 2번 출구에서 보자. 늦으면 먼저 들어가 있을게. 참, 지난번에 말한 자료도 가져와 줘. 고마워!",
-                null, fontSize, System.currentTimeMillis());
+        return render(null, "카카오톡", null, "김민수", "사진을 보냈습니다.",
+                samplePicture(), fontSize, System.currentTimeMillis());
+    }
+
+    /** 테스트용 그림 (하늘·산·해) */
+    static Bitmap samplePicture() {
+        int w = 400, h = 300;
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setShader(new android.graphics.LinearGradient(0, 0, 0, h, Color.rgb(70, 130, 220), Color.rgb(200, 225, 255), android.graphics.Shader.TileMode.CLAMP));
+        c.drawRect(0, 0, w, h, p);
+        p.setShader(null);
+        p.setColor(Color.rgb(255, 210, 80));
+        c.drawCircle(300, 80, 40, p);
+        p.setColor(Color.rgb(60, 110, 70));
+        android.graphics.Path m = new android.graphics.Path();
+        m.moveTo(0, h); m.lineTo(120, 120); m.lineTo(220, 230); m.lineTo(300, 150); m.lineTo(w, h); m.close();
+        c.drawPath(m, p);
+        p.setColor(Color.rgb(40, 80, 50));
+        c.drawRect(0, 250, w, h, p);
+        return b;
     }
 
     public static String toBase64Png(Bitmap bmp) {

@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.service.notification.NotificationListenerService;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -102,7 +103,11 @@ public class MainActivity extends Activity {
 
     private void refreshStatus() {
         boolean listener = isListenerEnabled();
-        status.setText("알림 접근: " + (listener ? "허용됨" : "꺼짐 ← 먼저 허용하세요") + "\n워치: 확인 중…");
+        if (listener && !NotiListener.connected) {
+            // 앱 업데이트 뒤에는 시스템이 수신 서비스를 다시 붙여주지 않는 경우가 많아 직접 요청
+            try { NotificationListenerService.requestRebind(new ComponentName(this, NotiListener.class)); } catch (Throwable ignored) { }
+        }
+        status.setText(listenerLine(listener) + "\n워치: 확인 중…");
         log.setText("최근 전송: " + prefs.lastLog());
         diag.setText(prefs.diag());
         Wearable.getNodeApi(this).getConnectedNodes()
@@ -119,7 +124,7 @@ public class MainActivity extends Activity {
     }
 
     private void setStatus(boolean listener, String watch) {
-        runOnUiThread(() -> status.setText("알림 접근: " + (listener ? "허용됨" : "꺼짐 ← 먼저 허용하세요") + "\n워치: " + watch));
+        runOnUiThread(() -> status.setText(listenerLine(listener) + "\n워치: " + watch));
     }
 
     private void requestWatchPermission() {
@@ -147,6 +152,11 @@ public class MainActivity extends Activity {
     private void refreshPreview() {
         sizeLabel.setText("본문 " + prefs.fontSize() + "px (워치 화면 폭 432px 기준)");
         preview.setImageBitmap(Renderer.sample(prefs.fontSize()));
+    }
+
+    private String listenerLine(boolean enabled) {
+        if (!enabled) return "알림 접근: 꺼짐 ← 먼저 허용하세요";
+        return "알림 접근: 허용됨 / 수신 서비스: " + (NotiListener.connected ? "연결됨" : "끊김 ← 알림 접근을 껐다가 다시 켜거나 폰 재시작");
     }
 
     private boolean isListenerEnabled() {
