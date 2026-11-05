@@ -1,0 +1,6 @@
+noti/watch/node_modules/
+noti/watch/dist/
+noti/watch/build/
+noti/android/.gradle/
+noti/android/app/build/
+noti/android/build/

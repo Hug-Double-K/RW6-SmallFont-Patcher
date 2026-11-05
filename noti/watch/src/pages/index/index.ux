@@ -1,0 +1,163 @@
+<template>
+  <div class="main">
+    <div class="head">
+      <text class="head-btn" @click="deleteToggle">{{ notis ? (deleteOn ? "X" : "-") : "" }}</text>
+      <text class="head-title" @click="scrollToTop">알림 {{ notis }}</text>
+      <text class="head-btn" style="font-size: 24px" @click="openSettings">설정</text>
+    </div>
+    <scroll id="list" style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
+      <text class="btn danger" if="{{ deleteOn && notis }}" @click="deleteAll">모두 지우기</text>
+      <text class="empty" if="{{ !notis }}">알림이 없습니다</text>
+      <div class="card" for="(i, li) in list">
+        <text class="btn danger" if="{{ deleteOn }}" @click="deleteOne(li, i)">지우기</text>
+        <image src="{{ li.uri }}" style="width: 100%" />
+      </div>
+      <text if="{{ status }}" style="font-size: 20px; color: #888888; margin-top: 10px">{{ status }}</text>
+    </scroll>
+  </div>
+</template>
+
+<script>
+import app from '@system.app'
+import vibrator from '@system.vibrator'
+import file from '@system.file'
+import storage from '@system.storage'
+import interconnect from '@system.interconnect'
+import router from '@system.router'
+
+const DIR = 'internal://mass/rw6noti'
+const DEFAULT_SETTING = '{"vibe":true,"doNotDisturb":false,"disturbFromT":"23","disturbFromM":"00","disturbToT":"07","disturbToM":"00","maxSave":30}'
+let conn = null
+
+export default {
+  private: {
+    list: [],
+    notis: 0,
+    deleteOn: false,
+    status: '',
+    receiving: {},
+    setting: {},
+  },
+
+  onShow() {
+    const self = this
+    self.refreshList()
+    storage.get({
+      key: 'notiSetting',
+      success(v) { self.setting = JSON.parse(v || DEFAULT_SETTING) },
+      fail() { self.setting = JSON.parse(DEFAULT_SETTING) },
+    })
+
+    conn = interconnect.instance()
+    // 조각: 순번(2) + 구분(d/e)(1) + 파일명(13) + Base64 데이터
+    conn.onmessage = async (msg) => {
+      try {
+        const d = msg.data
+        const part = { offset: Number(d.substr(0, 2)), isEnd: d.substr(2, 1) === 'e', name: d.substr(3, 13) }
+        if (!self.receiving[part.name]) self.receiving[part.name] = { data: '', got: [] }
+        const r = self.receiving[part.name]
+
+        // 앞 조각이 도착할 때까지 기다림 (최대 100초)
+        let wait = 0
+        while (part.offset !== 0 && !r.got.includes(part.offset - 1)) {
+          await new Promise((res) => setTimeout(res, 500))
+          if (++wait > 200) { delete self.receiving[part.name]; throw new Error('조각 수신 시간 초과') }
+        }
+        r.data += d.substr(16)
+        r.got.push(part.offset)
+
+        if (part.isEnd) {
+          const max = self.setting.maxSave || 30
+          while (self.list.length >= max) self.deleteOne(self.list[self.list.length - 1], self.list.length - 1)
+          file.writeArrayBuffer({
+            uri: `${DIR}/${part.name}.png`,
+            buffer: self.decode(r.data),
+            success() { if (self.canVibrate()) vibrator.vibrate({ mode: 'long' }) },
+            fail(e) { self.status = `저장 실패: ${e}` },
+            complete() { delete self.receiving[part.name]; self.refreshList() },
+          })
+        }
+      } catch (e) {
+        self.status = e + ''
+      }
+    }
+  },
+
+  refreshList() {
+    const self = this
+    file.list({
+      uri: DIR,
+      success(data) {
+        self.list = data.fileList.sort((a, b) => b.uri.localeCompare(a.uri))
+        self.notis = self.list.length
+      },
+      fail() { self.list = []; self.notis = 0 },
+      complete() { self.scrollToTop() },
+    })
+  },
+
+  scrollToTop() {
+    const el = this.$element('list')
+    if (el) el.scrollTo({ top: 0, behavior: 'smooth' })
+  },
+
+  deleteToggle() { if (this.notis) this.deleteOn = !this.deleteOn },
+
+  deleteAll() {
+    this.list.forEach((li) => this.removeFile(li))
+    this.list = []
+    this.notis = 0
+    this.deleteOn = false
+  },
+
+  deleteOne(li, i) {
+    this.removeFile(li)
+    this.list.splice(i, 1)
+    this.notis = this.list.length
+    if (!this.notis) this.deleteOn = false
+  },
+
+  removeFile(li) {
+    try { file.delete({ uri: li.uri }) } catch (e) {}
+  },
+
+  openSettings() { router.push({ uri: '/pages/settings' }) },
+
+  canVibrate() {
+    const s = this.setting
+    if (!s.vibe) return false
+    if (!s.doNotDisturb) return true
+    const from = s.disturbFromT + s.disturbFromM
+    const to = s.disturbToT + s.disturbToM
+    const now = new Date()
+    const t = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0')
+    const quiet = from <= to ? (from <= t && t <= to) : (from <= t || t <= to)
+    return !quiet
+  },
+
+  onDestroy() { app.terminate() },
+
+  decode(b64) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    const look = {}
+    for (let i = 0; i < chars.length; i++) look[chars[i]] = i
+    look['='] = 0
+    const s = b64.replace(/\s/g, '')
+    const pad = s.endsWith('==') ? 2 : s.endsWith('=') ? 1 : 0
+    const len = Math.floor((s.length * 3) / 4) - pad
+    const out = new Uint8Array(len)
+    let j = 0
+    for (let i = 0; i < s.length; i += 4) {
+      const a = look[s[i]], b = look[s[i + 1]], c = look[s[i + 2]] || 0, d = look[s[i + 3]] || 0
+      out[j++] = (a << 2) | (b >> 4)
+      if (j < len) out[j++] = ((b & 15) << 4) | (c >> 2)
+      if (j < len) out[j++] = ((c & 3) << 6) | d
+    }
+    return out
+  },
+}
+</script>
+
+<style>
+  @import '../../common/common.css';
+</style>

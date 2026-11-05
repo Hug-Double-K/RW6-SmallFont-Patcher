@@ -1,0 +1,50 @@
+plugins {
+    id 'com.android.application'
+}
+
+def ksProps = new Properties()
+ksProps.load(new FileInputStream(rootProject.file("../sign/keystore.properties")))
+
+android {
+    namespace 'io.github.hugdoublek.rw6noti'
+    compileSdk 34
+
+    defaultConfig {
+        // 워치 앱(manifest.json의 package)과 반드시 같아야 함
+        applicationId "io.github.hugdoublek.rw6noti"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            // 워치 앱(.rpk)과 같은 인증서로 서명해야 통신이 허용됨
+            storeFile rootProject.file("../sign/rw6noti.jks")
+            storePassword ksProps['storePassword']
+            keyAlias ksProps['keyAlias']
+            keyPassword ksProps['keyPassword']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+        debug {
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: "libs", include: ["*.aar", "*.jar"])
+    implementation 'androidx.annotation:annotation:1.8.0'
+}

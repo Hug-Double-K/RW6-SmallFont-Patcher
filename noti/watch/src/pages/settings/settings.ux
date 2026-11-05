@@ -1,0 +1,72 @@
+<template>
+  <div class="main">
+    <div class="head">
+      <text class="head-btn" @click="back">&lt;</text>
+      <text class="head-title">설정</text>
+      <text class="head-btn"></text>
+    </div>
+    <scroll style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
+      <div class="row">
+        <text style="flex: 1">진동</text>
+        <switch checked="{{ setting.vibe }}" @change="toggleVibe"></switch>
+      </div>
+      <div class="row" if="{{ setting.vibe }}">
+        <text style="flex: 1">방해금지 시간</text>
+        <switch checked="{{ setting.doNotDisturb }}" @change="toggleDnd"></switch>
+      </div>
+      <div if="{{ setting.vibe && setting.doNotDisturb }}" style="flex-direction: column; width: 100%">
+        <text style="margin-bottom: 14px">{{ setting.disturbFromT }}:{{ setting.disturbFromM }} ~ {{ setting.disturbToT }}:{{ setting.disturbToM }}</text>
+        <text>시작</text>
+        <picker class="picker" type="time" selected="{{ setting.disturbFromT + ':' + setting.disturbFromM }}" onchange="disturbFrom"></picker>
+        <text>끝</text>
+        <picker class="picker" type="time" selected="{{ setting.disturbToT + ':' + setting.disturbToM }}" onchange="disturbTo"></picker>
+      </div>
+      <text style="font-size: 20px; color: #888888; margin-top: 20px">글자 크기는 폰의 'RW6 알림' 앱에서 바꿉니다. 최근 {{ setting.maxSave || 30 }}개까지 보관합니다.</text>
+    </scroll>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import storage from '@system.storage'
+
+const DEFAULT_SETTING = '{"vibe":true,"doNotDisturb":false,"disturbFromT":"23","disturbFromM":"00","disturbToT":"07","disturbToM":"00","maxSave":30}'
+
+export default {
+  private: {
+    setting: JSON.parse(DEFAULT_SETTING),
+  },
+  onShow() {
+    const self = this
+    storage.get({
+      key: 'notiSetting',
+      success(v) { self.setting = JSON.parse(v || DEFAULT_SETTING) },
+    })
+  },
+  toggleVibe() { this.setting.vibe = !this.setting.vibe },
+  toggleDnd() { this.setting.doNotDisturb = !this.setting.doNotDisturb },
+  disturbFrom(d) {
+    this.setting.disturbFromT = d.hour.toString().padStart(2, '0')
+    this.setting.disturbFromM = d.minute.toString().padStart(2, '0')
+  },
+  disturbTo(d) {
+    this.setting.disturbToT = d.hour.toString().padStart(2, '0')
+    this.setting.disturbToM = d.minute.toString().padStart(2, '0')
+  },
+  back() {
+    storage.set({ key: 'notiSetting', value: JSON.stringify(this.setting) })
+    router.back()
+  },
+}
+</script>
+
+<style>
+  @import '../../common/common.css';
+  .picker {
+    font-size: 25px;
+    color: #ffffff;
+    selected-font-size: 40px;
+    selected-color: #0099ff;
+    selected-background-color: #cccccc;
+  }
+</style>
