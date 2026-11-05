@@ -1,0 +1,40 @@
+🔷 [11-05 00:53:06] [toolkit]: start build:  {
+  "projectPath": "/home/runner/work/RW6-SmallFont-Patcher/RW6-SmallFont-Patcher/noti/watch",
+  "options": {
+    "enableJsc": false,
+    "enableProtobuf": false,
+    "enableE2e": false,
+    "enableStats": false,
+    "optimizeCssAttr": false,
+    "completeFeature": false,
+    "mode": "production"
+  },
+  "watch": false,
+  "node": "v18.20.8",
+  "platform": "linux",
+  "arch": "x64",
+  "toolkit": "2.0.3"
+}
+🟠 [11-05 00:53:06] [toolkit]: src/pages/settings/settings.ux:89:5 Unknown property `selected-font-size`
+🟠 [11-05 00:53:06] [toolkit]: src/pages/settings/settings.ux:91:5 Unknown property `selected-background-color`
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Create a soft link to the node_modules folder start
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Create a soft link to the node_modules folder end
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Compile the project using webpack start
+🔷 [11-05 00:53:06] [toolkit]: webpack complete
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Compile the project using webpack end
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Copy resource files start
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Copy resource files end
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Generate jsc bytecode start
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Generate jsc bytecode end
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Generate protobuf json start
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Generate protobuf json end
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Package the project into an RPK file start
+🔷 [11-05 00:53:06] [toolkit]: privatekeyPath is  /home/runner/work/RW6-SmallFont-Patcher/RW6-SmallFont-Patcher/noti/.temp_watch/sign/private.pem 
+certificatePath is  /home/runner/work/RW6-SmallFont-Patcher/RW6-SmallFont-Patcher/noti/.temp_watch/sign/certificate.pem
+✅ [11-05 00:53:06] [toolkit]: Project build and generate files：io.github.hugdoublek.rw6noti.release.1.0.0.rpk
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Package the project into an RPK file end
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Generate diff json start
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Generate diff json end
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Migrate temporary project start
+🔷 [11-05 00:53:06] [toolkit]: FollowWork: Migrate temporary project end
+✅ [11-05 00:53:06] [toolkit]: build success: 740ms
