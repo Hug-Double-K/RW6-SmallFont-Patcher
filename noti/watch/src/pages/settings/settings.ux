@@ -21,7 +21,7 @@
         <text>끝</text>
         <picker class="picker" type="time" selected="{{ setting.disturbToT + ':' + setting.disturbToM }}" onchange="disturbTo"></picker>
       </div>
-      <text style="font-size: 20px; color: #888888; margin-top: 20px">글자 크기는 폰의 'RW6 알림' 앱에서 바꿉니다. 최근 {{ setting.maxSave || 30 }}개까지 보관합니다.</text>
+      <text style="font-size: 20px; color: #888888; margin-top: 20px">글자 크기는 폰의 'RW6 알림' 앱에서 바꿉니다. 최근 {{ setting.maxSave || 40 }}개까지 보관합니다.</text>
     </scroll>
   </div>
 </template>
@@ -30,7 +30,7 @@
 import router from '@system.router'
 import storage from '@system.storage'
 
-const DEFAULT_SETTING = '{"vibe":true,"doNotDisturb":false,"disturbFromT":"23","disturbFromM":"00","disturbToT":"07","disturbToM":"00","maxSave":30}'
+const DEFAULT_SETTING = '{"vibe":true,"doNotDisturb":false,"disturbFromT":"23","disturbFromM":"00","disturbToT":"07","disturbToM":"00","maxSave":40}'
 
 export default {
   private: {

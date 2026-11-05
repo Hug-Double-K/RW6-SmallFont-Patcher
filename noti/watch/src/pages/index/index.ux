@@ -26,7 +26,7 @@ import interconnect from '@system.interconnect'
 import router from '@system.router'
 
 const DIR = 'internal://mass/rw6noti'
-const DEFAULT_SETTING = '{"vibe":true,"doNotDisturb":false,"disturbFromT":"23","disturbFromM":"00","disturbToT":"07","disturbToM":"00","maxSave":30}'
+const DEFAULT_SETTING = '{"vibe":true,"doNotDisturb":false,"disturbFromT":"23","disturbFromM":"00","disturbToT":"07","disturbToM":"00","maxSave":40}'
 let conn = null
 
 export default {
@@ -67,7 +67,7 @@ export default {
         r.got.push(part.offset)
 
         if (part.isEnd) {
-          const max = self.setting.maxSave || 30
+          const max = self.setting.maxSave || 40
           while (self.list.length >= max) self.deleteOne(self.list[self.list.length - 1], self.list.length - 1)
           file.writeArrayBuffer({
             uri: `${DIR}/${part.name}.png`,
