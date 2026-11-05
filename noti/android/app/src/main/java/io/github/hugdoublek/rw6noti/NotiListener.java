@@ -77,6 +77,7 @@ public class NotiListener extends NotificationListenerService {
         }
         if (prefs.pictures() && picture == null) picture = bigPicture(ex);
         if (text.isEmpty() && picture == null) return;
+        if (prefs.photoOnly() && picture == null) return; // 글 알림은 기본 팝업으로
 
         // 같은 내용이 연달아 오면 한 번만
         String key = sbn.getKey();

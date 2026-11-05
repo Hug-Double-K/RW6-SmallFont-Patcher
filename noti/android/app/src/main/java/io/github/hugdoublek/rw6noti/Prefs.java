@@ -34,6 +34,10 @@ public final class Prefs {
     public boolean pictures() { return sp.getBoolean("pictures", true); }
     public void setPictures(boolean v) { sp.edit().putBoolean("pictures", v).apply(); }
 
+    /** 사진이 있는 알림만 워치 앱으로 보냄 (글 알림은 기본 팝업에 맡김) */
+    public boolean photoOnly() { return sp.getBoolean("photoOnly", true); }
+    public void setPhotoOnly(boolean v) { sp.edit().putBoolean("photoOnly", v).apply(); }
+
     public String lastLog() { return sp.getString("lastLog", "-"); }
     public void setLastLog(String v) { sp.edit().putString("lastLog", v).apply(); }
 

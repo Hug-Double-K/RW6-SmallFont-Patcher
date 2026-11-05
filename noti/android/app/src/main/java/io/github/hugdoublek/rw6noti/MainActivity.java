@@ -75,6 +75,7 @@ public class MainActivity extends Activity {
         root.addView(check("문자 메시지", prefs.sms(), prefs::setSms));
         root.addView(check("그 밖의 모든 앱", prefs.others(), prefs::setOthers));
         root.addView(check("사진 함께 보내기", prefs.pictures(), prefs::setPictures));
+        root.addView(check("사진이 있는 알림만 보내기 (글 알림은 워치 기본 팝업)", prefs.photoOnly(), prefs::setPhotoOnly));
 
         root.addView(section("4. 확인"));
         root.addView(button("워치로 테스트 알림 보내기", v -> sendTest()));

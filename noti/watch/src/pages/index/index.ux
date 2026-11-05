@@ -1,5 +1,12 @@
 <template>
-  <div class="main">
+  <div class="main" if="{{ popup }}">
+    <!-- 새 사진 알림 / 목록에서 누른 카드: 기본 알림처럼 크게 보여주고 '끄기'로 닫음 -->
+    <scroll style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
+      <image src="{{ popup }}" style="width: 100%" />
+    </scroll>
+    <text class="btn off" @click="closePopup">끄기</text>
+  </div>
+  <div class="main" else>
     <div class="head">
       <text class="head-btn" @click="deleteToggle">{{ notis ? (deleteOn ? "X" : "-") : "" }}</text>
       <text class="head-title" @click="scrollToTop">알림 {{ notis }}</text>
@@ -10,7 +17,7 @@
       <text class="empty" if="{{ !notis }}">알림이 없습니다</text>
       <div class="card" for="(i, li) in list">
         <text class="btn danger" if="{{ deleteOn }}" @click="deleteOne(li, i)">지우기</text>
-        <image src="{{ li.uri }}" style="width: 100%" />
+        <image src="{{ li.uri }}" style="width: 100%" @click="openPopup(li)" />
       </div>
       <text if="{{ status }}" style="font-size: 20px; color: #888888; margin-top: 10px">{{ status }}</text>
     </scroll>
@@ -35,6 +42,8 @@ export default {
     notis: 0,
     deleteOn: false,
     status: '',
+    popup: '',
+    popupFromArrival: false,
     receiving: {},
     setting: {},
   },
@@ -69,10 +78,16 @@ export default {
         if (part.isEnd) {
           const max = self.setting.maxSave || 40
           while (self.list.length >= max) self.deleteOne(self.list[self.list.length - 1], self.list.length - 1)
+          const uri = `${DIR}/${part.name}.png`
           file.writeArrayBuffer({
-            uri: `${DIR}/${part.name}.png`,
+            uri,
             buffer: self.decode(r.data),
-            success() { if (self.canVibrate()) vibrator.vibrate({ mode: 'long' }) },
+            success() {
+              if (self.canVibrate()) vibrator.vibrate({ mode: 'long' })
+              // 새 알림은 바로 크게 띄움 → '끄기'를 누르면 앱이 닫힘
+              self.popup = uri
+              self.popupFromArrival = true
+            },
             fail(e) { self.status = `저장 실패: ${e}` },
             complete() { delete self.receiving[part.name]; self.refreshList() },
           })
@@ -122,6 +137,20 @@ export default {
   },
 
   openSettings() { router.push({ uri: '/pages/settings' }) },
+
+  openPopup(li) {
+    if (this.deleteOn) return
+    this.popup = li.uri
+    this.popupFromArrival = false
+  },
+
+  closePopup() {
+    const fromArrival = this.popupFromArrival
+    this.popup = ''
+    this.popupFromArrival = false
+    // 알림으로 열린 경우엔 기본 알림의 '무시'처럼 앱을 닫는다. 목록에서 연 경우엔 목록으로 돌아감
+    if (fromArrival) app.terminate()
+  },
 
   canVibrate() {
     const s = this.setting
