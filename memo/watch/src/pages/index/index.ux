@@ -2,18 +2,18 @@
   <div class="main">
     <div class="head">
       <text class="head-btn" @click="deleteToggle">{{ count ? (deleteOn ? "X" : "-") : "" }}</text>
-      <text class="head-title">메모 {{ count }}</text>
+      <text class="head-title" @click="toTop">메모 {{ count }}</text>
       <text class="head-btn"></text>
     </div>
-    <scroll style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
-      <text class="empty" if="{{ !count }}">저장된 메모가 없습니다.</text>
-      <div class="memo" for="(i, m) in memos" @click="open(m)">
-        <text class="btn danger" if="{{ deleteOn }}" @click="remove(m)">지우기</text>
+    <text class="btn danger" if="{{ deleteOn }}" @click="deleteToggle">지울 메모를 누르세요 (끝내기)</text>
+    <text if="{{ status }}" style="font-size: 20px; color: #888888; margin-bottom: 6px">{{ status }}</text>
+    <text class="empty" if="{{ !count }}">저장된 메모가 없습니다.</text>
+    <list id="list" style="width: 100%; flex: 1" if="{{ count }}">
+      <list-item type="memo" for="(i, m) in memos" class="memo" @click="tap(m)">
         <text class="memo-title">{{ m.t }}</text>
         <text class="memo-time">{{ m.d }}</text>
-      </div>
-      <text if="{{ status }}" style="font-size: 20px; color: #888888; margin-top: 10px">{{ status }}</text>
-    </scroll>
+      </list-item>
+    </list>
   </div>
 </template>
 
@@ -24,7 +24,9 @@ import interconnect from '@system.interconnect'
 import router from '@system.router'
 
 const DIR = 'internal://mass/rw6memo'
+const INDEX = `${DIR}/index.json`
 let conn = null
+let saveTimer = null
 
 export default {
   private: {
@@ -34,48 +36,41 @@ export default {
     status: '',
     index: {},
     receiving: {},
+    got: 0,
   },
 
   onShow() {
     const self = this
     self.load()
     conn = interconnect.instance()
-    // T+id+제목 / NN+d|e+id+데이터 / X+id
+    // F+크기 / C / X+id / NN+d|e+id+JSON조각
     conn.onmessage = async (msg) => {
       try {
         const d = msg.data
-        const kind = d.substr(0, 1)
-        if (kind === 'T') {
-          const id = d.substr(1, 13)
-          self.index[id] = { t: d.substr(14), ts: Date.now() }
-          self.save()
-          return
-        }
-        if (kind === 'X') {
-          self.removeId(d.substr(1, 13))
-          return
-        }
+        const k = d.substr(0, 1)
+        if (k === 'F') { storage.set({ key: 'fontSize', value: d.substr(1) }); return }
+        if (k === 'C') { self.clearAll(); return }
+        if (k === 'X') { self.removeId(d.substr(1, 13)); return }
+
         const part = { offset: Number(d.substr(0, 2)), isEnd: d.substr(2, 1) === 'e', id: d.substr(3, 13) }
-        if (!self.receiving[part.id] || part.offset === 0) self.receiving[part.id] = { data: '', got: [] }
+        if (part.offset === 0 || !self.receiving[part.id]) self.receiving[part.id] = { data: '', next: 0 }
         const r = self.receiving[part.id]
         let wait = 0
-        while (part.offset !== 0 && !r.got.includes(part.offset - 1)) {
-          await new Promise((res) => setTimeout(res, 500))
-          if (++wait > 200) { delete self.receiving[part.id]; throw new Error('조각 수신 시간 초과') }
+        while (part.offset !== r.next) {
+          await new Promise((res) => setTimeout(res, 300))
+          if (++wait > 300) { delete self.receiving[part.id]; throw new Error('조각 수신 시간 초과') }
         }
         r.data += d.substr(16)
-        r.got.push(part.offset)
+        r.next++
         if (part.isEnd) {
-          file.writeArrayBuffer({
-            uri: `${DIR}/${part.id}.png`,
-            buffer: self.decode(r.data),
-            success() {
-              const meta = self.index[part.id] || { t: '메모' }
-              self.status = `받음: ${meta.t}`
-            },
-            fail(e) { self.status = `저장 실패: ${e}` },
-            complete() { delete self.receiving[part.id] },
-          })
+          const text = r.data
+          delete self.receiving[part.id]
+          const m = JSON.parse(text)
+          file.writeText({ uri: `${DIR}/${part.id}.json`, text })
+          self.index[part.id] = { t: m.t, ts: m.ts }
+          self.got++
+          self.status = `받는 중… ${self.got}개`
+          self.saveLater()
         }
       } catch (e) {
         self.status = e + ''
@@ -85,24 +80,30 @@ export default {
 
   load() {
     const self = this
-    storage.get({
-      key: 'memoIndex',
-      success(v) { self.index = JSON.parse(v || '{}'); self.refresh() },
+    file.readText({
+      uri: INDEX,
+      success(r) { try { self.index = JSON.parse(r.text || '{}') } catch (e) { self.index = {} } self.refresh() },
       fail() { self.index = {}; self.refresh() },
     })
   },
 
-  save() {
-    storage.set({ key: 'memoIndex', value: JSON.stringify(this.index) })
-    this.refresh()
+  // 메모가 많이 들어올 때 목록 파일을 매번 쓰지 않도록 1.5초 모아서 저장
+  saveLater() {
+    const self = this
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => {
+      saveTimer = null
+      file.writeText({ uri: INDEX, text: JSON.stringify(self.index) })
+      self.refresh()
+      self.status = `받은 메모 ${self.got}개`
+    }, 1500)
   },
 
   refresh() {
     const list = Object.keys(this.index).map((id) => {
       const m = this.index[id]
       const dt = new Date(m.ts)
-      const d = `${dt.getMonth() + 1}/${dt.getDate()} ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`
-      return { id, t: m.t, ts: m.ts, d }
+      return { id, t: m.t, ts: m.ts, d: `${dt.getFullYear()}/${dt.getMonth() + 1}/${dt.getDate()}` }
     })
     list.sort((a, b) => b.ts - a.ts)
     this.memos = list
@@ -110,37 +111,37 @@ export default {
     if (!this.count) this.deleteOn = false
   },
 
-  open(m) {
-    if (this.deleteOn) return
-    router.push({ uri: '/pages/detail', params: { uri: `${DIR}/${m.id}.png` } })
+  tap(m) {
+    if (this.deleteOn) { this.removeId(m.id); return }
+    router.push({ uri: '/pages/detail', params: { uri: `${DIR}/${m.id}.json` } })
+  },
+
+  toTop() {
+    const el = this.$element('list')
+    if (el) el.scrollTo({ index: 0 })
   },
 
   deleteToggle() { if (this.count) this.deleteOn = !this.deleteOn },
 
-  remove(m) { this.removeId(m.id) },
-
   removeId(id) {
-    try { file.delete({ uri: `${DIR}/${id}.png` }) } catch (e) {}
+    try { file.delete({ uri: `${DIR}/${id}.json` }) } catch (e) {}
     delete this.index[id]
-    this.save()
+    file.writeText({ uri: INDEX, text: JSON.stringify(this.index) })
+    this.refresh()
   },
 
-  decode(b64) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-    const look = {}
-    for (let i = 0; i < chars.length; i++) look[chars[i]] = i
-    const s = b64.replace(/\s/g, '')
-    const pad = s.endsWith('==') ? 2 : s.endsWith('=') ? 1 : 0
-    const len = Math.floor((s.length * 3) / 4) - pad
-    const out = new Uint8Array(len)
-    let j = 0
-    for (let i = 0; i < s.length; i += 4) {
-      const a = look[s[i]], b = look[s[i + 1]], c = look[s[i + 2]] || 0, e = look[s[i + 3]] || 0
-      out[j++] = (a << 2) | (b >> 4)
-      if (j < len) out[j++] = ((b & 15) << 4) | (c >> 2)
-      if (j < len) out[j++] = ((c & 3) << 6) | e
-    }
-    return out
+  clearAll() {
+    const self = this
+    self.got = 0
+    file.rmdir({
+      uri: DIR,
+      recursive: true,
+      complete() {
+        file.mkdir({ uri: DIR, recursive: true, complete() {} })
+        self.index = {}
+        self.refresh()
+      },
+    })
   },
 }
 </script>

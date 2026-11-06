@@ -32,6 +32,37 @@ public final class Memo {
         }
     }
 
+    /** 워치로 보낼 JSON (i=id, t=제목, b=본문, ts=시각) */
+    public String toJson() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("i", id); o.put("t", title); o.put("b", body); o.put("ts", time);
+            return o.toString();
+        } catch (Exception e) { return "{}"; }
+    }
+
+    /** 컬러노트 체크리스트 표시([V], [ ])를 보기 좋게 */
+    static String tidy(String s) {
+        if (s == null) return "";
+        return s.replace("\r", "").replaceAll("(?m)^\\[V\\] ?", "■ ").replaceAll("(?m)^\\[ \\] ?", "□ ");
+    }
+
+    /** 컬러노트 백업의 메모 한 건 → Memo (잠긴 메모면 null) */
+    public static Memo fromColorNote(JSONObject o) {
+        if (o.optInt("encrypted", 0) != 0) return null;
+        String title = o.optString("title", "").trim();
+        String body = tidy(o.optString("note", "")).trim();
+        if (title.isEmpty() && body.isEmpty()) return null;
+        if (title.isEmpty()) {
+            int nl = body.indexOf('\n');
+            title = nl < 0 ? body : body.substring(0, nl);
+        }
+        if (title.length() > 40) title = title.substring(0, 40) + "…";
+        String id = String.format("cn%011d", o.optLong("_id", Math.abs((long) title.hashCode())));
+        long ts = o.optLong("modified_date", System.currentTimeMillis());
+        return new Memo(id, title, body, ts);
+    }
+
     /** 공유받은 글에서 제목과 본문을 나눈다 */
     public static Memo fromShare(String subject, String text) {
         String t = text == null ? "" : text.replace("\r", "").trim();
@@ -47,7 +78,7 @@ public final class Memo {
         title = title.trim();
         if (title.length() > 40) title = title.substring(0, 40) + "…";
         if (title.isEmpty()) title = "제목 없음";
-        return new Memo(idFor(title), title, body, System.currentTimeMillis());
+        return new Memo(idFor(title), title, tidy(body), System.currentTimeMillis());
     }
 
     // ---- 저장소 ----
@@ -58,6 +89,9 @@ public final class Memo {
 
         public int fontSize() { return sp.getInt("fontSize", 24); }
         public void setFontSize(int v) { sp.edit().putInt("fontSize", v).apply(); }
+
+        public String password() { return sp.getString("password", "0000"); }
+        public void setPassword(String v) { sp.edit().putString("password", v).apply(); }
 
         public String lastLog() { return sp.getString("lastLog", "-"); }
         public void setLastLog(String v) { sp.edit().putString("lastLog", v).apply(); }

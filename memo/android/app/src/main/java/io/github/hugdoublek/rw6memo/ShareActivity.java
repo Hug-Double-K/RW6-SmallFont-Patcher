@@ -8,7 +8,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.widget.TextView;
 
-/** 다른 앱(컬러노트 등)에서 공유받은 메모를 바로 워치로 보낸다 */
+/** 다른 앱(컬러노트 등)에서 공유받은 메모 하나를 바로 워치로 보낸다 */
 public class ShareActivity extends Activity {
 
     @Override
@@ -27,23 +27,18 @@ public class ShareActivity extends Activity {
         String subject = in == null ? null : in.getStringExtra(Intent.EXTRA_SUBJECT);
         if (text == null || text.trim().isEmpty()) {
             tv.setText("보낼 글이 없어요.\n(잠긴 메모는 공유되지 않아요)");
-            finishLater(2000);
+            later(2000);
             return;
         }
-
         Memo.Store store = new Memo.Store(this);
         Memo m = Memo.fromShare(subject, text);
         tv.setText("「" + m.title + "」\n워치로 보내는 중…");
-        String b64 = MemoRenderer.toBase64Png(MemoRenderer.render(m, store.fontSize()));
-        WatchSender.sendMemo(this, m, b64, (ok, msg) -> {
-            if (ok) store.put(m);
+        WatchSender.sendOne(this, m, store.fontSize(), (ok, msg) -> {
             store.setLastLog(m.title + " → " + msg);
             tv.setText("「" + m.title + "」\n" + (ok ? "✔ " : "✘ ") + msg);
-            finishLater(ok ? 1200 : 4000);
+            later(ok ? 1200 : 4000);
         });
     }
 
-    private void finishLater(long ms) {
-        new Handler(Looper.getMainLooper()).postDelayed(this::finish, ms);
-    }
+    private void later(long ms) { new Handler(Looper.getMainLooper()).postDelayed(this::finish, ms); }
 }
