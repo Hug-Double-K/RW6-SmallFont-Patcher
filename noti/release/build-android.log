@@ -17,8 +17,8 @@
 > Task :app:stripReleaseDebugSymbols NO-SOURCE
 > Task :app:extractReleaseNativeSymbolTables NO-SOURCE
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:processReleaseManifestForPackage
 > Task :app:checkReleaseDuplicateClasses
+> Task :app:processReleaseManifestForPackage
 > Task :app:mergeReleaseStartupProfile
 > Task :app:mergeReleaseArtProfile
 > Task :app:mergeReleaseShaders
@@ -28,7 +28,9 @@
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:collectReleaseDependencies
 > Task :app:processReleaseResources
+> Task :app:sdkReleaseDependencyData
 > Task :app:mergeReleaseJavaResource
 > Task :app:desugarReleaseFileDependencies
 
@@ -39,12 +41,10 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:generateReleaseLintVitalReportModel
 > Task :app:dexBuilderRelease
 > Task :app:mergeReleaseGlobalSynthetics
-> Task :app:collectReleaseDependencies
-> Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
-> Task :app:optimizeReleaseResources
 > Task :app:writeReleaseAppMetadata
 > Task :app:writeReleaseSigningConfigVersions
+> Task :app:optimizeReleaseResources
 > Task :app:mergeExtDexRelease
 > Task :app:mergeDexRelease
 > Task :app:compileReleaseArtProfile
@@ -54,7 +54,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:lintVitalReportRelease
 > Task :app:lintVitalRelease
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1793847870492.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1793949745787.json
 
-BUILD SUCCESSFUL in 18s
+BUILD SUCCESSFUL in 25s
 43 actionable tasks: 43 executed
