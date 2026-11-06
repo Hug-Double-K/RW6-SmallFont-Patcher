@@ -1,4 +1,4 @@
-name: Build RW6 Noti (phone apk + watch rpk)
+name: Build RW6 apps (Noti + Memo, phone apk + watch rpk)
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
       - 'noti/android/**'
       - 'noti/watch/**'
       - 'noti/sign/**'
+      - 'memo/android/**'
+      - 'memo/watch/**'
       - '.github/workflows/build-noti.yml'
   workflow_dispatch:
 
@@ -42,6 +44,16 @@ jobs:
           npx aiot release 2>&1 | tee ../../build-watch.log
           ls -la dist || true
 
+      # ---------- RW6 메모 ----------
+      - name: Build memo apk
+        working-directory: memo/android
+        run: gradle --no-daemon assembleRelease 2>&1 | tee ../../build-memo-android.log
+      - name: Build memo rpk
+        working-directory: memo/watch
+        run: |
+          npm install --no-audit --no-fund 2>&1 | tail -20
+          npx aiot release 2>&1 | tee ../../build-memo-watch.log
+
       # ---------- 결과물을 저장소에 올림 ----------
       - name: Commit outputs
         if: always()
@@ -51,9 +63,14 @@ jobs:
           cp noti/watch/dist/*.rpk noti/release/RW6Noti.rpk 2>/dev/null || true
           tail -60 build-android.log > noti/release/build-android.log 2>/dev/null || true
           tail -60 build-watch.log > noti/release/build-watch.log 2>/dev/null || true
+          mkdir -p memo/release
+          cp memo/android/app/build/outputs/apk/release/*.apk memo/release/RW6Memo.apk 2>/dev/null || true
+          cp memo/watch/dist/*.rpk memo/release/RW6Memo.rpk 2>/dev/null || true
+          tail -60 build-memo-android.log > memo/release/build-android.log 2>/dev/null || true
+          tail -60 build-memo-watch.log > memo/release/build-watch.log 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add noti/release
+          git add noti/release memo/release
           git commit -m "Build outputs ${GITHUB_SHA::7} [skip ci]" || echo "nothing to commit"
           git pull --rebase origin main || true
           git push

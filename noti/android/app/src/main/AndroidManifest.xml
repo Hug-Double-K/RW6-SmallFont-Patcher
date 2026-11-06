@@ -7,6 +7,10 @@
         <package android:name="com.mi.health" />
         <package android:name="com.xiaomi.wearable" />
         <package android:name="com.kakao.talk" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application

@@ -1,0 +1,20 @@
+<template>
+  <div class="main">
+    <!-- 보기 전용. 뒤로 = 오른쪽으로 스와이프 -->
+    <scroll style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
+      <image src="{{ uri }}" style="width: 100%" />
+    </scroll>
+  </div>
+</template>
+
+<script>
+export default {
+  protected: {
+    uri: '',
+  },
+}
+</script>
+
+<style>
+  @import '../../common/common.css';
+</style>

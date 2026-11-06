@@ -28,8 +28,11 @@ public final class Prefs {
     public boolean sms() { return sp.getBoolean("sms", true); }
     public void setSms(boolean v) { sp.edit().putBoolean("sms", v).apply(); }
 
-    public boolean others() { return sp.getBoolean("others", false); }
-    public void setOthers(boolean v) { sp.edit().putBoolean("others", v).apply(); }
+    /** 직접 고른 그 밖의 앱 (패키지 이름 목록) */
+    public java.util.Set<String> otherApps() {
+        return new java.util.HashSet<>(sp.getStringSet("otherApps", new java.util.HashSet<>()));
+    }
+    public void setOtherApps(java.util.Set<String> v) { sp.edit().putStringSet("otherApps", new java.util.HashSet<>(v)).apply(); }
 
     public boolean pictures() { return sp.getBoolean("pictures", true); }
     public void setPictures(boolean v) { sp.edit().putBoolean("pictures", v).apply(); }
@@ -48,7 +51,7 @@ public final class Prefs {
         if (KAKAO.equals(pkg)) return kakao();
         for (String s : SMS) if (s.equals(pkg)) return sms();
         if (BuildConfigGuard.isSelf(pkg)) return false;
-        return others();
+        return otherApps().contains(pkg);
     }
 
     /** 자기 자신과 시스템 잡음은 제외 */

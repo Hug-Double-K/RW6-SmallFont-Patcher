@@ -28,6 +28,7 @@ public class MainActivity extends Activity {
 
     private Prefs prefs;
     private TextView status, log, sizeLabel, diag;
+    private Button otherBtn;
     private ImageView preview;
     private Node node;
 
@@ -74,7 +75,9 @@ public class MainActivity extends Activity {
         root.addView(section("3. 보낼 알림"));
         root.addView(check("카카오톡", prefs.kakao(), prefs::setKakao));
         root.addView(check("문자 메시지", prefs.sms(), prefs::setSms));
-        root.addView(check("그 밖의 모든 앱", prefs.others(), prefs::setOthers));
+        otherBtn = button("", v -> pickOtherApps());
+        root.addView(otherBtn);
+        refreshOtherLabel();
         root.addView(check("사진 함께 보내기", prefs.pictures(), prefs::setPictures));
         root.addView(check("사진이 있는 알림만 보내기 (글 알림은 워치 기본 팝업)", prefs.photoOnly(), prefs::setPhotoOnly));
 
@@ -152,6 +155,49 @@ public class MainActivity extends Activity {
     private void refreshPreview() {
         sizeLabel.setText("본문 " + prefs.fontSize() + "px (워치 화면 폭 432px 기준)");
         preview.setImageBitmap(Renderer.sample(prefs.fontSize()));
+    }
+
+    /** 설치된 앱 목록에서 알림을 보낼 앱을 직접 고른다 */
+    private void pickOtherApps() {
+        android.content.pm.PackageManager pm = getPackageManager();
+        Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        java.util.List<android.content.pm.ResolveInfo> found = pm.queryIntentActivities(launcher, 0);
+        java.util.TreeMap<String, String> apps = new java.util.TreeMap<>(); // 이름 → 패키지
+        java.util.Set<String> skip = new java.util.HashSet<>(java.util.Arrays.asList(Prefs.SMS));
+        skip.add(Prefs.KAKAO);
+        skip.add(getPackageName());
+        for (android.content.pm.ResolveInfo ri : found) {
+            String pkg = ri.activityInfo.packageName;
+            if (skip.contains(pkg)) continue;
+            apps.put(ri.loadLabel(pm).toString() + "\u0000" + pkg, pkg);
+        }
+        String[] labels = new String[apps.size()];
+        String[] pkgs = new String[apps.size()];
+        boolean[] checked = new boolean[apps.size()];
+        java.util.Set<String> chosen = prefs.otherApps();
+        int i = 0;
+        for (java.util.Map.Entry<String, String> e : apps.entrySet()) {
+            labels[i] = e.getKey().substring(0, e.getKey().indexOf('\u0000'));
+            pkgs[i] = e.getValue();
+            checked[i] = chosen.contains(pkgs[i]);
+            i++;
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("알림을 보낼 앱 선택")
+                .setMultiChoiceItems(labels, checked, (d, which, on) -> checked[which] = on)
+                .setPositiveButton("저장", (d, w) -> {
+                    java.util.Set<String> out = new java.util.HashSet<>();
+                    for (int k = 0; k < pkgs.length; k++) if (checked[k]) out.add(pkgs[k]);
+                    prefs.setOtherApps(out);
+                    refreshOtherLabel();
+                })
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    private void refreshOtherLabel() {
+        int n = prefs.otherApps().size();
+        otherBtn.setText("그 밖의 앱 선택 (" + (n == 0 ? "없음" : n + "개") + ")");
     }
 
     private String listenerLine(boolean enabled) {

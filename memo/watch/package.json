@@ -1,0 +1,14 @@
+{
+  "name": "rw6memo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "aiot build",
+    "release": "aiot release"
+  },
+  "devDependencies": {
+    "aiot-toolkit": "2.0.3",
+    "less": "^3.12.2",
+    "less-loader": "^6.2.0"
+  }
+}

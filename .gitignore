@@ -4,3 +4,9 @@ noti/watch/build/
 noti/android/.gradle/
 noti/android/app/build/
 noti/android/build/
+memo/watch/node_modules/
+memo/watch/dist/
+memo/watch/build/
+memo/android/.gradle/
+memo/android/app/build/
+memo/android/build/
