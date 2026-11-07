@@ -175,21 +175,35 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    private WatchSender.Plan lastPlan;
+
     private void sendAll(List<Memo> memos) {
-        List<byte[]> msgs = new ArrayList<>();
-        msgs.add(WatchSender.clearMessage());
-        msgs.add(WatchSender.fontMessage(store.fontSize()));
-        for (Memo m : memos) msgs.addAll(WatchSender.memoMessages(m));
+        lastPlan = WatchSender.importPlan(memos, store.fontSize());
+        sendPlan(0);
+    }
+
+    /** 처음부터 또는 끊긴 곳부터 보낸다 */
+    private void sendPlan(int from) {
+        WatchSender.Plan plan = lastPlan;
         busy = true;
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        WatchSender.send(this, msgs,
-                (done, total) -> say("보내는 중… " + done + " / " + total + "\n(화면을 켜 두고 워치를 폰 가까이 두세요)"),
+        WatchSender.send(this, plan, from,
+                (done, total) -> say("보내는 중… " + done + " / " + total + " 묶음 (메모 " + plan.memoCount + "개)\n(화면을 켜 두고 워치를 폰 가까이 두세요)"),
                 (ok, res) -> {
                     busy = false;
                     getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                    String line = ok ? "✔ 메모 " + memos.size() + "개를 워치로 보냈어요" : "✘ " + res + "\n(다시 시도하면 처음부터 다시 보내요)";
+                    String line = ok ? "✔ 메모 " + plan.memoCount + "개를 워치로 보냈어요" : "✘ " + res;
                     store.setLastLog(line);
                     say(line);
+                    if (!ok && plan.resumeAt > 0) {
+                        new AlertDialog.Builder(this)
+                                .setTitle("보내다 끊겼어요")
+                                .setMessage(res + "\n\n끊긴 곳부터 이어서 보낼까요?")
+                                .setPositiveButton("이어서 보내기", (d, w) -> sendPlan(plan.resumeAt))
+                                .setNeutralButton("처음부터", (d, w) -> sendPlan(0))
+                                .setNegativeButton("닫기", null)
+                                .show();
+                    }
                 });
     }
 

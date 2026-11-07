@@ -1,11 +1,17 @@
 <template>
   <div class="main">
-    <!-- 보기 전용. 뒤로 = 오른쪽으로 스와이프 -->
-    <scroll style="flex-direction: column; width: 100%; flex: 1; padding: 0 26px" scroll-y="{{ true }}">
-      <text style="font-size: {{ fs * 1.1 }}px; color: #ffffff; width: 100%; font-weight: bold; text-align: center; margin-top: 46px; margin-bottom: 12px">{{ title }}</text>
-      <text style="font-size: {{ fs }}px; color: #e6e6e6; line-height: {{ fs * 1.35 }}px">{{ body }}</text>
-      <text style="font-size: 18px; color: #777777; margin-top: 16px; margin-bottom: 20px">{{ date }}</text>
-    </scroll>
+    <!-- 보기 전용. 뒤로 = 오른쪽으로 스와이프. 긴 메모는 문단 단위로 나눠 필요한 만큼만 그림 -->
+    <list style="width: 100%; flex: 1; padding: 0 26px">
+      <list-item type="title">
+        <text style="width: 100%; font-size: {{ fs * 1.1 }}px; color: #ffffff; font-weight: bold; text-align: center; margin-top: 46px; margin-bottom: 12px">{{ title }}</text>
+      </list-item>
+      <list-item type="para" for="(i, s) in parts">
+        <text style="width: 100%; font-size: {{ fs }}px; color: #e6e6e6; line-height: {{ fs * 1.35 }}px">{{ s }}</text>
+      </list-item>
+      <list-item type="date">
+        <text style="width: 100%; font-size: 18px; color: #777777; margin-top: 16px; margin-bottom: 30px">{{ date }}</text>
+      </list-item>
+    </list>
   </div>
 </template>
 
@@ -13,24 +19,44 @@
 import file from '@system.file'
 import storage from '@system.storage'
 
+const DIR = 'internal://mass/rw6memo'
+
+// 줄 단위로 모아 약 300자씩 나눔 (너무 긴 줄은 잘라서)
+function split(body) {
+  const out = []
+  let cur = ''
+  body.split('\n').forEach((line) => {
+    while (line.length > 300) {
+      if (cur) { out.push(cur); cur = '' }
+      out.push(line.substr(0, 300))
+      line = line.substr(300)
+    }
+    if (cur && cur.length + line.length + 1 > 300) { out.push(cur); cur = line }
+    else cur = cur ? `${cur}\n${line}` : line
+  })
+  if (cur) out.push(cur)
+  return out
+}
+
 export default {
-  protected: { uri: '' },
-  private: { title: '', body: '', date: '', fs: 24 },
-  onShow() {
+  protected: { b: '', id: '' },
+  private: { title: '', parts: [], date: '', fs: 24 },
+  onInit() {
     const self = this
     storage.get({ key: 'fontSize', success(v) { const n = Number(v); if (n > 0) self.fs = n } })
     file.readText({
-      uri: self.uri,
+      uri: `${DIR}/${self.b || self.id}.json`,
       success(r) {
         try {
-          const m = JSON.parse(r.text)
-          self.title = m.t
-          self.body = m.b || ''
+          let m = JSON.parse(r.text)
+          if (Array.isArray(m)) m = m.find((x) => x.i === self.id) || {}
+          self.title = m.t || ''
+          self.parts = split(m.b || '')
           const dt = new Date(m.ts)
           self.date = `${dt.getFullYear()}/${dt.getMonth() + 1}/${dt.getDate()} 수정`
-        } catch (e) { self.body = '메모를 읽지 못했어요' }
+        } catch (e) { self.parts = ['메모를 읽지 못했어요'] }
       },
-      fail() { self.body = '메모를 찾지 못했어요' },
+      fail() { self.parts = ['메모를 찾지 못했어요'] },
     })
   },
 }
