@@ -165,7 +165,7 @@ public class MainActivity extends Activity {
     }
 
     private void confirmSend(List<Memo> memos, int locked, int bad) {
-        String msg = "메모 " + memos.size() + "개를 찾았어요.\n(잠긴 메모 " + locked + "개 제외" + (bad > 0 ? ", 읽지 못한 " + bad + "개" : "") + ")\n\n"
+        String msg = "메모 " + memos.size() + "개를 찾았어요. [" + ColorNoteBackup.lastMethod + "]\n(잠긴 메모 " + locked + "개 제외" + (bad > 0 ? ", 읽지 못한 " + bad + "개" : "") + ")\n\n"
                 + "워치의 메모를 지우고 이 메모들로 바꿀까요? 블루투스로 보내서 몇 분 걸릴 수 있어요.";
         new AlertDialog.Builder(this)
                 .setTitle("컬러노트 백업")
