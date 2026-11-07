@@ -60,7 +60,14 @@ public final class Memo {
         }
         if (title.length() > 40) title = title.substring(0, 40) + "…";
         String id = String.format("cn%011d", o.optLong("_id", Math.abs((long) title.hashCode())));
-        long ts = o.optLong("modified_date", System.currentTimeMillis());
+        // 수정·작은 수정·만든 날짜 중 가장 최근 것 (초 단위면 밀리초로)
+        long ts = 0;
+        for (String k : new String[]{"modified_date", "minor_modified_date", "created_date"}) {
+            long v = o.optLong(k, 0);
+            if (v > 0 && v < 100_000_000_000L) v *= 1000;
+            if (v > ts) ts = v;
+        }
+        if (ts == 0) ts = System.currentTimeMillis();
         return new Memo(id, title, body, ts);
     }
 

@@ -1,8 +1,8 @@
 <template>
   <div class="main">
     <!-- 보기 전용. 뒤로 = 오른쪽으로 스와이프 -->
-    <scroll style="flex-direction: column; width: 100%; flex: 1; padding: 0 14px" scroll-y="{{ true }}">
-      <text style="font-size: {{ fs * 1.1 }}px; color: #ffffff; font-weight: bold; margin-bottom: 10px">{{ title }}</text>
+    <scroll style="flex-direction: column; width: 100%; flex: 1; padding: 0 26px" scroll-y="{{ true }}">
+      <text style="font-size: {{ fs * 1.1 }}px; color: #ffffff; width: 100%; font-weight: bold; text-align: center; margin-top: 46px; margin-bottom: 12px">{{ title }}</text>
       <text style="font-size: {{ fs }}px; color: #e6e6e6; line-height: {{ fs * 1.35 }}px">{{ body }}</text>
       <text style="font-size: 18px; color: #777777; margin-top: 16px; margin-bottom: 20px">{{ date }}</text>
     </scroll>
