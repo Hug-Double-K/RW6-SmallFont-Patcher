@@ -17,7 +17,8 @@ public final class Memo {
     public final long time;
 
     Memo(String id, String title, String body, long time) {
-        this.id = id; this.title = title; this.body = body; this.time = time;
+        // 워치 쪽 형식이 id 13자리 고정이라 길이가 다르면 13자리로 바꾼다
+        this.id = id != null && id.length() == 13 ? id : idFor(String.valueOf(id)); this.title = title; this.body = body; this.time = time;
     }
 
     /** 같은 제목이면 같은 id → 워치에서 덮어씀 */
