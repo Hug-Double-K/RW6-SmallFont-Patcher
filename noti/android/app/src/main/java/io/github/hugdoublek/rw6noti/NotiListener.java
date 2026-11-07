@@ -174,6 +174,29 @@ public class NotiListener extends NotificationListenerService {
         PhotoMsg(String s, String t, Uri u, long w) { sender = s; text = t; uri = u; time = w; }
     }
 
+    private String diagnose(StatusBarNotification sbn) {
+        StringBuilder b = new StringBuilder(now()).append("\n");
+        Notification n = sbn.getNotification();
+        Bundle ex = n.extras;
+        b.append("요약알림=").append((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0);
+        b.append(" / 내용=").append(ex == null ? "-" : str(ex.getCharSequence(Notification.EXTRA_TEXT))).append("\n");
+        if (ex == null) return b.toString();
+        b.append("항목: ").append(ex.keySet()).append("\n");
+        b.append("큰사진=").append(ex.get(Notification.EXTRA_PICTURE) != null);
+        if (Build.VERSION.SDK_INT >= 31) b.append(" / 큰사진아이콘=").append(ex.get(Notification.EXTRA_PICTURE_ICON) != null);
+        Parcelable[] msgs = ex.getParcelableArray(Notification.EXTRA_MESSAGES);
+        b.append(" / 메시지수=").append(msgs == null ? 0 : msgs.length).append("\n");
+        if (msgs != null && msgs.length > 0 && msgs[msgs.length - 1] instanceof Bundle) {
+            Bundle last = (Bundle) msgs[msgs.length - 1];
+            b.append("마지막메시지 항목: ").append(last.keySet()).append("\n");
+            b.append("type=").append(last.getString("type"));
+            Object uri = last.get("uri");
+            b.append(" / uri=").append(uri == null ? "없음" : String.valueOf(uri).replaceAll("(?<=://[^/]{0,40}/).*", "…"));
+            if (uri instanceof Uri) b.append(" / 읽기=").append(loadUri((Uri) uri) != null ? "성공" : "실패");
+        }
+        return b.toString();
+    }
+
     private Bitmap bigPicture(Bundle ex) {
         try {
             Object p = ex.get(Notification.EXTRA_PICTURE);
