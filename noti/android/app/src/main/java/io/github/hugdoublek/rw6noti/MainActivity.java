@@ -27,7 +27,7 @@ import com.xiaomi.xms.wearable.node.Node;
 public class MainActivity extends Activity {
 
     private Prefs prefs;
-    private TextView status, log, sizeLabel, diag;
+    private TextView status, log, sizeLabel, diag, hist;
     private Button otherBtn;
     private ImageView preview;
     private Node node;
@@ -86,7 +86,13 @@ public class MainActivity extends Activity {
         log = text("");
         root.addView(log);
 
-        root.addView(section("5. 마지막 카톡 알림 분석 (사진 문제 확인용)"));
+        root.addView(section("5. 최근 기록 (사진이 빠지면 여기 이유가 남아요)"));
+        hist = text("");
+        hist.setTextSize(12);
+        hist.setTextIsSelectable(true);
+        root.addView(hist);
+
+        root.addView(section("6. 마지막 카톡 알림 분석"));
         diag = text("");
         diag.setTextSize(12);
         diag.setTextIsSelectable(true);
@@ -113,6 +119,7 @@ public class MainActivity extends Activity {
         status.setText(listenerLine(listener) + "\n워치: 확인 중…");
         log.setText("최근 전송: " + prefs.lastLog());
         diag.setText(prefs.diag());
+        hist.setText(prefs.history());
         Wearable.getNodeApi(this).getConnectedNodes()
                 .addOnSuccessListener(nodes -> {
                     node = (nodes == null || nodes.isEmpty()) ? null : nodes.get(0);

@@ -25,7 +25,38 @@ public final class WatchSender {
 
     public interface Result { void done(boolean ok, String msg); }
 
+    // 여러 사진이 동시에 오면 서로 섞이지 않게 한 번에 하나씩 보낸다
+    private static final java.util.ArrayDeque<Runnable> QUEUE = new java.util.ArrayDeque<>();
+    private static boolean running = false;
+
     public static void send(Context ctx, String base64, Result cb) {
+        Handler main = new Handler(Looper.getMainLooper());
+        main.post(() -> {
+            QUEUE.add(() -> sendWithRetry(ctx, base64, 0, (ok, msg) -> {
+                if (cb != null) cb.done(ok, msg);
+                main.post(() -> { running = false; pump(); });
+            }));
+            pump();
+        });
+    }
+
+    private static void pump() {
+        if (running || QUEUE.isEmpty()) return;
+        running = true;
+        QUEUE.poll().run();
+    }
+
+    private static void sendWithRetry(Context ctx, String base64, int attempt, Result cb) {
+        sendNow(ctx, base64, (ok, msg) -> {
+            if (!ok && attempt == 0) { // 한 번 더 시도
+                new Handler(Looper.getMainLooper()).postDelayed(() -> sendWithRetry(ctx, base64, 1, cb), 3000);
+            } else {
+                cb.done(ok, attempt > 0 && ok ? msg + " (재시도)" : msg);
+            }
+        });
+    }
+
+    private static void sendNow(Context ctx, String base64, Result cb) {
         Context app = ctx.getApplicationContext();
         NodeApi nodeApi = Wearable.getNodeApi(app);
         MessageApi msgApi = Wearable.getMessageApi(app);
@@ -47,7 +78,7 @@ public final class WatchSender {
                     // 워치 앱이 닫혀 있으면 메시지를 못 받으므로 먼저 연다
                     nodeApi.launchWearApp(node.id, "/index")
                             .addOnSuccessListener(v -> new Handler(Looper.getMainLooper())
-                                    .postDelayed(() -> sendNext(msgApi, node.id, chunks, 0, cb), 1500))
+                                    .postDelayed(() -> sendNext(msgApi, node.id, chunks, 0, cb), 2500)) // 워치 앱이 뜰 시간
                             .addOnFailureListener(e -> report(cb, false, "워치 앱 열기 실패: " + e.getMessage()
                                     + "\n(워치 앱 설치·워치 권한 확인)"));
                 })

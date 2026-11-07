@@ -44,6 +44,16 @@ public final class Prefs {
     public String diag() { return sp.getString("diag", "아직 받은 카톡 없음"); }
     public void setDiag(String v) { sp.edit().putString("diag", v).apply(); }
 
+    /** 최근 20건 기록 (사진이 빠진 이유 확인용) */
+    public synchronized void addHistory(String line) {
+        String h = sp.getString("history", "");
+        String[] lines = (line + "\n" + h).split("\n");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < Math.min(20, lines.length); i++) if (!lines[i].isEmpty()) sb.append(lines[i]).append("\n");
+        sp.edit().putString("history", sb.toString()).apply();
+    }
+    public String history() { return sp.getString("history", "아직 기록 없음"); }
+
     public String lastLog() { return sp.getString("lastLog", "-"); }
     public void setLastLog(String v) { sp.edit().putString("lastLog", v).apply(); }
 

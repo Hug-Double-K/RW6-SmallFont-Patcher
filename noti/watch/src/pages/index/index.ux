@@ -53,14 +53,15 @@ export default {
       try {
         const d = msg.data
         const part = { offset: Number(d.substr(0, 2)), isEnd: d.substr(2, 1) === 'e', name: d.substr(3, 13) }
-        if (!self.receiving[part.name]) self.receiving[part.name] = { data: '', got: [] }
+        // 첫 조각이 오면 새로 시작 (재전송 대비)
+        if (part.offset === 0 || !self.receiving[part.name]) self.receiving[part.name] = { data: '', got: [] }
         const r = self.receiving[part.name]
 
         // 앞 조각이 도착할 때까지 기다림 (최대 100초)
         let wait = 0
         while (part.offset !== 0 && !r.got.includes(part.offset - 1)) {
           await new Promise((res) => setTimeout(res, 500))
-          if (++wait > 200) { delete self.receiving[part.name]; throw new Error('조각 수신 시간 초과') }
+          if (++wait > 60) { delete self.receiving[part.name]; return } // 30초 넘게 앞 조각이 없으면 버림 (폰이 다시 보냄)
         }
         r.data += d.substr(16)
         r.got.push(part.offset)
