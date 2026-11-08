@@ -24,7 +24,7 @@ public final class Renderer {
     public static final int WIDTH = 432;
     private static final int PAD = 14;          // 카드 안쪽 여백 (기존 18)
     private static final float HEADER_SCALE = 0.85f; // 앱 아이콘·헤더 줄 크기 (기존 대비 85%)
-    private static final int MAX_HEIGHT = 5000;  // 긴 글도 최대한 (글만 있는 카드는 PNG가 작아 전송이 빠름)
+    private static final int MAX_HEIGHT = 1800;  // 워치 메모리 한계 (5000으로 했다가 워치가 재시작됨). 글 알림은 이미지가 아니라 글로 보냄
 
     public static Bitmap render(Drawable icon, String appName, String convTitle, String sender,
                                 String body, Bitmap picture, int fontSize, long when) {

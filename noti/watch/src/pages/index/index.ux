@@ -12,7 +12,12 @@
       <text class="empty" if="{{ !notis }}">수신된 알림이 없습니다.</text>
       <div class="card" for="(i, li) in list">
         <text class="btn danger" if="{{ deleteOn }}" @click="deleteOne(li, i)">지우기</text>
-        <image src="{{ li.uri }}" style="width: 100%" @click="openPopup(li)" />
+        <image if="{{ !li.text }}" src="{{ li.uri }}" style="width: 100%" @click="openPopup(li)" />
+        <div if="{{ li.text }}" class="tcard" @click="openPopup(li)">
+          <text class="t-app">{{ li.a }}</text>
+          <text class="t-snd">{{ li.s }}</text>
+          <text class="t-body">{{ li.b }}</text>
+        </div>
       </div>
       <text if="{{ status }}" style="font-size: 20px; color: #888888; margin-top: 10px">{{ status }}</text>
     </scroll>
@@ -60,11 +65,13 @@ export default {
         const d = msg.data
         // S + 진동(0/1) + 화면깨우기(0/1) : 폰 앱 설정
         if (d.substr(0, 1) === 'S') {
-          self.alert = { vibe: d.substr(1, 1) === '1', wake: d.substr(2, 1) === '1' }
+          self.alert = { vibe: d.substr(1, 1) === '1', wake: d.substr(2, 1) === '1', fs: Number(d.substr(3, 2)) || 26 }
           storage.set({ key: 'alert', value: JSON.stringify(self.alert) })
           return
         }
-        const part = { offset: Number(d.substr(0, 2)), isEnd: d.substr(2, 1) === 'e', name: d.substr(3, 13) }
+        // 구분: d/e = 이미지(Base64), D/E = 글(JSON)
+        const flag = d.substr(2, 1)
+        const part = { offset: Number(d.substr(0, 2)), isEnd: flag === 'e' || flag === 'E', text: flag === 'D' || flag === 'E', name: d.substr(3, 13) }
         // 첫 조각이 오면 새로 시작 (재전송 대비)
         if (part.offset === 0 || !self.receiving[part.name]) self.receiving[part.name] = { data: '', got: [] }
         const r = self.receiving[part.name]
@@ -81,10 +88,11 @@ export default {
         if (part.isEnd) {
           const max = self.setting.maxSave || 40
           while (self.list.length >= max) self.deleteOne(self.list[self.list.length - 1], self.list.length - 1)
-          const uri = `${DIR}/${part.name}.png`
-          file.writeArrayBuffer({
+          const uri = `${DIR}/${part.name}.${part.text ? 'json' : 'png'}`
+          const args = part.text ? { text: r.data } : { buffer: self.decode(r.data) }
+          const write = (o) => (part.text ? file.writeText(o) : file.writeArrayBuffer(o))
+          write(Object.assign(args, {
             uri,
-            buffer: self.decode(r.data),
             success() {
               // 폰 앱에서 고른 대로 진동 / 화면 깨우기, 그리고 새 알림을 바로 크게 띄움
               self.notifyArrival()
@@ -92,7 +100,7 @@ export default {
             },
             fail(e) { self.status = `저장 실패: ${e}` },
             complete() { delete self.receiving[part.name]; self.refreshList() },
-          })
+          }))
         }
       } catch (e) {
         self.status = e + ''
@@ -105,8 +113,25 @@ export default {
     file.list({
       uri: DIR,
       success(data) {
-        self.list = data.fileList.sort((a, b) => b.uri.localeCompare(a.uri))
-        self.notis = self.list.length
+        const items = data.fileList.sort((a, b) => b.uri.localeCompare(a.uri)).map((f) => (
+          { uri: f.uri, text: /\.json$/.test(f.uri), a: '', s: '', b: '' }))
+        self.list = items
+        self.notis = items.length
+        // 글 알림은 내용을 읽어 미리보기로
+        items.forEach((li) => {
+          if (!li.text) return
+          file.readText({
+            uri: li.uri,
+            success(r) {
+              try {
+                const m = JSON.parse(r.text)
+                li.a = m.c ? `${m.a} · ${m.c}` : m.a
+                li.s = m.s || ''
+                li.b = (m.b || '').length > 120 ? m.b.substr(0, 120) + '…' : (m.b || '')
+              } catch (e) {}
+            },
+          })
+        })
         self.report()
       },
       fail() { self.list = []; self.notis = 0; self.report() },

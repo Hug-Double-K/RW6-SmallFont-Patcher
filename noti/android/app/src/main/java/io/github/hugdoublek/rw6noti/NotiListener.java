@@ -161,12 +161,21 @@ public class NotiListener extends NotificationListenerService {
 
     private void renderAndSend(Prefs prefs, Drawable icon, String appName, String conv, String sender,
                                String text, Bitmap picture, long when) {
-        Bitmap card = Renderer.render(icon, appName, conv, sender, text, picture, prefs.fontSize(), when);
-        String b64 = Renderer.toBase64Png(card);
+        String b64;
+        if (picture == null) {
+            // 글만 있는 알림: 이미지로 그리지 않고 글 그대로 (워치가 직접 그림)
+            try {
+                org.json.JSONObject o = new org.json.JSONObject();
+                o.put("a", appName); o.put("c", conv == null ? "" : conv); o.put("s", sender == null ? "" : sender);
+                o.put("b", text == null ? "" : text); o.put("w", when);
+                b64 = o.toString();
+            } catch (org.json.JSONException e) { return; }
+        } else {
+            b64 = Renderer.toBase64Png(Renderer.render(icon, appName, conv, sender, text, picture, prefs.fontSize(), when));
+        }
         if (b64.length() > 1_500_000 && picture != null) { // 너무 크면 사진을 더 줄여서
             Bitmap small = Bitmap.createScaledBitmap(picture, Math.max(1, picture.getWidth() / 2), Math.max(1, picture.getHeight() / 2), true);
-            card = Renderer.render(icon, appName, conv, sender, text, small, prefs.fontSize(), when);
-            b64 = Renderer.toBase64Png(card);
+            b64 = Renderer.toBase64Png(Renderer.render(icon, appName, conv, sender, text, small, prefs.fontSize(), when));
         }
         final String summary = sender + (picture != null ? " [사진]" : "");
         final int kb = b64.length() / 1024;

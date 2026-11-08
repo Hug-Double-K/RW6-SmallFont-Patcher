@@ -1,9 +1,20 @@
 <template>
   <div class="main">
     <!-- 사진 알림 한 건. 뒤로 = 오른쪽으로 스와이프, '끄기' = 이 알림 삭제 -->
-    <scroll style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
+    <scroll if="{{ !isText }}" style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
       <image src="{{ uri }}" style="width: 100%; margin-top: 28px" />
     </scroll>
+    <!-- 글 알림: 워치가 직접 그림. 긴 글은 문단으로 나눠 보이는 만큼만 -->
+    <list if="{{ isText }}" style="width: 100%; flex: 1">
+      <list-item type="head" class="tcard-head">
+        <text class="t-app">{{ app }}</text>
+        <text class="t-snd" style="font-size: {{ fs }}px">{{ sender }}</text>
+      </list-item>
+      <list-item type="para" for="(i, p) in parts" class="tcard-para">
+        <text style="width: 100%; font-size: {{ fs }}px; color: #eeeeee; line-height: {{ lh }}px">{{ p }}</text>
+      </list-item>
+      <list-item type="end" class="tcard-end"><text class="t-app">{{ time }}</text></list-item>
+    </list>
     <text class="btn off" @click="remove">끄기</text>
   </div>
 </template>
@@ -13,11 +24,44 @@ import app from '@system.app'
 import file from '@system.file'
 import router from '@system.router'
 import interconnect from '@system.interconnect'
+import storage from '@system.storage'
+
+function split(body) {
+  const out = []
+  let cur = ''
+  body.split('\n').forEach((line) => {
+    while (line.length > 300) { if (cur) { out.push(cur); cur = '' } out.push(line.substr(0, 300)); line = line.substr(300) }
+    if (cur && cur.length + line.length + 1 > 300) { out.push(cur); cur = line } else cur = cur ? `${cur}\n${line}` : line
+  })
+  if (cur) out.push(cur)
+  return out
+}
 
 export default {
   protected: {
     uri: '',
     arrival: '0',
+  },
+  private: { isText: false, app: '', sender: '', parts: [], time: '', fs: 26, lh: 35 },
+  onInit() {
+    const self = this
+    if (!/\.json$/.test(self.uri)) return
+    self.isText = true
+    storage.get({ key: 'alert', success(v) { try { const a = JSON.parse(v); if (a.fs) { self.fs = a.fs; self.lh = Math.round(a.fs * 1.35) } } catch (e) {} } })
+    file.readText({
+      uri: self.uri,
+      success(r) {
+        try {
+          const m = JSON.parse(r.text)
+          self.app = m.c ? `${m.a} · ${m.c}` : m.a
+          self.sender = m.s || ''
+          self.parts = split(m.b || '')
+          const t = new Date(m.w)
+          self.time = `${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`
+        } catch (e) { self.parts = ['알림을 읽지 못했어요'] }
+      },
+      fail() { self.parts = ['알림을 찾지 못했어요'] },
+    })
   },
   remove() {
     const self = this

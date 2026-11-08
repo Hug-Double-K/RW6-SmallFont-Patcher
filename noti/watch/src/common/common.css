@@ -34,3 +34,12 @@ text { color: white; font-size: 26px; }
   text-align: center;
   font-size: 30px;
 }
+
+/* 글 알림 카드 (워치가 직접 그림) */
+.tcard { width: 100%; padding: 14px; border-radius: 22px; background-color: #1c1d22; flex-direction: column; }
+.t-app { font-size: 19px; color: #aaaaaa; }
+.t-snd { font-size: 24px; color: #ffffff; font-weight: bold; margin-top: 6px; }
+.t-body { font-size: 24px; color: #eeeeee; margin-top: 4px; lines: 4; text-overflow: ellipsis; }
+.tcard-head { width: 100%; flex-direction: column; padding: 28px 24px 6px; }
+.tcard-para { width: 100%; padding: 0 24px; }
+.tcard-end { width: 100%; padding: 12px 24px 16px; }

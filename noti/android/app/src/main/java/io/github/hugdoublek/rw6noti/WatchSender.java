@@ -65,14 +65,19 @@ public final class WatchSender {
         List<byte[]> chunks = new ArrayList<>();
         // 먼저 진동·화면 깨우기 설정을 보낸다 (S + 진동 + 깨우기)
         Prefs p = new Prefs(app);
-        byte[] setting = ("S" + (p.vibrate() ? "1" : "0") + (p.wake() ? "1" : "0")).getBytes(StandardCharsets.UTF_8);
+        // S + 진동 + 깨우기 + 글자크기(2자리)
+        byte[] setting = ("S" + (p.vibrate() ? "1" : "0") + (p.wake() ? "1" : "0") + String.format("%02d", p.fontSize())).getBytes(StandardCharsets.UTF_8);
+        // 글 알림은 이미지 대신 글(JSON) 그대로 보낸다 → 워치가 직접 그림 (가볍고 긴 글도 OK)
+        boolean text = base64.startsWith("{");
+        int size = text ? 6000 : CHUNK;
         int idx = 0;
-        for (int start = 0; start < base64.length(); start += CHUNK) {
-            int end = Math.min(start + CHUNK, base64.length());
-            String head = String.format("%02d", idx++) + (end == base64.length() ? "e" : "d") + stamp;
+        for (int start = 0; start < base64.length(); start += size) {
+            int end = Math.min(start + size, base64.length());
+            boolean last = end == base64.length();
+            String head = String.format("%02d", idx++) + (text ? (last ? "E" : "D") : (last ? "e" : "d")) + stamp;
             chunks.add((head + base64.substring(start, end)).getBytes(StandardCharsets.UTF_8));
         }
-        if (chunks.size() > 99) { report(cb, false, "이미지가 너무 큽니다"); return; }
+        if (chunks.size() > 99) { report(cb, false, "내용이 너무 큽니다"); return; }
 
         nodeApi.getConnectedNodes()
                 .addOnSuccessListener(nodes -> {
