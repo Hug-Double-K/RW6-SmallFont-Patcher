@@ -1,7 +1,7 @@
 <template>
   <div class="main">
     <div class="head">
-      <text class="head-btn" @click="deleteToggle">{{ notis ? (deleteOn ? "X" : "-") : "" }}</text>
+      <text class="head-btn {{ notis ? 'head-btn-on' : '' }}" @click="deleteToggle">{{ notis ? (deleteOn ? "X" : "-") : "" }}</text>
       <text class="head-title" @click="scrollToTop">사진 알림 {{ notis }}</text>
       <text class="head-btn"></text>
     </div>
