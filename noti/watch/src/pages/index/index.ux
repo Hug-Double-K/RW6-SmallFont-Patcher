@@ -23,6 +23,8 @@ import file from '@system.file'
 import storage from '@system.storage'
 import interconnect from '@system.interconnect'
 import router from '@system.router'
+import vibrator from '@system.vibrator'
+import brightness from '@system.brightness'
 
 const DIR = 'internal://mass/rw6noti'
 const DEFAULT_SETTING = '{"vibe":true,"doNotDisturb":false,"disturbFromT":"23","disturbFromM":"00","disturbToT":"07","disturbToM":"00","maxSave":40}'
@@ -36,6 +38,7 @@ export default {
     status: '',
     receiving: {},
     setting: {},
+    alert: { vibe: false, wake: false },
   },
 
   onShow() {
@@ -47,11 +50,18 @@ export default {
       fail() { self.setting = JSON.parse(DEFAULT_SETTING) },
     })
 
+    storage.get({ key: 'alert', success(v) { try { if (v) self.alert = JSON.parse(v) } catch (e) {} } })
     conn = interconnect.instance()
     // 조각: 순번(2) + 구분(d/e)(1) + 파일명(13) + Base64 데이터
     conn.onmessage = async (msg) => {
       try {
         const d = msg.data
+        // S + 진동(0/1) + 화면깨우기(0/1) : 폰 앱 설정
+        if (d.substr(0, 1) === 'S') {
+          self.alert = { vibe: d.substr(1, 1) === '1', wake: d.substr(2, 1) === '1' }
+          storage.set({ key: 'alert', value: JSON.stringify(self.alert) })
+          return
+        }
         const part = { offset: Number(d.substr(0, 2)), isEnd: d.substr(2, 1) === 'e', name: d.substr(3, 13) }
         // 첫 조각이 오면 새로 시작 (재전송 대비)
         if (part.offset === 0 || !self.receiving[part.name]) self.receiving[part.name] = { data: '', got: [] }
@@ -74,7 +84,8 @@ export default {
             uri,
             buffer: self.decode(r.data),
             success() {
-              // 진동은 워치 기본 알림(+워치 방해금지)이 담당. 새 사진은 바로 크게 띄움
+              // 폰 앱에서 고른 대로 진동 / 화면 깨우기, 그리고 새 알림을 바로 크게 띄움
+              self.notifyArrival()
               router.push({ uri: '/pages/detail', params: { uri, arrival: '1' } })
             },
             fail(e) { self.status = `저장 실패: ${e}` },
@@ -141,6 +152,18 @@ export default {
     const t = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0')
     const quiet = from <= to ? (from <= t && t <= to) : (from <= t || t <= to)
     return !quiet
+  },
+
+  notifyArrival() {
+    if (this.alert.wake) {
+      // 화면을 켜서 8초 동안 유지
+      try { brightness.setKeepScreenOn({ keepScreenOn: true }) } catch (e) {}
+      try { brightness.getValue({ success(d) { brightness.setValue({ value: d.value }) } }) } catch (e) {}
+      setTimeout(() => { try { brightness.setKeepScreenOn({ keepScreenOn: false }) } catch (e) {} }, 8000)
+    }
+    if (this.alert.vibe) {
+      try { vibrator.vibrate({ mode: 'long' }) } catch (e) {}
+    }
   },
 
   onDestroy() { app.terminate() },

@@ -81,6 +81,10 @@ public class MainActivity extends Activity {
         root.addView(check("사진 함께 보내기", prefs.pictures(), prefs::setPictures));
         root.addView(check("사진이 있는 알림만 보내기 (글 알림은 워치 기본 팝업)", prefs.photoOnly(), prefs::setPhotoOnly));
 
+        root.addView(text("워치에 알림이 오면"));
+        root.addView(check("진동 울리기", prefs.vibrate(), prefs::setVibrate));
+        root.addView(check("화면 깨우기", prefs.wake(), prefs::setWake));
+
         root.addView(section("4. 확인"));
         root.addView(button("워치로 테스트 알림 보내기", v -> sendTest()));
         log = text("");

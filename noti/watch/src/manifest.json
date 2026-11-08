@@ -1,8 +1,8 @@
 {
   "package": "io.github.hugdoublek.rw6noti",
   "name": "RW6 알림",
-  "versionName": "1.5.0",
-  "versionCode": 6,
+  "versionName": "1.6.0",
+  "versionCode": 7,
   "minPlatformVersion": 1000,
   "icon": "/common/logo.png",
   "deviceTypeList": [
@@ -23,6 +23,12 @@
     },
     {
       "name": "system.prompt"
+    },
+    {
+      "name": "system.vibrator"
+    },
+    {
+      "name": "system.brightness"
     }
   ],
   "config": {

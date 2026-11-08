@@ -41,6 +41,12 @@ public final class Prefs {
     public boolean photoOnly() { return sp.getBoolean("photoOnly", true); }
     public void setPhotoOnly(boolean v) { sp.edit().putBoolean("photoOnly", v).apply(); }
 
+    /** 알림이 오면 워치에서 진동 / 화면 깨우기 */
+    public boolean vibrate() { return sp.getBoolean("vibrate", false); }
+    public void setVibrate(boolean v) { sp.edit().putBoolean("vibrate", v).apply(); }
+    public boolean wake() { return sp.getBoolean("wake", false); }
+    public void setWake(boolean v) { sp.edit().putBoolean("wake", v).apply(); }
+
     public String diag() { return sp.getString("diag", "아직 받은 카톡 없음"); }
     public void setDiag(String v) { sp.edit().putString("diag", v).apply(); }
 

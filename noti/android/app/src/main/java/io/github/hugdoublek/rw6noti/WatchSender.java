@@ -63,6 +63,9 @@ public final class WatchSender {
 
         String stamp = String.valueOf(System.currentTimeMillis());
         List<byte[]> chunks = new ArrayList<>();
+        // 먼저 진동·화면 깨우기 설정을 보낸다 (S + 진동 + 깨우기)
+        Prefs p = new Prefs(app);
+        byte[] setting = ("S" + (p.vibrate() ? "1" : "0") + (p.wake() ? "1" : "0")).getBytes(StandardCharsets.UTF_8);
         int idx = 0;
         for (int start = 0; start < base64.length(); start += CHUNK) {
             int end = Math.min(start + CHUNK, base64.length());
@@ -78,7 +81,9 @@ public final class WatchSender {
                     // 워치 앱이 닫혀 있으면 메시지를 못 받으므로 먼저 연다
                     nodeApi.launchWearApp(node.id, "/index")
                             .addOnSuccessListener(v -> new Handler(Looper.getMainLooper())
-                                    .postDelayed(() -> sendNext(msgApi, node.id, chunks, 0, cb), 2500)) // 워치 앱이 뜰 시간
+                                    .postDelayed(() -> msgApi.sendMessage(node.id, setting)
+                                            .addOnSuccessListener(x -> sendNext(msgApi, node.id, chunks, 0, cb))
+                                            .addOnFailureListener(x -> sendNext(msgApi, node.id, chunks, 0, cb)), 2500)) // 워치 앱이 뜰 시간
                             .addOnFailureListener(e -> report(cb, false, "워치 앱 열기 실패: " + e.getMessage()
                                     + "\n(워치 앱 설치·워치 권한 확인)"));
                 })
