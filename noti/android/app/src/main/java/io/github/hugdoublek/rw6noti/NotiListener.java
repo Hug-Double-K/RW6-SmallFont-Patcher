@@ -28,6 +28,7 @@ import java.util.Map;
 public class NotiListener extends NotificationListenerService {
 
     private final Map<String, String> lastSent = new HashMap<>();
+    private static final java.util.Set<String> ICON_SENT = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
     private final java.util.Set<String> sentUris = new java.util.HashSet<>();
     private static String lastLoadError = "";
     private static final android.os.HandlerThread THREAD = new android.os.HandlerThread("rw6noti");
@@ -170,15 +171,18 @@ public class NotiListener extends NotificationListenerService {
                 o.put("b", text == null ? "" : text); o.put("w", when);
                 // 앱 아이콘 (작게). 워치가 앱별로 한 번 저장해 두고 씀
                 Bitmap ib = Renderer.iconBitmap(icon, 40);
-                if (ib != null) { o.put("k", String.valueOf(Math.abs(appName.hashCode()))); o.put("i", Renderer.toBase64Png(ib)); }
+                String k = String.valueOf(Math.abs(appName.hashCode()));
+                o.put("k", k);
+                // 아이콘은 앱마다 처음 한 번만 같이 보냄 (글 알림을 최대한 가볍게)
+                if (ib != null && ICON_SENT.add(k)) o.put("i", Renderer.toBase64Png(ib));
                 b64 = o.toString();
             } catch (org.json.JSONException e) { return; }
         } else {
-            b64 = Renderer.toBase64Png(Renderer.render(icon, appName, conv, sender, text, picture, prefs.fontSize(), when));
+            b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, picture, prefs.fontSize(), when));
         }
         if (b64.length() > 1_500_000 && picture != null) { // 너무 크면 사진을 더 줄여서
             Bitmap small = Bitmap.createScaledBitmap(picture, Math.max(1, picture.getWidth() / 2), Math.max(1, picture.getHeight() / 2), true);
-            b64 = Renderer.toBase64Png(Renderer.render(icon, appName, conv, sender, text, small, prefs.fontSize(), when));
+            b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, small, prefs.fontSize(), when));
         }
         final String summary = sender + (picture != null ? " [사진]" : "");
         final int kb = b64.length() / 1024;

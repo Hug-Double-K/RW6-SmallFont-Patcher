@@ -152,6 +152,17 @@ public final class Renderer {
         return b;
     }
 
+    /** 사진 카드는 JPEG (PNG보다 5~10배 작아 전송이 빠름). 투명한 곳은 검정으로 */
+    public static String toBase64Jpeg(Bitmap bmp) {
+        Bitmap opaque = Bitmap.createBitmap(bmp.getWidth(), bmp.getHeight(), Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(opaque);
+        c.drawColor(android.graphics.Color.BLACK);
+        c.drawBitmap(bmp, 0, 0, null);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        opaque.compress(Bitmap.CompressFormat.JPEG, 85, out);
+        return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+    }
+
     public static String toBase64Png(Bitmap bmp) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         bmp.compress(Bitmap.CompressFormat.PNG, 100, out);

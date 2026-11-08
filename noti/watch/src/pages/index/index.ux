@@ -73,9 +73,12 @@ export default {
           storage.set({ key: 'alert', value: JSON.stringify(self.alert) })
           return
         }
-        // 구분: d/e = 이미지(Base64), D/E = 글(JSON)
+        // Q = 폰이 "켜져 있니?" 확인 → 바로 준비됨 응답
+        if (d.substr(0, 1) === 'Q') { self.ready(); return }
+        // 구분: d/e = PNG, f/g = JPEG, D/E = 글(JSON)
         const flag = d.substr(2, 1)
-        const part = { offset: Number(d.substr(0, 2)), isEnd: flag === 'e' || flag === 'E', text: flag === 'D' || flag === 'E', name: d.substr(3, 13) }
+        const part = { offset: Number(d.substr(0, 2)), isEnd: flag === 'e' || flag === 'E' || flag === 'g',
+          text: flag === 'D' || flag === 'E', jpg: flag === 'f' || flag === 'g', name: d.substr(3, 13) }
         // 첫 조각이 오면 새로 시작 (재전송 대비)
         if (part.offset === 0 || !self.receiving[part.name]) self.receiving[part.name] = { data: '', got: [] }
         const r = self.receiving[part.name]
@@ -92,7 +95,7 @@ export default {
         if (part.isEnd) {
           const max = self.setting.maxSave || 40
           while (self.list.length >= max) self.deleteOne(self.list[self.list.length - 1], self.list.length - 1)
-          const uri = `${DIR}/${part.name}.${part.text ? 'json' : 'png'}`
+          const uri = `${DIR}/${part.name}.${part.text ? 'json' : part.jpg ? 'jpg' : 'png'}`
           if (part.text) self.saveIcon(r.data)
           const args = part.text ? { text: r.data } : { buffer: self.decode(r.data) }
           const write = (o) => (part.text ? file.writeText(o) : file.writeArrayBuffer(o))
@@ -111,6 +114,13 @@ export default {
         self.status = e + ''
       }
     }
+    // 앱이 떴으니 폰에 "준비됨" 알림 → 폰이 기다리지 않고 바로 보냄
+    self.ready()
+  },
+
+  // 폰에 "받을 준비 됨"을 알림 (폰은 이걸 받자마자 보냄)
+  ready() {
+    try { if (conn) conn.send({ data: { ready: 1 } }) } catch (e) {}
   },
 
   // 글 알림에 들어 있는 앱 아이콘을 앱별로 한 번만 저장

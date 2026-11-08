@@ -157,7 +157,7 @@ public class MainActivity extends Activity {
 
     private void sendTest() {
         log.setText("전송 중…");
-        String b64 = Renderer.toBase64Png(Renderer.sample(prefs.fontSize()));
+        String b64 = Renderer.toBase64Jpeg(Renderer.sample(prefs.fontSize()));
         WatchSender.send(this, b64, (ok, msg) -> {
             prefs.setLastLog(NotiListener.now() + " 테스트 → " + msg);
             log.setText((ok ? "✔ " : "✘ ") + msg);
