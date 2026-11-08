@@ -90,7 +90,7 @@ public class NotiListener extends NotificationListenerService {
                 if (s != null && s.length() > 0) who = s.toString();
                 if (i == msgs.length - 1) {
                     CharSequence t = m.getCharSequence("text");
-                    if (t != null && t.length() > 0) text = t.toString();
+                    if (t != null && t.length() > 0) text = longer(t.toString(), text);
                     sender = who;
                 }
                 String type = m.getString("type");
@@ -101,6 +101,9 @@ public class NotiListener extends NotificationListenerService {
                 }
             }
         }
+
+        // 펼친 알림(긴 글)에 더 많은 글자가 있으면 그걸 사용
+        text = longer(text, str(ex.getCharSequence(Notification.EXTRA_BIG_TEXT)));
 
         PackageManager pm = getPackageManager();
         String appName = pkg;
@@ -235,6 +238,15 @@ public class NotiListener extends NotificationListenerService {
             lastLoadError = e.getClass().getSimpleName() + ": " + e.getMessage();
             return null; // 앱이 사진 접근을 허용하지 않았거나 아직 내려받는 중
         }
+    }
+
+    /** 같은 글의 잘린 버전과 전체 버전 중 긴 쪽 */
+    private static String longer(String a, String b) {
+        if (b == null || b.isEmpty()) return a;
+        if (a == null || a.isEmpty()) return b;
+        String ca = a.replace("…", "").trim(), cb = b.replace("…", "").trim();
+        if (cb.length() > ca.length() && cb.startsWith(ca.substring(0, Math.min(10, ca.length())))) return b;
+        return a;
     }
 
     private static String str(CharSequence cs) { return cs == null ? "" : cs.toString(); }
