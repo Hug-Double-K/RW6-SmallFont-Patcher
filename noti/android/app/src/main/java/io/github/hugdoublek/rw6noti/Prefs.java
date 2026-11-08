@@ -47,6 +47,13 @@ public final class Prefs {
     public boolean wake() { return sp.getBoolean("wake", false); }
     public void setWake(boolean v) { sp.edit().putBoolean("wake", v).apply(); }
 
+    /** 워치 알림 목록(위→아래 스와이프)에 'OO 알림 - N건' 표시 */
+    public boolean watchList() { return sp.getBoolean("watchList", false); }
+    public void setWatchList(boolean v) { sp.edit().putBoolean("watchList", v).apply(); }
+    /** 워치에 쌓인(아직 안 지운) 사진 알림 수 */
+    public int unread() { return sp.getInt("unread", 0); }
+    public void setUnread(int v) { sp.edit().putInt("unread", Math.max(0, v)).apply(); }
+
     public String diag() { return sp.getString("diag", "아직 받은 카톡 없음"); }
     public void setDiag(String v) { sp.edit().putString("diag", v).apply(); }
 

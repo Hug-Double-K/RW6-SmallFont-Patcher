@@ -12,6 +12,7 @@
 import app from '@system.app'
 import file from '@system.file'
 import router from '@system.router'
+import interconnect from '@system.interconnect'
 
 export default {
   protected: {
@@ -20,6 +21,8 @@ export default {
   },
   remove() {
     const self = this
+    // 하나 지웠다고 폰에 알려줌 (워치 알림 목록의 'N건' 줄이기)
+    try { interconnect.instance().send({ data: { del: 1 } }) } catch (e) {}
     const done = () => {
       // 알림으로 열린 경우엔 기본 알림의 '무시'처럼 앱을 닫고, 목록에서 연 경우엔 목록으로
       if (self.arrival === '1') app.terminate()

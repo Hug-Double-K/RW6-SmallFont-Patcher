@@ -1,8 +1,8 @@
 {
   "package": "io.github.hugdoublek.rw6noti",
   "name": "RW6 알림",
-  "versionName": "1.6.1",
-  "versionCode": 8,
+  "versionName": "1.7.0",
+  "versionCode": 9,
   "minPlatformVersion": 1000,
   "icon": "/common/logo.png",
   "deviceTypeList": [

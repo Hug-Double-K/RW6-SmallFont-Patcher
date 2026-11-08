@@ -105,8 +105,9 @@ export default {
       success(data) {
         self.list = data.fileList.sort((a, b) => b.uri.localeCompare(a.uri))
         self.notis = self.list.length
+        self.report()
       },
-      fail() { self.list = []; self.notis = 0 },
+      fail() { self.list = []; self.notis = 0; self.report() },
       complete() { self.scrollToTop() },
     })
   },
@@ -118,11 +119,17 @@ export default {
 
   deleteToggle() { if (this.notis) this.deleteOn = !this.deleteOn },
 
+  // 워치에 남은 사진 알림 개수를 폰에 알려줌 (워치 알림 목록의 'N건'에 사용)
+  report() {
+    try { if (conn) conn.send({ data: { n: this.notis } }) } catch (e) {}
+  },
+
   deleteAll() {
     this.list.forEach((li) => this.removeFile(li))
     this.list = []
     this.notis = 0
     this.deleteOn = false
+    this.report()
   },
 
   deleteOne(li, i) {
@@ -130,6 +137,7 @@ export default {
     this.list.splice(i, 1)
     this.notis = this.list.length
     if (!this.notis) this.deleteOn = false
+    this.report()
   },
 
   removeFile(li) {

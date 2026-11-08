@@ -36,7 +36,11 @@ public class NotiListener extends NotificationListenerService {
     /** 시스템이 이 서비스에 연결돼 있는지 (앱 업데이트 후 끊기는 일이 잦음) */
     static volatile boolean connected = false;
 
-    @Override public void onListenerConnected() { connected = true; new Prefs(this).setLastLog(now() + " 알림 수신 서비스 연결됨"); }
+    @Override public void onListenerConnected() {
+        connected = true;
+        new Prefs(this).setLastLog(now() + " 알림 수신 서비스 연결됨");
+        try { WatchSender.listen(this); } catch (Throwable ignored) { }
+    }
     @Override public void onListenerDisconnected() { connected = false; }
 
     @Override
@@ -163,9 +167,16 @@ public class NotiListener extends NotificationListenerService {
         }
         final String summary = sender + (picture != null ? " [사진]" : "");
         final int kb = b64.length() / 1024;
+        final String app = appName;
+        final String line = sender + ": " + (picture != null ? "사진" : text);
         WatchSender.send(this, b64, (ok, msg) -> {
             prefs.setLastLog(now() + " " + summary + " → " + msg);
             prefs.addHistory(now() + " " + summary + " " + kb + "KB → " + (ok ? "✔ " : "✘ ") + msg);
+            if (ok && prefs.watchList()) {
+                prefs.setUnread(prefs.unread() + 1);
+                // 워치가 실제 개수를 알려줄 시간을 조금 준 뒤 표시
+                worker.postDelayed(() -> WatchSender.notify(this, app + " 알림 - " + prefs.unread() + "건", line), 3000);
+            }
         });
     }
 

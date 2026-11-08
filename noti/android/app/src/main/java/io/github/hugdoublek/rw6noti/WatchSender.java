@@ -90,6 +90,32 @@ public final class WatchSender {
                 .addOnFailureListener(e -> report(cb, false, "워치 조회 실패: " + e.getMessage()));
     }
 
+    /** 워치 알림 목록(알림 센터)에 한 줄 띄운다. 워치 앱과 연결된 알림이라 누르면 워치 앱이 열린다 */
+    public static void notify(Context ctx, String title, String message) {
+        Context app = ctx.getApplicationContext();
+        Wearable.getNodeApi(app).getConnectedNodes().addOnSuccessListener(nodes -> {
+            if (nodes == null || nodes.isEmpty()) return;
+            Wearable.getNotifyApi(app).sendNotify(nodes.get(0).id, title, message)
+                    .addOnSuccessListener(st -> Log.d(TAG, "notify ok"))
+                    .addOnFailureListener(e -> new Prefs(app).addHistory(NotiListener.now() + " 워치 알림 목록 표시 실패: " + e.getMessage()));
+        });
+    }
+
+    /** 워치 앱이 보내는 개수 정보를 받는다 ({"n":개수} 또는 {"del":1}) */
+    public static void listen(Context ctx) {
+        Context app = ctx.getApplicationContext();
+        Wearable.getNodeApi(app).getConnectedNodes().addOnSuccessListener(nodes -> {
+            if (nodes == null || nodes.isEmpty()) return;
+            Wearable.getMessageApi(app).addListener(nodes.get(0).id, (id, data) -> {
+                String s = new String(data, StandardCharsets.UTF_8);
+                Prefs p = new Prefs(app);
+                if (s.contains("del")) { p.setUnread(p.unread() - 1); return; }
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+").matcher(s);
+                if (m.find()) p.setUnread(Integer.parseInt(m.group()));
+            });
+        });
+    }
+
     /** 조각을 순서대로 하나씩 보낸다 */
     private static void sendNext(MessageApi api, String nodeId, List<byte[]> chunks, int i, Result cb) {
         if (i >= chunks.size()) { report(cb, true, "전송 완료 (" + chunks.size() + "조각)"); return; }
