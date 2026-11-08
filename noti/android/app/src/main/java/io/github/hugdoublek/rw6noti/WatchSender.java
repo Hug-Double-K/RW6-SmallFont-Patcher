@@ -69,7 +69,14 @@ public final class WatchSender {
     /** 마지막으로 워치에 잘 보낸 시각 (그 직후엔 워치 앱이 아직 켜져 있음) */
     private static volatile long lastOk = 0;
     /** 워치 앱을 연 직후 글 알림을 거듭 보내는 시점(ms). 워치는 같은 이름이면 한 번만 처리 */
-    private static final long[] TEXT_RETRY = {250, 700, 1200, 1800, 2600, 3600};
+    private static final long[] TEXT_RETRY = {200, 600, 1100, 1700, 2500, 3500, 5000, 6500, 8000, 9500};
+    /** 사진은 조각이 많아 드물게: 앱이 뜰 시간 뒤 한 번, 확인이 없으면 몇 번 더 */
+    private static final long[] IMG_RETRY = {1500, 7000, 12000};
+    private static final java.util.Map<String, Runnable> ACK = new java.util.concurrent.ConcurrentHashMap<>();
+    /** 워치가 확인 응답을 보낸 적이 있는지 (지원되는 걸 확인하면 중복 전송을 줄임) */
+    private static volatile boolean ackSeen = false;
+    /** 확인 결과를 기록에 남길 곳 (NotiListener가 설정) */
+    static volatile Result ackLog = null;
 
     private static void sendNow(Context ctx, String base64, String stamp, Result cb) {
         Context app = ctx.getApplicationContext();
@@ -101,34 +108,52 @@ public final class WatchSender {
                     if (nodes == null || nodes.isEmpty()) { report(cb, false, "연결된 워치 없음 (Mi Fitness 연결 확인)"); return; }
                     Node node = nodes.get(0);
                     java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean(false);
+                    java.util.concurrent.atomic.AtomicBoolean acked = new java.util.concurrent.atomic.AtomicBoolean(false);
                     Result once = (ok, msg) -> {
                         if (!done.compareAndSet(false, true)) return;
                         readyWaiter = null;
                         if (ok) { lastOk = System.currentTimeMillis(); lastSetting = settingStr; }
                         report(cb, ok, msg);
                     };
-                    // 방금 보낸 직후라 워치 앱이 켜져 있으면 바로
-                    if (System.currentTimeMillis() - lastOk < 8000) {
-                        sendNext(msgApi, node.id, chunks, 0, once);
-                        return;
-                    }
-                    // 워치 앱이 "준비됨"을 보내오면 그때 바로 (지원되는 경우)
-                    readyWaiter = () -> { if (!done.get()) sendNext(msgApi, node.id, chunks, 0, once); };
+                    // 워치가 "받았어(ack)"라고 답하면 더 보내지 않음
+                    ACK.put(stamp, () -> {
+                        if (!acked.compareAndSet(false, true)) return;
+                        ackSeen = true;
+                        once.done(true, "워치 수신 확인");
+                        if (ackLog != null) ackLog.done(true, stamp);
+                    });
+                    // 한 번에 한 묶음만 보냄 (겹치면 워치에서 조각 순서가 섞임)
+                    java.util.concurrent.atomic.AtomicBoolean inFlight = new java.util.concurrent.atomic.AtomicBoolean(false);
+                    java.util.concurrent.atomic.AtomicInteger sentTimes = new java.util.concurrent.atomic.AtomicInteger(0);
+                    Runnable sendAll = () -> {
+                        if (acked.get() || !inFlight.compareAndSet(false, true)) return;
+                        // 사진은 확인 응답이 지원될 때만 다시 보냄 (아니면 같은 사진을 여러 번 보내 느려짐)
+                        if (!text && sentTimes.get() > 0 && !ackSeen) { inFlight.set(false); return; }
+                        sentTimes.incrementAndGet();
+                        sendNext(msgApi, node.id, chunks, 0, (ok, m) -> {
+                            inFlight.set(false);
+                            if (ok && !ackSeen) once.done(true, m);
+                            if (!ok && !text) once.done(false, m);
+                        });
+                    };
+                    readyWaiter = sendAll;
+                    // 화면이 꺼져 있으면 워치 앱이 잠들어 있을 수 있어 매번 연다 (켜져 있으면 금방 끝남)
+                    Runnable launch = () -> { if (!acked.get()) nodeApi.launchWearApp(node.id, "/index"); };
                     nodeApi.launchWearApp(node.id, "/index")
                             .addOnSuccessListener(v -> {
-                                if (text) {
-                                    // 글: 앱이 뜨는 동안 짧은 간격으로 거듭 보냄 → 앱이 받을 수 있게 되는 순간 도착
-                                    for (long t : TEXT_RETRY) {
-                                        main.postDelayed(() -> sendNext(msgApi, node.id, chunks, 0,
-                                                (ok, m) -> { if (ok) once.done(true, m); }), t);
+                                long[] times = text ? TEXT_RETRY : IMG_RETRY;
+                                for (long t : times) main.postDelayed(sendAll, t);
+                                // 그래도 안 받으면 앱을 한 번 더 열고 계속
+                                main.postDelayed(launch, text ? 4200 : 9000);
+                                main.postDelayed(() -> {
+                                    ACK.remove(stamp);
+                                    if (!acked.get()) {
+                                        once.done(true, ackSeen ? "워치 확인 없음 (못 받았을 수 있음)" : "전송함");
+                                        if (ackLog != null && ackSeen) ackLog.done(false, stamp);
                                     }
-                                    main.postDelayed(() -> once.done(false, "워치 앱이 응답하지 않음"), 6000);
-                                } else {
-                                    // 사진: 조각이 많아 거듭 보내지 않고, 준비됨 신호 또는 1.6초 뒤 한 번
-                                    main.postDelayed(() -> { if (!done.get()) sendNext(msgApi, node.id, chunks, 0, once); }, 1600);
-                                }
+                                }, text ? 11000 : 20000);
                             })
-                            .addOnFailureListener(e -> once.done(false, "워치 앱 열기 실패: " + e.getMessage() + "\n(워치 앱 설치·워치 권한 확인)"));
+                            .addOnFailureListener(e -> { ACK.remove(stamp); once.done(false, "워치 앱 열기 실패: " + e.getMessage() + "\n(워치 앱 설치·워치 권한 확인)"); });
                 })
                 .addOnFailureListener(e -> report(cb, false, "워치 조회 실패: " + e.getMessage()));
     }
@@ -152,6 +177,11 @@ public final class WatchSender {
             if (nodes == null || nodes.isEmpty()) return;
             Wearable.getMessageApi(app).addListener(nodes.get(0).id, (id, data) -> {
                 String s = new String(data, StandardCharsets.UTF_8);
+                if (s.contains("ack")) { // 워치가 이 이름을 받았다고 확인
+                    java.util.regex.Matcher am = java.util.regex.Pattern.compile("\\d{13}").matcher(s);
+                    if (am.find()) { Runnable r = ACK.remove(am.group()); if (r != null) new Handler(Looper.getMainLooper()).post(r); }
+                    return;
+                }
                 if (s.contains("ready")) { // 워치 앱 준비됨 → 기다리던 전송 시작
                     Runnable r = readyWaiter;
                     if (r != null) new Handler(Looper.getMainLooper()).post(r);

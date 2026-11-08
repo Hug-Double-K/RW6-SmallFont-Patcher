@@ -114,6 +114,11 @@ export default {
     return false
   },
 
+  // 폰에 "이 알림 받았어" → 폰이 더 보내지 않음
+  ack(name) {
+    try { if (conn) conn.send({ data: { ack: name } }) } catch (e) {}
+  },
+
   ready() {
     try { if (conn) conn.send({ data: { ready: 1 } }) } catch (e) {}
   },
@@ -135,7 +140,7 @@ export default {
       const offset = Number(d.substr(0, 2))
       const name = d.substr(3, 13)
       const key = `${name}.${kind}`
-      if (done[key]) return
+      if (done[key]) { if (isEnd) self.ack(name); return } // 이미 받은 것 → 받았다고 다시 알려줌
       if (offset === 0 || !receiving[key]) receiving[key] = { data: '', next: 0 }
       const r = receiving[key]
       if (offset !== r.next) { delete receiving[key]; return } // 순서 어긋나면 버림 (폰이 다시 보냄)
@@ -144,6 +149,7 @@ export default {
       if (!isEnd) return
       delete receiving[key]
       done[key] = true
+      self.ack(name)
       if (kind === 'json') self.gotText(name, r.data)
       else self.gotImage(name, kind, r.data)
     } catch (e) {

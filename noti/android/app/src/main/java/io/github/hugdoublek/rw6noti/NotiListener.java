@@ -41,6 +41,8 @@ public class NotiListener extends NotificationListenerService {
         connected = true;
         new Prefs(this).setLastLog(now() + " 알림 수신 서비스 연결됨");
         try { WatchSender.listen(this); } catch (Throwable ignored) { }
+        Prefs lp = new Prefs(this);
+        WatchSender.ackLog = (ok, stamp) -> { if (!ok) lp.addHistory(now() + " ⚠ 워치가 받았다는 확인이 없음 (" + stamp.substring(7) + ")"); };
     }
     @Override public void onListenerDisconnected() { connected = false; }
 
