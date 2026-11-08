@@ -1,4 +1,4 @@
-🔷 [11-08 02:07:28] [toolkit]: start build:  {
+🔷 [11-08 02:12:18] [toolkit]: start build:  {
   "projectPath": "/home/runner/work/RW6-SmallFont-Patcher/RW6-SmallFont-Patcher/noti/watch",
   "options": {
     "enableJsc": false,
@@ -15,24 +15,24 @@
   "arch": "x64",
   "toolkit": "2.0.3"
 }
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Create a soft link to the node_modules folder start
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Create a soft link to the node_modules folder end
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Compile the project using webpack start
-🔷 [11-08 02:07:28] [toolkit]: webpack complete
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Compile the project using webpack end
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Copy resource files start
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Copy resource files end
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Generate jsc bytecode start
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Generate jsc bytecode end
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Generate protobuf json start
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Generate protobuf json end
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Package the project into an RPK file start
-🔷 [11-08 02:07:28] [toolkit]: privatekeyPath is  /home/runner/work/RW6-SmallFont-Patcher/RW6-SmallFont-Patcher/noti/.temp_watch/sign/private.pem 
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Create a soft link to the node_modules folder start
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Create a soft link to the node_modules folder end
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Compile the project using webpack start
+🔷 [11-08 02:12:18] [toolkit]: webpack complete
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Compile the project using webpack end
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Copy resource files start
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Copy resource files end
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Generate jsc bytecode start
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Generate jsc bytecode end
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Generate protobuf json start
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Generate protobuf json end
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Package the project into an RPK file start
+🔷 [11-08 02:12:18] [toolkit]: privatekeyPath is  /home/runner/work/RW6-SmallFont-Patcher/RW6-SmallFont-Patcher/noti/.temp_watch/sign/private.pem 
 certificatePath is  /home/runner/work/RW6-SmallFont-Patcher/RW6-SmallFont-Patcher/noti/.temp_watch/sign/certificate.pem
-✅ [11-08 02:07:28] [toolkit]: Project build and generate files：io.github.hugdoublek.rw6noti.release.1.7.0.rpk
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Package the project into an RPK file end
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Generate diff json start
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Generate diff json end
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Migrate temporary project start
-🔷 [11-08 02:07:28] [toolkit]: FollowWork: Migrate temporary project end
-✅ [11-08 02:07:28] [toolkit]: build success: 504ms
+✅ [11-08 02:12:18] [toolkit]: Project build and generate files：io.github.hugdoublek.rw6noti.release.1.7.0.rpk
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Package the project into an RPK file end
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Generate diff json start
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Generate diff json end
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Migrate temporary project start
+🔷 [11-08 02:12:18] [toolkit]: FollowWork: Migrate temporary project end
+✅ [11-08 02:12:18] [toolkit]: build success: 343ms
