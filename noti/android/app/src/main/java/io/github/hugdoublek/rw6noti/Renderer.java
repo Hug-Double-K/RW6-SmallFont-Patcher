@@ -24,6 +24,8 @@ public final class Renderer {
     public static final int WIDTH = 432;
     private static final int PAD = 14;          // 카드 안쪽 여백 (기존 18)
     private static final float HEADER_SCALE = 0.85f; // 앱 아이콘·헤더 줄 크기 (기존 대비 85%)
+    /** 사진 세로 한도: 이보다 크면 워치가 받고 푸는 데 느려지거나 실패함 */
+    private static final int PIC_MAX_H = 640;
     private static final int MAX_HEIGHT = 1800;  // 워치 메모리 한계 (5000으로 했다가 워치가 재시작됨). 글 알림은 이미지가 아니라 글로 보냄
 
     public static Bitmap render(Drawable icon, String appName, String convTitle, String sender,
@@ -56,13 +58,12 @@ public final class Renderer {
         Bitmap pic = null;
         int picH = 0;
         if (picture != null) {
-            // 가로를 카드 폭에 꽉 채움. 긴 사진은 위쪽 640px까지만 (크면 워치가 받다 실패함)
-            float scale = (float) contentW / picture.getWidth();
-            int pw = contentW;
-            int fullH = Math.max(1, Math.round(picture.getHeight() * scale));
-            Bitmap scaled = Bitmap.createScaledBitmap(picture, pw, fullH, true);
-            picH = Math.min(fullH, 640);
-            pic = picH < fullH ? Bitmap.createBitmap(scaled, 0, 0, pw, picH) : scaled;
+            // 가로를 카드 폭에 꽉 채우고 세로는 비율대로. 세로가 한도(PIC_MAX_H)를 넘는 긴 사진만
+            // 잘라내지 않고 전체를 비율 그대로 줄여서 한도 안에 맞춤 (가로가 조금 좁아지고 가운데 정렬)
+            float scale = Math.min((float) contentW / picture.getWidth(), (float) PIC_MAX_H / picture.getHeight());
+            int pw = Math.max(1, Math.round(picture.getWidth() * scale));
+            picH = Math.max(1, Math.round(picture.getHeight() * scale));
+            pic = Bitmap.createScaledBitmap(picture, pw, picH, true);
         }
 
         // 본문이 너무 길면 줄 수를 자른다
@@ -110,7 +111,7 @@ public final class Renderer {
         // 사진
         if (pic != null) {
             cy += 12;
-            c.drawBitmap(pic, PAD, cy, null);
+            c.drawBitmap(pic, PAD + (contentW - pic.getWidth()) / 2f, cy, null);
         }
         return bmp;
     }
