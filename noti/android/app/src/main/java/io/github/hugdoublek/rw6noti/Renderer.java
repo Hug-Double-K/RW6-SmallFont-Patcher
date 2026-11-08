@@ -159,7 +159,7 @@ public final class Renderer {
         c.drawColor(android.graphics.Color.BLACK);
         c.drawBitmap(bmp, 0, 0, null);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        opaque.compress(Bitmap.CompressFormat.JPEG, 85, out);
+        opaque.compress(Bitmap.CompressFormat.JPEG, 70, out); // 70: 워치 화면에선 차이 거의 없고 크기는 훨씬 작음
         return Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
     }
 

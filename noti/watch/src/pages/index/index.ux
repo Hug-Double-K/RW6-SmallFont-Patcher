@@ -1,29 +1,49 @@
 <template>
   <div class="main">
-    <div class="head">
-      <div class="head-hit" @click="deleteToggle">
-        <text class="head-pill {{ notis ? 'head-pill-on' : '' }}">{{ notis ? (deleteOn ? "X" : "-") : "" }}</text>
-      </div>
-      <text class="head-title" @click="scrollToTop">알림 {{ notis }}</text>
-      <div class="head-hit"></div>
-    </div>
-    <scroll id="list" style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
-      <text class="btn danger" if="{{ deleteOn && notis }}" @click="deleteAll">모두 지우기</text>
-      <text class="empty" if="{{ !notis }}">수신된 알림이 없습니다.</text>
-      <div class="card" for="(i, li) in list">
-        <text class="btn danger" if="{{ deleteOn }}" @click="deleteOne(li, i)">지우기</text>
-        <image if="{{ li.kind === 'img' }}" src="{{ li.uri }}" style="width: 100%" @click="openPopup(li)" />
-        <div if="{{ li.kind === 'text' }}" class="tcard" @click="openPopup(li)">
+    <!-- 도착 화면: 폰이 보낸 알림만 바로 보여줌 (목록·빈 화면을 먼저 보여주지 않음) -->
+    <div if="{{ mode === 'arrive' }}" class="arrive">
+      <scroll style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
+        <image if="{{ cur.img }}" src="{{ cur.img }}" style="width: 100%; margin-top: 28px" />
+        <div if="{{ !cur.img }}" class="tview">
           <div class="t-row">
-            <image if="{{ li.icon }}" src="{{ li.icon }}" class="t-icon" />
-            <text class="t-app">{{ li.a || '알림' }}</text>
+            <image if="{{ cur.icon }}" src="{{ cur.icon }}" class="t-icon" />
+            <text class="t-app">{{ cur.app }}</text>
           </div>
-          <text class="t-snd">{{ li.s }}</text>
-          <text class="t-body">{{ li.b }}</text>
+          <text class="t-snd" style="font-size: {{ alert.fs || 26 }}px">{{ cur.sender }}</text>
+          <text for="(i, p) in cur.parts" style="width: 100%; font-size: {{ alert.fs || 26 }}px; color: #eeeeee; margin-top: 4px">{{ p }}</text>
+          <text if="{{ cur.pending }}" class="t-app" style="margin-top: 10px">사진 받는 중…</text>
         </div>
+      </scroll>
+      <text class="btn off" @click="arriveOff">끄기</text>
+    </div>
+
+    <!-- 목록: 직접 열었을 때 -->
+    <div if="{{ mode === 'list' }}" class="arrive">
+      <div class="head">
+        <div class="head-hit" @click="deleteToggle">
+          <text class="head-pill {{ notis ? 'head-pill-on' : '' }}">{{ notis ? (deleteOn ? "X" : "-") : "" }}</text>
+        </div>
+        <text class="head-title" @click="scrollToTop">알림 {{ notis }}</text>
+        <div class="head-hit"></div>
       </div>
-      <text if="{{ status }}" style="font-size: 20px; color: #888888; margin-top: 10px">{{ status }}</text>
-    </scroll>
+      <scroll id="list" style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
+        <text class="btn danger" if="{{ deleteOn && notis }}" @click="deleteAll">모두 지우기</text>
+        <text class="empty" if="{{ loaded && !notis }}">수신된 알림이 없습니다.</text>
+        <div class="card" for="(i, li) in list">
+          <text class="btn danger" if="{{ deleteOn }}" @click="deleteOne(li, i)">지우기</text>
+          <image if="{{ li.kind === 'img' }}" src="{{ li.uri }}" style="width: 100%" @click="openPopup(li)" />
+          <div if="{{ li.kind === 'text' }}" class="tcard" @click="openPopup(li)">
+            <div class="t-row">
+              <image if="{{ li.icon }}" src="{{ li.icon }}" class="t-icon" />
+              <text class="t-app">{{ li.a || '알림' }}</text>
+            </div>
+            <text class="t-snd">{{ li.s }}</text>
+            <text class="t-body">{{ li.b }}</text>
+          </div>
+        </div>
+        <text if="{{ status }}" style="font-size: 20px; color: #888888; margin-top: 10px">{{ status }}</text>
+      </scroll>
+    </div>
   </div>
 </template>
 
@@ -38,101 +58,163 @@ import brightness from '@system.brightness'
 
 const DIR = 'internal://mass/rw6noti'
 const ICONS = 'internal://mass/rw6noti_icons'
-const DEFAULT_SETTING = '{"vibe":true,"doNotDisturb":false,"disturbFromT":"23","disturbFromM":"00","disturbToT":"07","disturbToM":"00","maxSave":40}'
+const MAX_SAVE = 40
+// 앱을 연 뒤 이 시간 안에 폰에서 알림이 오면 목록 없이 그 알림만 보여줌
+const WAIT_MS = 2500
 let conn = null
+let waitTimer = null
+const receiving = {}
+const done = {} // 이미 처리한 것 (폰이 같은 글을 여러 번 보내므로)
+
+// 빠른 Base64 해독
+const LOOK = new Uint8Array(128)
+'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.split('').forEach((c, i) => { LOOK[c.charCodeAt(0)] = i })
+
+function split(body) {
+  const out = []
+  let cur = ''
+  body.split('\n').forEach((line) => {
+    while (line.length > 300) { if (cur) { out.push(cur); cur = '' } out.push(line.substr(0, 300)); line = line.substr(300) }
+    if (cur && cur.length + line.length + 1 > 300) { out.push(cur); cur = line } else cur = cur ? `${cur}\n${line}` : line
+  })
+  if (cur) out.push(cur)
+  return out
+}
 
 export default {
   private: {
+    mode: 'wait', // wait(검은 화면) → arrive(알림) / list(목록)
+    cur: { name: '', img: '', icon: '', app: '', sender: '', parts: [], pending: false },
     list: [],
     notis: 0,
+    loaded: false,
     deleteOn: false,
     status: '',
-    receiving: {},
-    setting: {},
-    alert: { vibe: false, wake: false },
+    alert: { vibe: false, wake: false, fs: 26 },
+  },
+
+  onInit() {
+    const self = this
+    storage.get({ key: 'alert', success(v) { try { if (v) self.alert = JSON.parse(v) } catch (e) {} } })
+    conn = interconnect.instance()
+    conn.onmessage = (msg) => { self.onMsg(msg.data) }
+    self.ready()
+    // 폰이 연 게 아니라 직접 열었으면 잠시 뒤 목록
+    waitTimer = setTimeout(() => { if (self.mode === 'wait') self.showList() }, WAIT_MS)
   },
 
   onShow() {
-    const self = this
-    self.refreshList()
-    storage.get({
-      key: 'notiSetting',
-      success(v) { self.setting = JSON.parse(v || DEFAULT_SETTING) },
-      fail() { self.setting = JSON.parse(DEFAULT_SETTING) },
-    })
-
-    storage.get({ key: 'alert', success(v) { try { if (v) self.alert = JSON.parse(v) } catch (e) {} } })
-    conn = interconnect.instance()
-    // 조각: 순번(2) + 구분(d/e)(1) + 파일명(13) + Base64 데이터
-    conn.onmessage = async (msg) => {
-      try {
-        const d = msg.data
-        // S + 진동(0/1) + 화면깨우기(0/1) : 폰 앱 설정
-        if (d.substr(0, 1) === 'S') {
-          self.alert = { vibe: d.substr(1, 1) === '1', wake: d.substr(2, 1) === '1', fs: Number(d.substr(3, 2)) || 26 }
-          storage.set({ key: 'alert', value: JSON.stringify(self.alert) })
-          return
-        }
-        // Q = 폰이 "켜져 있니?" 확인 → 바로 준비됨 응답
-        if (d.substr(0, 1) === 'Q') { self.ready(); return }
-        // 구분: d/e = PNG, f/g = JPEG, D/E = 글(JSON)
-        const flag = d.substr(2, 1)
-        const part = { offset: Number(d.substr(0, 2)), isEnd: flag === 'e' || flag === 'E' || flag === 'g',
-          text: flag === 'D' || flag === 'E', jpg: flag === 'f' || flag === 'g', name: d.substr(3, 13) }
-        // 첫 조각이 오면 새로 시작 (재전송 대비)
-        if (part.offset === 0 || !self.receiving[part.name]) self.receiving[part.name] = { data: '', got: [] }
-        const r = self.receiving[part.name]
-
-        // 앞 조각이 도착할 때까지 기다림 (최대 100초)
-        let wait = 0
-        while (part.offset !== 0 && !r.got.includes(part.offset - 1)) {
-          await new Promise((res) => setTimeout(res, 500))
-          if (++wait > 60) { delete self.receiving[part.name]; return } // 30초 넘게 앞 조각이 없으면 버림 (폰이 다시 보냄)
-        }
-        r.data += d.substr(16)
-        r.got.push(part.offset)
-
-        if (part.isEnd) {
-          const max = self.setting.maxSave || 40
-          while (self.list.length >= max) self.deleteOne(self.list[self.list.length - 1], self.list.length - 1)
-          const uri = `${DIR}/${part.name}.${part.text ? 'json' : part.jpg ? 'jpg' : 'png'}`
-          if (part.text) self.saveIcon(r.data)
-          const args = part.text ? { text: r.data } : { buffer: self.decode(r.data) }
-          const write = (o) => (part.text ? file.writeText(o) : file.writeArrayBuffer(o))
-          write(Object.assign(args, {
-            uri,
-            success() {
-              // 폰 앱에서 고른 대로 진동 / 화면 깨우기, 그리고 새 알림을 바로 크게 띄움
-              self.notifyArrival()
-              router.push({ uri: '/pages/detail', params: { uri, arrival: '1' } })
-            },
-            fail(e) { self.status = `저장 실패: ${e}` },
-            complete() { delete self.receiving[part.name]; self.refreshList() },
-          }))
-        }
-      } catch (e) {
-        self.status = e + ''
-      }
-    }
-    // 앱이 떴으니 폰에 "준비됨" 알림 → 폰이 기다리지 않고 바로 보냄
-    self.ready()
+    this.ready()
+    if (this.mode === 'list') this.refreshList()
   },
 
-  // 폰에 "받을 준비 됨"을 알림 (폰은 이걸 받자마자 보냄)
+  // 도착 화면에서 뒤로(스와이프) = 목록으로
+  onBackPress() {
+    if (this.mode === 'arrive') { this.showList(); return true }
+    return false
+  },
+
   ready() {
     try { if (conn) conn.send({ data: { ready: 1 } }) } catch (e) {}
   },
 
-  // 글 알림에 들어 있는 앱 아이콘을 앱별로 한 번만 저장
-  saveIcon(json) {
+  onMsg(d) {
     const self = this
     try {
-      const m = JSON.parse(json)
-      if (!m.k || !m.i) return
-      file.mkdir({ uri: ICONS, recursive: true, complete() {
-        file.writeArrayBuffer({ uri: `${ICONS}/${m.k}.png`, buffer: self.decode(m.i) })
-      } })
-    } catch (e) {}
+      const k = d.substr(0, 1)
+      if (k === 'S') {
+        self.alert = { vibe: d.substr(1, 1) === '1', wake: d.substr(2, 1) === '1', fs: Number(d.substr(3, 2)) || 26 }
+        storage.set({ key: 'alert', value: JSON.stringify(self.alert) })
+        return
+      }
+      if (k === 'Q') { self.ready(); return }
+      // 순번(2) + 구분(1) + 이름(13) + 데이터.  구분: D/E 글, f/g JPEG, d/e PNG (소문자 d·f = 중간 조각)
+      const flag = d.substr(2, 1)
+      const kind = (flag === 'D' || flag === 'E') ? 'json' : (flag === 'f' || flag === 'g') ? 'jpg' : 'png'
+      const isEnd = flag === 'E' || flag === 'g' || flag === 'e'
+      const offset = Number(d.substr(0, 2))
+      const name = d.substr(3, 13)
+      const key = `${name}.${kind}`
+      if (done[key]) return
+      if (offset === 0 || !receiving[key]) receiving[key] = { data: '', next: 0 }
+      const r = receiving[key]
+      if (offset !== r.next) { delete receiving[key]; return } // 순서 어긋나면 버림 (폰이 다시 보냄)
+      r.data += d.substr(16)
+      r.next++
+      if (!isEnd) return
+      delete receiving[key]
+      done[key] = true
+      if (kind === 'json') self.gotText(name, r.data)
+      else self.gotImage(name, kind, r.data)
+    } catch (e) {
+      self.status = e + ''
+    }
+  },
+
+  // 글: 받은 내용을 메모리에서 바로 그림 (파일은 뒤에서 저장)
+  gotText(name, json) {
+    const self = this
+    const m = JSON.parse(json)
+    if (m.k && m.i) {
+      file.mkdir({ uri: ICONS, recursive: true, complete() { file.writeArrayBuffer({ uri: `${ICONS}/${m.k}.png`, buffer: self.decode(m.i) }) } })
+      delete m.i
+    }
+    self.show({
+      name, img: '', icon: m.k ? `${ICONS}/${m.k}.png` : '',
+      app: m.c ? `${m.a} · ${m.c}` : (m.a || ''), sender: m.s || '', parts: split(m.b || ''), pending: !!m.p,
+    })
+    self.notifyArrival()
+    file.writeText({ uri: `${DIR}/${name}.json`, text: JSON.stringify(m), complete() { self.trim() } })
+  },
+
+  // 사진: 저장 후 표시. 먼저 온 같은 이름의 글 알림은 지우고 사진으로 바꿈
+  gotImage(name, ext, b64) {
+    const self = this
+    const uri = `${DIR}/${name}.${ext}`
+    file.writeArrayBuffer({
+      uri,
+      buffer: self.decode(b64),
+      success() {
+        const hadText = done[`${name}.json`]
+        try { file.delete({ uri: `${DIR}/${name}.json` }) } catch (e) {}
+        if (self.mode !== 'list' || self.cur.name === name) self.show({ name, img: uri, icon: '', app: '', sender: '', parts: [], pending: false })
+        if (!hadText) self.notifyArrival()
+        if (self.mode === 'list') self.refreshList()
+        self.trim()
+      },
+      fail(e, c) { self.status = `저장 실패: ${c || e}` },
+    })
+  },
+
+  show(cur) {
+    if (waitTimer) { clearTimeout(waitTimer); waitTimer = null }
+    this.cur = cur
+    this.mode = 'arrive'
+  },
+
+  showList() {
+    if (waitTimer) { clearTimeout(waitTimer); waitTimer = null }
+    this.mode = 'list'
+    this.refreshList()
+  },
+
+  // 도착 화면의 '끄기' = 이 알림 지우고 앱 닫기
+  arriveOff() {
+    const n = this.cur.name
+    ;['json', 'jpg', 'png'].forEach((e) => { try { file.delete({ uri: `${DIR}/${n}.${e}` }) } catch (x) {} })
+    try { conn.send({ data: { del: 1 } }) } catch (x) {}
+    app.terminate()
+  },
+
+  // 오래된 알림 정리
+  trim() {
+    file.list({
+      uri: DIR,
+      success(data) {
+        const files = data.fileList.sort((a, b) => b.uri.localeCompare(a.uri))
+        files.slice(MAX_SAVE).forEach((f) => { try { file.delete({ uri: f.uri }) } catch (e) {} })
+      },
+    })
   },
 
   refreshList() {
@@ -141,8 +223,11 @@ export default {
       uri: DIR,
       success(data) {
         const files = data.fileList.sort((a, b) => b.uri.localeCompare(a.uri))
-        // 글 알림은 내용을 먼저 다 읽은 뒤 목록을 한 번에 바꾼다 (나중에 채우면 화면에 반영이 안 됨)
-        Promise.all(files.map((f) => new Promise((res) => {
+        // 같은 이름의 사진이 있으면 글(먼저 보낸 알림)은 숨김
+        const names = {}
+        files.forEach((f) => { if (f.uri.indexOf('.json') < 0) names[f.uri.replace(/\.[a-z]+$/, '')] = true })
+        const shown = files.filter((f) => !(f.uri.indexOf('.json') >= 0 && names[f.uri.replace(/\.json$/, '')]))
+        Promise.all(shown.map((f) => new Promise((res) => {
           const item = { uri: f.uri, kind: f.uri.indexOf('.json') >= 0 ? 'text' : 'img', a: '', s: '', b: '', icon: '' }
           if (item.kind !== 'text') { res(item); return }
           file.readText({
@@ -155,7 +240,7 @@ export default {
                 if (m.k) item.icon = `${ICONS}/${m.k}.png`
                 const body = m.b || ''
                 item.b = body.length > 120 ? body.substr(0, 120) + '…' : body
-              } catch (e) { item.b = `(읽지 못함: ${e} / ${(r.text || '').length}자)` }
+              } catch (e) { item.b = `(읽지 못함: ${e})` }
               res(item)
             },
             fail(d, c) { item.b = `(파일 읽기 실패 ${c || ''})`; res(item) },
@@ -163,11 +248,11 @@ export default {
         }))).then((items) => {
           self.list = items
           self.notis = items.length
+          self.loaded = true
           self.report()
         })
       },
-      fail() { self.list = []; self.notis = 0; self.report() },
-      complete() { self.scrollToTop() },
+      fail() { self.list = []; self.notis = 0; self.loaded = true; self.report() },
     })
   },
 
@@ -178,7 +263,7 @@ export default {
 
   deleteToggle() { if (this.notis) this.deleteOn = !this.deleteOn },
 
-  // 워치에 남은 사진 알림 개수를 폰에 알려줌 (워치 알림 목록의 'N건'에 사용)
+  // 남은 알림 개수를 폰에 알려줌 (워치 알림 목록의 'N건'에 사용)
   report() {
     try { if (conn) conn.send({ data: { n: this.notis } }) } catch (e) {}
   },
@@ -203,29 +288,14 @@ export default {
     try { file.delete({ uri: li.uri }) } catch (e) {}
   },
 
-
   openPopup(li) {
     if (this.deleteOn) return
     router.push({ uri: '/pages/detail', params: { uri: li.uri, arrival: '0' } })
   },
 
-  canVibrate() {
-    const s = this.setting
-    if (!s.vibe) return false
-    if (!s.doNotDisturb) return true
-    const from = s.disturbFromT + s.disturbFromM
-    const to = s.disturbToT + s.disturbToM
-    const now = new Date()
-    const t = now.getHours().toString().padStart(2, '0') + now.getMinutes().toString().padStart(2, '0')
-    const quiet = from <= to ? (from <= t && t <= to) : (from <= t || t <= to)
-    return !quiet
-  },
-
   notifyArrival() {
     if (this.alert.wake) {
-      // 화면을 켜서 8초 동안 유지
       try { brightness.setKeepScreenOn({ keepScreenOn: true }) } catch (e) {}
-      try { brightness.getValue({ success(d) { brightness.setValue({ value: d.value }) } }) } catch (e) {}
       setTimeout(() => { try { brightness.setKeepScreenOn({ keepScreenOn: false }) } catch (e) {} }, 8000)
     }
     if (this.alert.vibe) {
@@ -236,17 +306,14 @@ export default {
   onDestroy() { app.terminate() },
 
   decode(b64) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-    const look = {}
-    for (let i = 0; i < chars.length; i++) look[chars[i]] = i
-    look['='] = 0
-    const s = b64.replace(/\s/g, '')
-    const pad = s.endsWith('==') ? 2 : s.endsWith('=') ? 1 : 0
-    const len = Math.floor((s.length * 3) / 4) - pad
+    let n = b64.length
+    while (n > 0 && b64.charCodeAt(n - 1) === 61) n-- // '=' 제거
+    const len = Math.floor((n * 3) / 4)
     const out = new Uint8Array(len)
     let j = 0
-    for (let i = 0; i < s.length; i += 4) {
-      const a = look[s[i]], b = look[s[i + 1]], c = look[s[i + 2]] || 0, d = look[s[i + 3]] || 0
+    for (let i = 0; i < n; i += 4) {
+      const a = LOOK[b64.charCodeAt(i)], b = LOOK[b64.charCodeAt(i + 1)]
+      const c = i + 2 < n ? LOOK[b64.charCodeAt(i + 2)] : 0, d = i + 3 < n ? LOOK[b64.charCodeAt(i + 3)] : 0
       out[j++] = (a << 2) | (b >> 4)
       if (j < len) out[j++] = ((b & 15) << 4) | (c >> 2)
       if (j < len) out[j++] = ((c & 3) << 6) | d
@@ -258,4 +325,6 @@ export default {
 
 <style>
   @import '../../common/common.css';
+  .arrive { width: 100%; flex: 1; flex-direction: column; align-items: center; }
+  .tview { width: 100%; flex-direction: column; padding: 28px 24px 16px; }
 </style>

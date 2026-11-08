@@ -121,6 +121,8 @@ public class NotiListener extends NotificationListenerService {
         if (prefs.pictures() && !photos.isEmpty()) {
             for (PhotoMsg ph : photos) {
                 sentUris.add(ph.uri.toString());
+                // 사진은 받는 데 시간이 걸리니, 먼저 '보낸 사람: 사진' 글 알림을 즉시 보내고 같은 자리에 사진을 끼움
+                sendText(prefs, fIcon, fApp, fConv, ph.sender, "사진", ph.time, ph.stamp, true);
                 // 카톡은 알림을 먼저 띄우고 사진을 나중에 내려받는 일이 있어, 실패하면 잠시 뒤 다시 읽는다
                 worker.post(() -> loadAndSend(prefs, fIcon, fApp, fConv, ph, fs, 0));
             }
@@ -142,7 +144,7 @@ public class NotiListener extends NotificationListenerService {
         lastSent.put(key, sig);
         if (lastSent.size() > 200) lastSent.clear();
 
-        renderAndSend(prefs, icon, appName, conv, sender, text, picture, sbn.getPostTime());
+        renderAndSend(prefs, icon, appName, conv, sender, text, picture, sbn.getPostTime(), String.valueOf(System.currentTimeMillis()));
     }
 
     private static final long[] RETRY_MS = {0, 1500, 3000, 6000, 10000};
@@ -157,26 +159,39 @@ public class NotiListener extends NotificationListenerService {
             prefs.addHistory(now() + " " + ph.sender + ": 사진 읽기 실패 (" + RETRY_MS.length + "번 시도) — " + lastLoadError);
             return;
         }
-        renderAndSend(prefs, icon, app, conv, ph.sender, ph.text, pic, ph.time);
+        renderAndSend(prefs, icon, app, conv, ph.sender, ph.text, pic, ph.time, ph.stamp);
+    }
+
+    /** 글 알림 JSON (워치가 직접 그림). pending = 사진이 뒤따라옴 */
+    private String textJson(Drawable icon, String appName, String conv, String sender, String text, long when, boolean pending) {
+        try {
+            org.json.JSONObject o = new org.json.JSONObject();
+            o.put("a", appName); o.put("c", conv == null ? "" : conv); o.put("s", sender == null ? "" : sender);
+            o.put("b", text == null ? "" : text); o.put("w", when);
+            if (pending) o.put("p", 1);
+            Bitmap ib = Renderer.iconBitmap(icon, 40);
+            String k = String.valueOf(Math.abs(appName.hashCode()));
+            o.put("k", k);
+            if (ib != null && ICON_SENT.add(k)) o.put("i", Renderer.toBase64Png(ib));
+            return o.toString();
+        } catch (org.json.JSONException e) { return null; }
+    }
+
+    private void sendText(Prefs prefs, Drawable icon, String appName, String conv, String sender, String text,
+                          long when, String stamp, boolean pending) {
+        String json = textJson(icon, appName, conv, sender, text, when, pending);
+        if (json == null) return;
+        WatchSender.send(this, json, stamp, (ok, msg) ->
+                prefs.addHistory(now() + " " + sender + (pending ? " [사진 먼저 알림]" : "") + " → " + (ok ? "✔ " : "✘ ") + msg));
     }
 
     private void renderAndSend(Prefs prefs, Drawable icon, String appName, String conv, String sender,
-                               String text, Bitmap picture, long when) {
+                               String text, Bitmap picture, long when, String stamp) {
         String b64;
         if (picture == null) {
             // 글만 있는 알림: 이미지로 그리지 않고 글 그대로 (워치가 직접 그림)
-            try {
-                org.json.JSONObject o = new org.json.JSONObject();
-                o.put("a", appName); o.put("c", conv == null ? "" : conv); o.put("s", sender == null ? "" : sender);
-                o.put("b", text == null ? "" : text); o.put("w", when);
-                // 앱 아이콘 (작게). 워치가 앱별로 한 번 저장해 두고 씀
-                Bitmap ib = Renderer.iconBitmap(icon, 40);
-                String k = String.valueOf(Math.abs(appName.hashCode()));
-                o.put("k", k);
-                // 아이콘은 앱마다 처음 한 번만 같이 보냄 (글 알림을 최대한 가볍게)
-                if (ib != null && ICON_SENT.add(k)) o.put("i", Renderer.toBase64Png(ib));
-                b64 = o.toString();
-            } catch (org.json.JSONException e) { return; }
+            b64 = textJson(icon, appName, conv, sender, text, when, false);
+            if (b64 == null) return;
         } else {
             b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, picture, prefs.fontSize(), when));
         }
@@ -188,7 +203,7 @@ public class NotiListener extends NotificationListenerService {
         final int kb = b64.length() / 1024;
         final String app = appName;
         final String line = sender + ": " + (picture != null ? "사진" : text);
-        WatchSender.send(this, b64, (ok, msg) -> {
+        WatchSender.send(this, b64, stamp, (ok, msg) -> {
             prefs.setLastLog(now() + " " + summary + " → " + msg);
             prefs.addHistory(now() + " " + summary + " " + kb + "KB → " + (ok ? "✔ " : "✘ ") + msg);
             if (ok && prefs.watchList()) {
@@ -199,8 +214,12 @@ public class NotiListener extends NotificationListenerService {
         });
     }
 
+    private static int SEQ = 0;
+
     static final class PhotoMsg {
         final String sender, text; final Uri uri; final long time;
+        /** 워치에서 쓰는 이름 (글 알림 먼저 → 사진이 같은 이름으로 대체) */
+        final String stamp = String.valueOf(System.currentTimeMillis() + (SEQ++ % 1000));
         PhotoMsg(String s, String t, Uri u, long w) { sender = s; text = t; uri = u; time = w; }
     }
 

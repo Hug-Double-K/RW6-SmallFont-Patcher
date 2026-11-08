@@ -30,9 +30,14 @@ public final class WatchSender {
     private static boolean running = false;
 
     public static void send(Context ctx, String base64, Result cb) {
+        send(ctx, base64, String.valueOf(System.currentTimeMillis()), cb);
+    }
+
+    /** stamp = 워치에서 쓰는 이름(13자리). 사진은 '먼저 보낸 글 알림'과 같은 이름으로 보내 자리를 바꿔 끼움 */
+    public static void send(Context ctx, String base64, String stamp, Result cb) {
         Handler main = new Handler(Looper.getMainLooper());
         main.post(() -> {
-            QUEUE.add(() -> sendWithRetry(ctx, base64, 0, (ok, msg) -> {
+            QUEUE.add(() -> sendWithRetry(ctx, base64, stamp, 0, (ok, msg) -> {
                 if (cb != null) cb.done(ok, msg);
                 main.post(() -> { running = false; pump(); });
             }));
@@ -46,10 +51,10 @@ public final class WatchSender {
         QUEUE.poll().run();
     }
 
-    private static void sendWithRetry(Context ctx, String base64, int attempt, Result cb) {
-        sendNow(ctx, base64, (ok, msg) -> {
+    private static void sendWithRetry(Context ctx, String base64, String stamp, int attempt, Result cb) {
+        sendNow(ctx, base64, stamp, (ok, msg) -> {
             if (!ok && attempt == 0) { // 한 번 더 시도
-                new Handler(Looper.getMainLooper()).postDelayed(() -> sendWithRetry(ctx, base64, 1, cb), 3000);
+                new Handler(Looper.getMainLooper()).postDelayed(() -> sendWithRetry(ctx, base64, stamp, 1, cb), 2000);
             } else {
                 cb.done(ok, attempt > 0 && ok ? msg + " (재시도)" : msg);
             }
@@ -61,16 +66,20 @@ public final class WatchSender {
     private static volatile boolean listening = false;
     private static String lastSetting = "";
 
-    private static void sendNow(Context ctx, String base64, Result cb) {
+    /** 마지막으로 워치에 잘 보낸 시각 (그 직후엔 워치 앱이 아직 켜져 있음) */
+    private static volatile long lastOk = 0;
+    /** 워치 앱을 연 직후 글 알림을 거듭 보내는 시점(ms). 워치는 같은 이름이면 한 번만 처리 */
+    private static final long[] TEXT_RETRY = {250, 700, 1200, 1800, 2600, 3600};
+
+    private static void sendNow(Context ctx, String base64, String stamp, Result cb) {
         Context app = ctx.getApplicationContext();
         if (!listening) listen(app);
         NodeApi nodeApi = Wearable.getNodeApi(app);
         MessageApi msgApi = Wearable.getMessageApi(app);
         Handler main = new Handler(Looper.getMainLooper());
 
-        String stamp = String.valueOf(System.currentTimeMillis());
         List<byte[]> chunks = new ArrayList<>();
-        // 설정(S + 진동 + 깨우기 + 글자크기)은 바뀌었을 때만 같이 보낸다 → 메시지 한 번 절약
+        // 설정(S + 진동 + 깨우기 + 글자크기)은 바뀌었을 때만 같이 보낸다
         Prefs p = new Prefs(app);
         String settingStr = "S" + (p.vibrate() ? "1" : "0") + (p.wake() ? "1" : "0") + String.format("%02d", p.fontSize());
         if (!settingStr.equals(lastSetting)) chunks.add(settingStr.getBytes(StandardCharsets.UTF_8));
@@ -91,28 +100,35 @@ public final class WatchSender {
                 .addOnSuccessListener(nodes -> {
                     if (nodes == null || nodes.isEmpty()) { report(cb, false, "연결된 워치 없음 (Mi Fitness 연결 확인)"); return; }
                     Node node = nodes.get(0);
-                    java.util.concurrent.atomic.AtomicBoolean started = new java.util.concurrent.atomic.AtomicBoolean(false);
-                    Runnable go = () -> {
-                        if (!started.compareAndSet(false, true)) return;
+                    java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean(false);
+                    Result once = (ok, msg) -> {
+                        if (!done.compareAndSet(false, true)) return;
                         readyWaiter = null;
-                        lastSetting = settingStr;
-                        sendNext(msgApi, node.id, chunks, 0, cb);
+                        if (ok) { lastOk = System.currentTimeMillis(); lastSetting = settingStr; }
+                        report(cb, ok, msg);
                     };
-                    // 1) 워치 앱이 이미 켜져 있으면 바로 "준비됨"이 돌아온다 → 즉시 전송
-                    readyWaiter = go;
-                    msgApi.sendMessage(node.id, "Q".getBytes(StandardCharsets.UTF_8));
-                    // 2) 0.4초 안에 답이 없으면 워치 앱을 열고, 앱이 뜨면서 보내는 "준비됨"을 기다림 (최대 3초)
-                    main.postDelayed(() -> {
-                        if (started.get()) return;
-                        nodeApi.launchWearApp(node.id, "/index")
-                                .addOnSuccessListener(v -> main.postDelayed(go, 3000))
-                                .addOnFailureListener(e -> {
-                                    if (started.compareAndSet(false, true)) {
-                                        readyWaiter = null;
-                                        report(cb, false, "워치 앱 열기 실패: " + e.getMessage() + "\n(워치 앱 설치·워치 권한 확인)");
+                    // 방금 보낸 직후라 워치 앱이 켜져 있으면 바로
+                    if (System.currentTimeMillis() - lastOk < 8000) {
+                        sendNext(msgApi, node.id, chunks, 0, once);
+                        return;
+                    }
+                    // 워치 앱이 "준비됨"을 보내오면 그때 바로 (지원되는 경우)
+                    readyWaiter = () -> { if (!done.get()) sendNext(msgApi, node.id, chunks, 0, once); };
+                    nodeApi.launchWearApp(node.id, "/index")
+                            .addOnSuccessListener(v -> {
+                                if (text) {
+                                    // 글: 앱이 뜨는 동안 짧은 간격으로 거듭 보냄 → 앱이 받을 수 있게 되는 순간 도착
+                                    for (long t : TEXT_RETRY) {
+                                        main.postDelayed(() -> sendNext(msgApi, node.id, chunks, 0,
+                                                (ok, m) -> { if (ok) once.done(true, m); }), t);
                                     }
-                                });
-                    }, 400);
+                                    main.postDelayed(() -> once.done(false, "워치 앱이 응답하지 않음"), 6000);
+                                } else {
+                                    // 사진: 조각이 많아 거듭 보내지 않고, 준비됨 신호 또는 1.6초 뒤 한 번
+                                    main.postDelayed(() -> { if (!done.get()) sendNext(msgApi, node.id, chunks, 0, once); }, 1600);
+                                }
+                            })
+                            .addOnFailureListener(e -> once.done(false, "워치 앱 열기 실패: " + e.getMessage() + "\n(워치 앱 설치·워치 권한 확인)"));
                 })
                 .addOnFailureListener(e -> report(cb, false, "워치 조회 실패: " + e.getMessage()));
     }
