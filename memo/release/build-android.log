@@ -15,7 +15,6 @@ Daemon will be stopped at the end of the build
 > Task :app:processReleaseMainManifest
 > Task :app:processReleaseManifest
 > Task :app:extractProguardFiles
-> Task :app:processReleaseManifestForPackage
 > Task :app:mergeReleaseJniLibFolders
 > Task :app:mergeReleaseNativeLibs NO-SOURCE
 > Task :app:stripReleaseDebugSymbols NO-SOURCE
@@ -23,27 +22,28 @@ Daemon will be stopped at the end of the build
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:checkReleaseDuplicateClasses
 > Task :app:mergeReleaseStartupProfile
+> Task :app:processReleaseManifestForPackage
 > Task :app:mergeReleaseArtProfile
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
 > Task :app:mergeReleaseAssets
 > Task :app:compressReleaseAssets
-> Task :app:processReleaseResources
 > Task :app:extractReleaseVersionControlInfo
+> Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:collectReleaseDependencies
+> Task :app:processReleaseResources
+> Task :app:sdkReleaseDependencyData
+> Task :app:mergeReleaseJavaResource
 > Task :app:desugarReleaseFileDependencies
 > Task :app:compileReleaseJavaWithJavac
 > Task :app:generateReleaseLintVitalReportModel
 > Task :app:dexBuilderRelease
-> Task :app:processReleaseJavaRes NO-SOURCE
 > Task :app:mergeReleaseGlobalSynthetics
-> Task :app:mergeReleaseJavaResource
-> Task :app:collectReleaseDependencies
-> Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
-> Task :app:optimizeReleaseResources
 > Task :app:writeReleaseAppMetadata
 > Task :app:writeReleaseSigningConfigVersions
+> Task :app:optimizeReleaseResources
 > Task :app:mergeExtDexRelease
 > Task :app:mergeDexRelease
 > Task :app:compileReleaseArtProfile
@@ -53,7 +53,7 @@ Daemon will be stopped at the end of the build
 > Task :app:lintVitalReportRelease
 > Task :app:lintVitalRelease
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1794103941107.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1794104541697.json
 
 BUILD SUCCESSFUL in 12s
 43 actionable tasks: 43 executed
