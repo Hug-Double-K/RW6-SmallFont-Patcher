@@ -27,10 +27,11 @@
         <text class="head-title" @click="scrollToTop">알림 {{ notis }}</text>
         <div class="head-hit"></div>
       </div>
-      <scroll id="list" style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
-        <text class="btn danger" if="{{ deleteOn && notis }}" @click="deleteAll">모두 지우기</text>
-        <text class="empty" if="{{ loaded && !notis }}">수신된 알림이 없습니다.</text>
-        <div class="card" for="(i, li) in list">
+      <!-- list = 화면에 보이는 칸만 그림 (사진이 많이 쌓여도 빨리 뜸) -->
+      <text class="btn danger" if="{{ deleteOn && notis }}" @click="deleteAll">모두 지우기</text>
+      <text class="empty" if="{{ loaded && !notis }}">수신된 알림이 없습니다.</text>
+      <list id="list" style="width: 100%; flex: 1" if="{{ notis }}">
+        <list-item type="{{ li.kind === 'img' ? 'img' : (li.e ? 'emo' : 'text') }}" for="(i, li) in list" class="card">
           <text class="btn danger" if="{{ deleteOn }}" @click="deleteOne(li, i)">지우기</text>
           <image if="{{ li.kind === 'img' }}" src="{{ li.uri }}" style="width: 100%" @click="openPopup(li)" />
           <div if="{{ li.kind === 'text' }}" class="tcard" @click="openPopup(li)">
@@ -42,9 +43,9 @@
             <image if="{{ li.e }}" src="{{ li.e }}" style="width: {{ li.ew }}px; height: {{ li.eh }}px; margin-top: 4px" />
             <text if="{{ !li.e }}" class="t-body">{{ li.b }}</text>
           </div>
-        </div>
-        <text if="{{ status }}" style="font-size: 20px; color: #888888; margin-top: 10px">{{ status }}</text>
-      </scroll>
+        </list-item>
+      </list>
+      <text if="{{ status }}" style="font-size: 20px; color: #888888; margin-top: 10px">{{ status }}</text>
     </div>
   </div>
 </template>
@@ -66,7 +67,7 @@ const INDEX = `${META}/index.json`
 let IDX = null // [{ name, kind, uri, a, s, b, icon }] 최신이 앞
 const MAX_SAVE = 40
 // 앱을 연 뒤 이 시간 안에 폰에서 알림이 오면 목록 없이 그 알림만 보여줌
-const WAIT_MS = 900
+const WAIT_MS = 700
 let conn = null
 let waitTimer = null
 const receiving = {}
@@ -107,6 +108,8 @@ export default {
     conn = interconnect.instance()
     conn.onmessage = (msg) => { self.onMsg(msg.data) }
     self.ready()
+    // 기다리는 동안 목록을 미리 읽어 둠 → 목록으로 넘어갈 때 바로 그림
+    self.idxLoad(() => {})
     // 폰이 연 게 아니라 직접 열었으면 잠시 뒤 목록
     waitTimer = setTimeout(() => { if (self.mode === 'wait') self.showList() }, WAIT_MS)
   },
@@ -226,7 +229,8 @@ export default {
   showList() {
     if (waitTimer) { clearTimeout(waitTimer); waitTimer = null }
     this.mode = 'list'
-    this.refreshList()
+    // 미리 읽어 둔 게 있으면 그대로 바로
+    if (IDX) this.applyList(); else this.idxLoad(() => this.applyList())
   },
 
   // 도착 화면의 '끄기' = 이 알림 지우고 앱 닫기
@@ -323,7 +327,7 @@ export default {
 
   scrollToTop() {
     const el = this.$element('list')
-    if (el) el.scrollTo({ top: 0, behavior: 'smooth' })
+    if (el) el.scrollTo({ index: 0 })
   },
 
   deleteToggle() { if (this.notis) this.deleteOn = !this.deleteOn },
