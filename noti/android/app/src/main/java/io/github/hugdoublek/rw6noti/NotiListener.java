@@ -168,6 +168,9 @@ public class NotiListener extends NotificationListenerService {
                 org.json.JSONObject o = new org.json.JSONObject();
                 o.put("a", appName); o.put("c", conv == null ? "" : conv); o.put("s", sender == null ? "" : sender);
                 o.put("b", text == null ? "" : text); o.put("w", when);
+                // 앱 아이콘 (작게). 워치가 앱별로 한 번 저장해 두고 씀
+                Bitmap ib = Renderer.iconBitmap(icon, 40);
+                if (ib != null) { o.put("k", String.valueOf(Math.abs(appName.hashCode()))); o.put("i", Renderer.toBase64Png(ib)); }
                 b64 = o.toString();
             } catch (org.json.JSONException e) { return; }
         } else {

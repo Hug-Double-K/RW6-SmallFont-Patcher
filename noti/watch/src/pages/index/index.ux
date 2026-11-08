@@ -14,7 +14,10 @@
         <text class="btn danger" if="{{ deleteOn }}" @click="deleteOne(li, i)">지우기</text>
         <image if="{{ li.kind === 'img' }}" src="{{ li.uri }}" style="width: 100%" @click="openPopup(li)" />
         <div if="{{ li.kind === 'text' }}" class="tcard" @click="openPopup(li)">
-          <text class="t-app">{{ li.a }}</text>
+          <div class="t-row">
+            <image if="{{ li.icon }}" src="{{ li.icon }}" class="t-icon" />
+            <text class="t-app">{{ li.a || '알림' }}</text>
+          </div>
           <text class="t-snd">{{ li.s }}</text>
           <text class="t-body">{{ li.b }}</text>
         </div>
@@ -34,6 +37,7 @@ import vibrator from '@system.vibrator'
 import brightness from '@system.brightness'
 
 const DIR = 'internal://mass/rw6noti'
+const ICONS = 'internal://mass/rw6noti_icons'
 const DEFAULT_SETTING = '{"vibe":true,"doNotDisturb":false,"disturbFromT":"23","disturbFromM":"00","disturbToT":"07","disturbToM":"00","maxSave":40}'
 let conn = null
 
@@ -89,6 +93,7 @@ export default {
           const max = self.setting.maxSave || 40
           while (self.list.length >= max) self.deleteOne(self.list[self.list.length - 1], self.list.length - 1)
           const uri = `${DIR}/${part.name}.${part.text ? 'json' : 'png'}`
+          if (part.text) self.saveIcon(r.data)
           const args = part.text ? { text: r.data } : { buffer: self.decode(r.data) }
           const write = (o) => (part.text ? file.writeText(o) : file.writeArrayBuffer(o))
           write(Object.assign(args, {
@@ -108,6 +113,18 @@ export default {
     }
   },
 
+  // 글 알림에 들어 있는 앱 아이콘을 앱별로 한 번만 저장
+  saveIcon(json) {
+    const self = this
+    try {
+      const m = JSON.parse(json)
+      if (!m.k || !m.i) return
+      file.mkdir({ uri: ICONS, recursive: true, complete() {
+        file.writeArrayBuffer({ uri: `${ICONS}/${m.k}.png`, buffer: self.decode(m.i) })
+      } })
+    } catch (e) {}
+  },
+
   refreshList() {
     const self = this
     file.list({
@@ -116,7 +133,7 @@ export default {
         const files = data.fileList.sort((a, b) => b.uri.localeCompare(a.uri))
         // 글 알림은 내용을 먼저 다 읽은 뒤 목록을 한 번에 바꾼다 (나중에 채우면 화면에 반영이 안 됨)
         Promise.all(files.map((f) => new Promise((res) => {
-          const item = { uri: f.uri, kind: /\.json$/.test(f.uri) ? 'text' : 'img', a: '', s: '', b: '' }
+          const item = { uri: f.uri, kind: f.uri.indexOf('.json') >= 0 ? 'text' : 'img', a: '', s: '', b: '', icon: '' }
           if (item.kind !== 'text') { res(item); return }
           file.readText({
             uri: f.uri,
@@ -125,12 +142,13 @@ export default {
                 const m = JSON.parse(r.text)
                 item.a = m.c ? `${m.a} · ${m.c}` : (m.a || '')
                 item.s = m.s || ''
+                if (m.k) item.icon = `${ICONS}/${m.k}.png`
                 const body = m.b || ''
                 item.b = body.length > 120 ? body.substr(0, 120) + '…' : body
-              } catch (e) { item.b = '(읽지 못함)' }
+              } catch (e) { item.b = `(읽지 못함: ${e} / ${(r.text || '').length}자)` }
               res(item)
             },
-            fail() { item.b = '(읽지 못함)'; res(item) },
+            fail(d, c) { item.b = `(파일 읽기 실패 ${c || ''})`; res(item) },
           })
         }))).then((items) => {
           self.list = items

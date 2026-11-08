@@ -142,6 +142,16 @@ public final class Renderer {
         return b;
     }
 
+    /** 앱 아이콘을 작은 정사각형 이미지로 (글 알림 카드용) */
+    public static Bitmap iconBitmap(Drawable d, int size) {
+        if (d == null) return null;
+        Bitmap b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        d.setBounds(0, 0, size, size);
+        d.draw(c);
+        return b;
+    }
+
     public static String toBase64Png(Bitmap bmp) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         bmp.compress(Bitmap.CompressFormat.PNG, 100, out);

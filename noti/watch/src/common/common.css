@@ -43,3 +43,5 @@ text { color: white; font-size: 26px; }
 .tcard-head { width: 100%; flex-direction: column; padding: 28px 24px 6px; }
 .tcard-para { width: 100%; padding: 0 24px; }
 .tcard-end { width: 100%; padding: 12px 24px 16px; }
+.t-row { width: 100%; flex-direction: row; align-items: center; }
+.t-icon { width: 26px; height: 26px; margin-right: 8px; border-radius: 6px; }

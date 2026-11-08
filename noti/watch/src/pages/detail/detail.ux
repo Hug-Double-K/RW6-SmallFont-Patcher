@@ -45,7 +45,7 @@ export default {
   private: { isText: false, app: '', sender: '', parts: [], time: '', fs: 26, lh: 35 },
   onInit() {
     const self = this
-    if (!/\.json$/.test(self.uri)) return
+    if (self.uri.indexOf('.json') < 0) return
     self.isText = true
     storage.get({ key: 'alert', success(v) { try { const a = JSON.parse(v); if (a.fs) { self.fs = a.fs; self.lh = Math.round(a.fs * 1.35) } } catch (e) {} } })
     file.readText({
@@ -58,7 +58,7 @@ export default {
           self.parts = split(m.b || '')
           const t = new Date(m.w)
           self.time = `${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`
-        } catch (e) { self.parts = ['알림을 읽지 못했어요'] }
+        } catch (e) { self.parts = [`알림을 읽지 못했어요 (${e})`] }
       },
       fail() { self.parts = ['알림을 찾지 못했어요'] },
     })
