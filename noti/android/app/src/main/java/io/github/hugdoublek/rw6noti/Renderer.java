@@ -56,10 +56,13 @@ public final class Renderer {
         Bitmap pic = null;
         int picH = 0;
         if (picture != null) {
-            float scale = Math.min(1f, Math.min((float) contentW / picture.getWidth(), 420f / picture.getHeight()));
-            int pw = Math.max(1, Math.round(picture.getWidth() * scale));
-            picH = Math.max(1, Math.round(picture.getHeight() * scale));
-            pic = Bitmap.createScaledBitmap(picture, pw, picH, true);
+            // 가로를 카드 폭에 꽉 채움. 아주 긴 사진(캡처 등)은 위쪽 1100px까지만
+            float scale = (float) contentW / picture.getWidth();
+            int pw = contentW;
+            int fullH = Math.max(1, Math.round(picture.getHeight() * scale));
+            Bitmap scaled = Bitmap.createScaledBitmap(picture, pw, fullH, true);
+            picH = Math.min(fullH, 1100);
+            pic = picH < fullH ? Bitmap.createBitmap(scaled, 0, 0, pw, picH) : scaled;
         }
 
         // 본문이 너무 길면 줄 수를 자른다
