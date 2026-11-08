@@ -56,12 +56,12 @@ public final class Renderer {
         Bitmap pic = null;
         int picH = 0;
         if (picture != null) {
-            // 가로를 카드 폭에 꽉 채움. 아주 긴 사진(캡처 등)은 위쪽 1100px까지만
+            // 가로를 카드 폭에 꽉 채움. 긴 사진은 위쪽 640px까지만 (크면 워치가 받다 실패함)
             float scale = (float) contentW / picture.getWidth();
             int pw = contentW;
             int fullH = Math.max(1, Math.round(picture.getHeight() * scale));
             Bitmap scaled = Bitmap.createScaledBitmap(picture, pw, fullH, true);
-            picH = Math.min(fullH, 1100);
+            picH = Math.min(fullH, 640);
             pic = picH < fullH ? Bitmap.createBitmap(scaled, 0, 0, pw, picH) : scaled;
         }
 
