@@ -58,8 +58,8 @@ public class MainActivity extends Activity {
         root.addView(button("배터리 최적화 제외", v -> askBattery()));
 
         root.addView(section("2. 컬러노트 메모 한꺼번에 보내기"));
-        root.addView(text("컬러노트 → 더보기 → 설정 → 백업에서 백업 파일을 기기(다운로드 폴더 등)에 저장한 뒤, 아래 버튼으로 그 파일을 고르세요. 잠긴 메모는 빠지고, 워치의 메모는 백업 내용으로 모두 바뀝니다.", 14));
-        root.addView(button("컬러노트 백업 파일 고르기 → 워치로 모두 보내기", v -> pickBackup()));
+        root.addView(text("컬러노트 → 더보기 → 설정 → 백업에서 백업 파일을 기기(다운로드 폴더 등)에 저장한 뒤, 아래 버튼으로 그 파일을 고르세요. 파일을 고르면 \"최근 30개만 / 직접 고르기 / 전체\" 중에서 보낼 메모를 정할 수 있어요. 잠긴 메모는 빠지고, 워치의 메모는 보낸 메모로 바뀝니다.", 14));
+        root.addView(button("컬러노트 백업 파일 고르기 → 워치로 보내기", v -> pickBackup()));
         root.addView(button("백업 비밀번호 바꾸기 (기본 0000)", v -> askPassword(null)));
 
         root.addView(section("3. 메모 하나만 보내기"));
@@ -164,12 +164,80 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    /** 백업에서 무엇을 보낼지 고른다: 전체 / 최근 N개 / 직접 고르기 (memos는 최근순) */
     private void confirmSend(List<Memo> memos, int locked, int bad) {
-        String msg = "메모 " + memos.size() + "개를 찾았어요. [" + ColorNoteBackup.lastMethod + "]\n(잠긴 메모 " + locked + "개 제외" + (bad > 0 ? ", 읽지 못한 " + bad + "개" : "") + ")\n\n"
-                + "워치의 메모를 지우고 이 메모들로 바꿀까요? 블루투스로 보내서 몇 분 걸릴 수 있어요.";
+        int n = Math.min(store.recentCount(), memos.size());
+        String info = "메모 " + memos.size() + "개를 찾았어요. [" + ColorNoteBackup.lastMethod + "]\n(잠긴 메모 " + locked + "개 제외"
+                + (bad > 0 ? ", 읽지 못한 " + bad + "개" : "") + ")\n어떤 메모를 보낼까요? 워치의 메모는 보낸 것으로 바뀌어요.";
+        String[] items = {
+                "최근 " + n + "개만",
+                "최근 몇 개인지 정하기…",
+                "직접 고르기…",
+                "전체 " + memos.size() + "개"
+        };
+        TextView head = text(info, 14);
+        head.setPadding(dp(24), dp(16), dp(24), 0);
         new AlertDialog.Builder(this)
                 .setTitle("컬러노트 백업")
-                .setMessage(msg)
+                .setCustomTitle(head)
+                .setItems(items, (d, which) -> {
+                    if (which == 0) startSend(new ArrayList<>(memos.subList(0, n)));
+                    else if (which == 1) askRecent(memos, locked, bad);
+                    else if (which == 2) pickMemos(memos);
+                    else startSend(memos);
+                })
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    private void askRecent(List<Memo> memos, int locked, int bad) {
+        EditText et = new EditText(this);
+        et.setInputType(InputType.TYPE_CLASS_NUMBER);
+        et.setText(String.valueOf(store.recentCount()));
+        et.setSelectAllOnFocus(true);
+        new AlertDialog.Builder(this)
+                .setTitle("최근 몇 개를 보낼까요?")
+                .setMessage("가장 최근에 수정한 메모부터 이 개수만큼 보내요. (다음에도 이 숫자를 기억해요)")
+                .setView(et)
+                .setPositiveButton("확인", (d, w) -> {
+                    int v;
+                    try { v = Integer.parseInt(et.getText().toString().trim()); } catch (Exception e) { v = 30; }
+                    store.setRecentCount(Math.max(1, v));
+                    confirmSend(memos, locked, bad);
+                })
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    /** 목록에서 체크해서 고르기 (최근순, 지난번에 고른 메모는 미리 체크) */
+    private void pickMemos(List<Memo> memos) {
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yy/MM/dd", java.util.Locale.KOREA);
+        String[] labels = new String[memos.size()];
+        boolean[] checked = new boolean[memos.size()];
+        java.util.Set<String> before = store.picked();
+        for (int i = 0; i < memos.size(); i++) {
+            Memo m = memos.get(i);
+            labels[i] = m.title + "  (" + f.format(new java.util.Date(m.time)) + ")";
+            checked[i] = before.contains(m.id);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("보낼 메모 고르기")
+                .setMultiChoiceItems(labels, checked, (d, which, on) -> checked[which] = on)
+                .setPositiveButton("보내기", (d, w) -> {
+                    List<Memo> out = new ArrayList<>();
+                    java.util.Set<String> ids = new java.util.HashSet<>();
+                    for (int i = 0; i < memos.size(); i++) if (checked[i]) { out.add(memos.get(i)); ids.add(memos.get(i).id); }
+                    if (out.isEmpty()) { say("고른 메모가 없어요."); return; }
+                    store.setPicked(ids);
+                    startSend(out);
+                })
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    private void startSend(List<Memo> memos) {
+        new AlertDialog.Builder(this)
+                .setMessage("메모 " + memos.size() + "개를 워치로 보낼까요?\n워치에 있던 메모는 지워지고 이 메모들로 바뀌어요.")
                 .setPositiveButton("보내기", (d, w) -> sendAll(memos))
                 .setNegativeButton("취소", null)
                 .show();

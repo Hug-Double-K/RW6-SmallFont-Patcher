@@ -100,6 +100,12 @@ public final class Memo {
 
         public String password() { return sp.getString("password", "0000"); }
         public void setPassword(String v) { sp.edit().putString("password", v).apply(); }
+        /** 최근 몇 개 보낼지 (기본 30) */
+        public int recentCount() { return sp.getInt("recentCount", 30); }
+        public void setRecentCount(int v) { sp.edit().putInt("recentCount", v).apply(); }
+        /** 지난번에 직접 고른 메모 id */
+        public java.util.Set<String> picked() { return new java.util.HashSet<>(sp.getStringSet("picked", new java.util.HashSet<>())); }
+        public void setPicked(java.util.Set<String> v) { sp.edit().putStringSet("picked", new java.util.HashSet<>(v)).apply(); }
 
         public String lastLog() { return sp.getString("lastLog", "-"); }
         public void setLastLog(String v) { sp.edit().putString("lastLog", v).apply(); }
