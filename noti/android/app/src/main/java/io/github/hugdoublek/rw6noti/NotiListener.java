@@ -190,9 +190,14 @@ public class NotiListener extends NotificationListenerService {
     private void renderAndSend(Prefs prefs, Drawable icon, String appName, String conv, String sender,
                                String text, Bitmap picture, long when, String stamp) {
         String b64;
-        if (picture == null) {
-            // 글만 있는 알림: 이미지로 그리지 않고 글 그대로 (워치가 직접 그림)
-            b64 = textJson(icon, appName, conv, sender, text, when, false);
+        boolean emoji = hasEmoji(text) || hasEmoji(sender) || hasEmoji(conv);
+        if (picture == null && emoji && (text == null || text.length() <= 400)) {
+            // 이모지는 워치 글꼴에 없어 X 박스가 됨 → 이모지가 있는 짧은 글만 폰에서 그림으로 그려 보냄 (JPEG라 가벼움)
+            b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, null, prefs.fontSize(), when));
+        } else if (picture == null) {
+            // 글만 있는 알림: 이미지로 그리지 않고 글 그대로 (워치가 직접 그림). 아주 긴 글의 이모지는 빼고 보냄
+            b64 = emoji ? textJson(icon, appName, stripEmoji(conv == null ? "" : conv), stripEmoji(sender == null ? "" : sender), stripEmoji(text == null ? "" : text), when, false)
+                    : textJson(icon, appName, conv, sender, text, when, false);
             if (b64 == null) return;
         } else {
             b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, picture, prefs.fontSize(), when));
@@ -275,6 +280,24 @@ public class NotiListener extends NotificationListenerService {
             lastLoadError = e.getClass().getSimpleName() + ": " + e.getMessage();
             return null; // 앱이 사진 접근을 허용하지 않았거나 아직 내려받는 중
         }
+    }
+
+    /** 워치 글꼴에 없는 이모지인지 */
+    static boolean isEmoji(int cp) {
+        return cp >= 0x1F000 || (cp >= 0x2600 && cp <= 0x27BF) || (cp >= 0x2300 && cp <= 0x23FF)
+                || (cp >= 0x2B00 && cp <= 0x2BFF) || cp == 0xFE0F || cp == 0x200D || (cp >= 0xE000 && cp <= 0xF8FF);
+    }
+
+    static boolean hasEmoji(String s) {
+        if (s == null) return false;
+        for (int i = 0; i < s.length(); ) { int cp = s.codePointAt(i); if (isEmoji(cp)) return true; i += Character.charCount(cp); }
+        return false;
+    }
+
+    static String stripEmoji(String s) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < s.length(); ) { int cp = s.codePointAt(i); if (!isEmoji(cp)) b.appendCodePoint(cp); i += Character.charCount(cp); }
+        return b.toString();
     }
 
     /** 같은 글의 잘린 버전과 전체 버전 중 긴 쪽 */

@@ -72,7 +72,18 @@ export default {
       if (self.arrival === '1') app.terminate()
       else router.back()
     }
-    file.delete({ uri: self.uri, success: done, fail: done, complete() {} })
+    file.delete({ uri: self.uri, complete() {} })
+    // 목록 미리보기 모음에서도 빼고 닫기
+    const INDEX = 'internal://mass/rw6noti_meta/index.json'
+    file.readText({
+      uri: INDEX,
+      success(r) {
+        let list = []
+        try { list = JSON.parse(r.text).filter((e) => e.uri !== self.uri) } catch (e) {}
+        file.writeText({ uri: INDEX, text: JSON.stringify(list), complete: done })
+      },
+      fail: done,
+    })
   },
 }
 </script>

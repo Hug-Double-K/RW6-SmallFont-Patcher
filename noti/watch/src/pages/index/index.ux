@@ -58,9 +58,13 @@ import brightness from '@system.brightness'
 
 const DIR = 'internal://mass/rw6noti'
 const ICONS = 'internal://mass/rw6noti_icons'
+// 목록 미리보기 모음 (파일을 하나하나 열지 않고 이것 하나로 목록을 바로 그림)
+const META = 'internal://mass/rw6noti_meta'
+const INDEX = `${META}/index.json`
+let IDX = null // [{ name, kind, uri, a, s, b, icon }] 최신이 앞
 const MAX_SAVE = 40
 // 앱을 연 뒤 이 시간 안에 폰에서 알림이 오면 목록 없이 그 알림만 보여줌
-const WAIT_MS = 2500
+const WAIT_MS = 900
 let conn = null
 let waitTimer = null
 const receiving = {}
@@ -80,6 +84,8 @@ function split(body) {
   if (cur) out.push(cur)
   return out
 }
+
+function preview(body) { return body.length > 120 ? body.substr(0, 120) + '…' : body }
 
 export default {
   private: {
@@ -171,6 +177,7 @@ export default {
     })
     self.notifyArrival()
     file.writeText({ uri: `${DIR}/${name}.json`, text: JSON.stringify(m), complete() { self.trim() } })
+    self.idxPut({ name, kind: 'text', uri: `${DIR}/${name}.json`, a: m.c ? `${m.a} · ${m.c}` : (m.a || ''), s: m.s || '', b: preview(m.b || ''), icon: m.k ? `${ICONS}/${m.k}.png` : '' })
   },
 
   // 사진: 저장 후 표시. 먼저 온 같은 이름의 글 알림은 지우고 사진으로 바꿈
@@ -185,6 +192,7 @@ export default {
         try { file.delete({ uri: `${DIR}/${name}.json` }) } catch (e) {}
         if (self.mode !== 'list' || self.cur.name === name) self.show({ name, img: uri, icon: '', app: '', sender: '', parts: [], pending: false })
         if (!hadText) self.notifyArrival()
+        self.idxPut({ name, kind: 'img', uri, a: '', s: '', b: '', icon: '' })
         if (self.mode === 'list') self.refreshList()
         self.trim()
       },
@@ -209,7 +217,7 @@ export default {
     const n = this.cur.name
     ;['json', 'jpg', 'png'].forEach((e) => { try { file.delete({ uri: `${DIR}/${n}.${e}` }) } catch (x) {} })
     try { conn.send({ data: { del: 1 } }) } catch (x) {}
-    app.terminate()
+    this.idxRemove((e) => e.name === n, () => app.terminate())
   },
 
   // 오래된 알림 정리
@@ -223,43 +231,76 @@ export default {
     })
   },
 
-  refreshList() {
+  // ---- 목록 미리보기 모음 ----
+  idxLoad(cb) {
+    const self = this
+    if (IDX) { cb(IDX); return }
+    file.readText({
+      uri: INDEX,
+      success(r) { try { IDX = JSON.parse(r.text) } catch (e) { IDX = null } if (IDX) cb(IDX); else self.idxRebuild(cb) },
+      fail() { self.idxRebuild(cb) },
+    })
+  },
+  idxSave(done) {
+    file.mkdir({ uri: META, recursive: true, complete() {
+      file.writeText({ uri: INDEX, text: JSON.stringify(IDX || []), complete() { if (done) done() } })
+    } })
+  },
+  idxPut(e) {
+    const self = this
+    self.idxLoad((list) => {
+      IDX = [e].concat(list.filter((x) => x.name !== e.name)).slice(0, MAX_SAVE)
+      self.idxSave()
+      if (self.mode === 'list') self.applyList()
+    })
+  },
+  idxRemove(pred, done) {
+    const self = this
+    self.idxLoad((list) => { IDX = list.filter((x) => !pred(x)); self.idxSave(done) })
+  },
+  // 미리보기 모음이 없을 때(처음 한 번) 파일들을 읽어 만듦
+  idxRebuild(cb) {
     const self = this
     file.list({
       uri: DIR,
       success(data) {
         const files = data.fileList.sort((a, b) => b.uri.localeCompare(a.uri))
-        // 같은 이름의 사진이 있으면 글(먼저 보낸 알림)은 숨김
-        const names = {}
-        files.forEach((f) => { if (f.uri.indexOf('.json') < 0) names[f.uri.replace(/\.[a-z]+$/, '')] = true })
-        const shown = files.filter((f) => !(f.uri.indexOf('.json') >= 0 && names[f.uri.replace(/\.json$/, '')]))
+        const imgs = {}
+        files.forEach((f) => { if (f.uri.indexOf('.json') < 0) imgs[f.uri.replace(/\.[a-z]+$/, '')] = true })
+        const shown = files.filter((f) => !(f.uri.indexOf('.json') >= 0 && imgs[f.uri.replace(/\.json$/, '')])).slice(0, MAX_SAVE)
         Promise.all(shown.map((f) => new Promise((res) => {
-          const item = { uri: f.uri, kind: f.uri.indexOf('.json') >= 0 ? 'text' : 'img', a: '', s: '', b: '', icon: '' }
-          if (item.kind !== 'text') { res(item); return }
+          const name = f.uri.replace(/^.*\//, '').replace(/\.[a-z]+$/, '')
+          const e = { name, kind: f.uri.indexOf('.json') >= 0 ? 'text' : 'img', uri: f.uri, a: '', s: '', b: '', icon: '' }
+          if (e.kind !== 'text') { res(e); return }
           file.readText({
             uri: f.uri,
             success(r) {
               try {
                 const m = JSON.parse(r.text)
-                item.a = m.c ? `${m.a} · ${m.c}` : (m.a || '')
-                item.s = m.s || ''
-                if (m.k) item.icon = `${ICONS}/${m.k}.png`
-                const body = m.b || ''
-                item.b = body.length > 120 ? body.substr(0, 120) + '…' : body
-              } catch (e) { item.b = `(읽지 못함: ${e})` }
-              res(item)
+                e.a = m.c ? `${m.a} · ${m.c}` : (m.a || ''); e.s = m.s || ''; e.b = preview(m.b || '')
+                if (m.k) e.icon = `${ICONS}/${m.k}.png`
+              } catch (x) {}
+              res(e)
             },
-            fail(d, c) { item.b = `(파일 읽기 실패 ${c || ''})`; res(item) },
+            fail() { res(e) },
           })
-        }))).then((items) => {
-          self.list = items
-          self.notis = items.length
-          self.loaded = true
-          self.report()
-        })
+        }))).then((list) => { IDX = list; self.idxSave(); cb(IDX) })
       },
-      fail() { self.list = []; self.notis = 0; self.loaded = true; self.report() },
+      fail() { IDX = []; cb(IDX) },
     })
+  },
+
+  refreshList() {
+    const self = this
+    IDX = null // 상세 화면에서 지웠을 수 있으니 다시 읽음 (파일 하나라 빠름)
+    self.idxLoad(() => self.applyList())
+  },
+
+  applyList() {
+    this.list = (IDX || []).map((e) => ({ uri: e.uri, kind: e.kind, a: e.a, s: e.s, b: e.b, icon: e.icon }))
+    this.notis = this.list.length
+    this.loaded = true
+    this.report()
   },
 
   scrollToTop() {
@@ -276,6 +317,8 @@ export default {
 
   deleteAll() {
     this.list.forEach((li) => this.removeFile(li))
+    IDX = []
+    this.idxSave()
     this.list = []
     this.notis = 0
     this.deleteOn = false
@@ -284,6 +327,7 @@ export default {
 
   deleteOne(li, i) {
     this.removeFile(li)
+    this.idxRemove((e) => e.uri === li.uri)
     this.list.splice(i, 1)
     this.notis = this.list.length
     if (!this.notis) this.deleteOn = false
