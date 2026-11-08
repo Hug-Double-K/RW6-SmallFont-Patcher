@@ -142,6 +142,19 @@ public final class Renderer {
         return b;
     }
 
+    /** 이모지만 있는 메시지: 이모지만 딱 맞는 크기로 (투명 배경 PNG, 몇 KB) */
+    public static Bitmap emojiBitmap(String text, int size) {
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        p.setTextSize(size);
+        String t = text.trim();
+        int w = Math.max(1, Math.min(404, (int) Math.ceil(p.measureText(t)) + 4));
+        Paint.FontMetrics fm = p.getFontMetrics();
+        int h = (int) Math.ceil(fm.descent - fm.ascent) + 4;
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        new Canvas(b).drawText(t, 2, 2 - fm.ascent, p);
+        return b;
+    }
+
     /** 앱 아이콘을 작은 정사각형 이미지로 (글 알림 카드용) */
     public static Bitmap iconBitmap(Drawable d, int size) {
         if (d == null) return null;

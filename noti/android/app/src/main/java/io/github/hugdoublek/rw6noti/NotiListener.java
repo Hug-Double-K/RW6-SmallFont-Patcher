@@ -191,7 +191,17 @@ public class NotiListener extends NotificationListenerService {
                                String text, Bitmap picture, long when, String stamp) {
         String b64;
         boolean emoji = hasEmoji(text) || hasEmoji(sender) || hasEmoji(conv);
-        if (picture == null && emoji && (text == null || text.length() <= 400)) {
+        if (picture == null && text != null && hasEmoji(text) && stripEmoji(text).trim().isEmpty() && text.length() <= 24) {
+            // 이모지만 있는 메시지: 카드 전체가 아니라 이모지만 작게 그려 글 알림에 붙임 → 메시지 1번, 가로도 딱 맞게
+            Bitmap eb = Renderer.emojiBitmap(text, 72);
+            b64 = textJson(icon, appName, stripEmoji(conv == null ? "" : conv), stripEmoji(sender == null ? "" : sender), "", when, false);
+            if (b64 == null) return;
+            try {
+                org.json.JSONObject o = new org.json.JSONObject(b64);
+                o.put("e", Renderer.toBase64Png(eb)); o.put("ew", eb.getWidth()); o.put("eh", eb.getHeight());
+                b64 = o.toString();
+            } catch (org.json.JSONException ex) { return; }
+        } else if (picture == null && emoji && (text == null || text.length() <= 400)) {
             // 이모지는 워치 글꼴에 없어 X 박스가 됨 → 이모지가 있는 짧은 글만 폰에서 그림으로 그려 보냄 (JPEG라 가벼움)
             b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, null, prefs.fontSize(), when));
         } else if (picture == null) {

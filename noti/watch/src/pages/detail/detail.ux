@@ -9,6 +9,7 @@
       <list-item type="head" class="tcard-head">
         <text class="t-app">{{ app }}</text>
         <text class="t-snd" style="font-size: {{ fs }}px">{{ sender }}</text>
+        <image if="{{ emo }}" src="{{ emo }}" style="width: {{ ew }}px; height: {{ eh }}px; margin-top: 6px" />
       </list-item>
       <list-item type="para" for="(i, p) in parts" class="tcard-para">
         <text style="width: 100%; font-size: {{ fs }}px; color: #eeeeee; line-height: {{ lh }}px">{{ p }}</text>
@@ -42,7 +43,7 @@ export default {
     uri: '',
     arrival: '0',
   },
-  private: { isText: false, app: '', sender: '', parts: [], time: '', fs: 26, lh: 35 },
+  private: { isText: false, app: '', sender: '', parts: [], time: '', fs: 26, lh: 35, emo: '', ew: 0, eh: 0 },
   onInit() {
     const self = this
     if (self.uri.indexOf('.json') < 0) return
@@ -55,7 +56,7 @@ export default {
           const m = JSON.parse(r.text)
           self.app = m.c ? `${m.a} · ${m.c}` : m.a
           self.sender = m.s || ''
-          self.parts = split(m.b || '')
+          if (m.ef) { self.emo = m.ef; self.ew = m.ew || 80; self.eh = m.eh || 80 } else self.parts = split(m.b || '')
           const t = new Date(m.w)
           self.time = `${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`
         } catch (e) { self.parts = [`알림을 읽지 못했어요 (${e})`] }

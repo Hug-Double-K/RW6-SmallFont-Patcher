@@ -10,6 +10,7 @@
             <text class="t-app">{{ cur.app }}</text>
           </div>
           <text class="t-snd" style="font-size: {{ alert.fs || 26 }}px">{{ cur.sender }}</text>
+          <image if="{{ cur.e }}" src="{{ cur.e }}" style="width: {{ cur.ew }}px; height: {{ cur.eh }}px; margin-top: 6px" />
           <text for="(i, p) in cur.parts" style="width: 100%; font-size: {{ alert.fs || 26 }}px; color: #eeeeee; margin-top: 4px">{{ p }}</text>
           <text if="{{ cur.pending }}" class="t-app" style="margin-top: 10px">사진 받는 중…</text>
         </div>
@@ -38,7 +39,8 @@
               <text class="t-app">{{ li.a || '알림' }}</text>
             </div>
             <text class="t-snd">{{ li.s }}</text>
-            <text class="t-body">{{ li.b }}</text>
+            <image if="{{ li.e }}" src="{{ li.e }}" style="width: {{ li.ew }}px; height: {{ li.eh }}px; margin-top: 4px" />
+            <text if="{{ !li.e }}" class="t-body">{{ li.b }}</text>
           </div>
         </div>
         <text if="{{ status }}" style="font-size: 20px; color: #888888; margin-top: 10px">{{ status }}</text>
@@ -90,7 +92,7 @@ function preview(body) { return body.length > 120 ? body.substr(0, 120) + '…' 
 export default {
   private: {
     mode: 'wait', // wait(검은 화면) → arrive(알림) / list(목록)
-    cur: { name: '', img: '', icon: '', app: '', sender: '', parts: [], pending: false },
+    cur: { name: '', img: '', icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0 },
     list: [],
     notis: 0,
     loaded: false,
@@ -171,13 +173,28 @@ export default {
       file.mkdir({ uri: ICONS, recursive: true, complete() { file.writeArrayBuffer({ uri: `${ICONS}/${m.k}.png`, buffer: self.decode(m.i) }) } })
       delete m.i
     }
-    self.show({
-      name, img: '', icon: m.k ? `${ICONS}/${m.k}.png` : '',
-      app: m.c ? `${m.a} · ${m.c}` : (m.a || ''), sender: m.s || '', parts: split(m.b || ''), pending: !!m.p,
-    })
+    // 이모지만 있는 메시지: 폰이 그린 작은 이모지 그림을 저장해 그 크기 그대로 표시
+    let e = '', ew = 0, eh = 0
+    if (m.e) {
+      e = `${META}/${name}.png`; ew = m.ew || 80; eh = m.eh || 80
+      const buf = self.decode(m.e)
+      delete m.e
+      m.ef = e
+      file.mkdir({ uri: META, recursive: true, complete() {
+        file.writeArrayBuffer({ uri: e, buffer: buf, complete() {
+          self.show({ name, img: '', icon: m.k ? `${ICONS}/${m.k}.png` : '', app: m.c ? `${m.a} · ${m.c}` : (m.a || ''),
+            sender: m.s || '', parts: [], pending: false, e, ew, eh })
+        } })
+      } })
+    } else {
+      self.show({
+        name, img: '', icon: m.k ? `${ICONS}/${m.k}.png` : '',
+        app: m.c ? `${m.a} · ${m.c}` : (m.a || ''), sender: m.s || '', parts: split(m.b || ''), pending: !!m.p, e: '', ew: 0, eh: 0,
+      })
+    }
     self.notifyArrival()
     file.writeText({ uri: `${DIR}/${name}.json`, text: JSON.stringify(m), complete() { self.trim() } })
-    self.idxPut({ name, kind: 'text', uri: `${DIR}/${name}.json`, a: m.c ? `${m.a} · ${m.c}` : (m.a || ''), s: m.s || '', b: preview(m.b || ''), icon: m.k ? `${ICONS}/${m.k}.png` : '' })
+    self.idxPut({ name, kind: 'text', uri: `${DIR}/${name}.json`, a: m.c ? `${m.a} · ${m.c}` : (m.a || ''), s: m.s || '', b: preview(m.b || ''), icon: m.k ? `${ICONS}/${m.k}.png` : '', e, ew, eh })
   },
 
   // 사진: 저장 후 표시. 먼저 온 같은 이름의 글 알림은 지우고 사진으로 바꿈
@@ -190,7 +207,7 @@ export default {
       success() {
         const hadText = done[`${name}.json`]
         try { file.delete({ uri: `${DIR}/${name}.json` }) } catch (e) {}
-        if (self.mode !== 'list' || self.cur.name === name) self.show({ name, img: uri, icon: '', app: '', sender: '', parts: [], pending: false })
+        if (self.mode !== 'list' || self.cur.name === name) self.show({ name, img: uri, icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0 })
         if (!hadText) self.notifyArrival()
         self.idxPut({ name, kind: 'img', uri, a: '', s: '', b: '', icon: '' })
         if (self.mode === 'list') self.refreshList()
@@ -216,6 +233,7 @@ export default {
   arriveOff() {
     const n = this.cur.name
     ;['json', 'jpg', 'png'].forEach((e) => { try { file.delete({ uri: `${DIR}/${n}.${e}` }) } catch (x) {} })
+    try { file.delete({ uri: `${META}/${n}.png` }) } catch (x) {}
     try { conn.send({ data: { del: 1 } }) } catch (x) {}
     this.idxRemove((e) => e.name === n, () => app.terminate())
   },
@@ -297,7 +315,7 @@ export default {
   },
 
   applyList() {
-    this.list = (IDX || []).map((e) => ({ uri: e.uri, kind: e.kind, a: e.a, s: e.s, b: e.b, icon: e.icon }))
+    this.list = (IDX || []).map((e) => ({ uri: e.uri, kind: e.kind, a: e.a, s: e.s, b: e.b, icon: e.icon, e: e.e || '', ew: e.ew || 0, eh: e.eh || 0 }))
     this.notis = this.list.length
     this.loaded = true
     this.report()
