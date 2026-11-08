@@ -2,7 +2,7 @@
   <div class="main">
     <!-- 사진 알림 한 건. 뒤로 = 오른쪽으로 스와이프, '끄기' = 이 알림 삭제 -->
     <scroll style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
-      <image src="{{ uri }}" style="width: 100%; margin-top: 40px" />
+      <image src="{{ uri }}" style="width: 100%; margin-top: 28px" />
     </scroll>
     <text class="btn off" @click="remove">끄기</text>
   </div>
