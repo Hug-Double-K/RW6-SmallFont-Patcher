@@ -18,6 +18,7 @@ import java.util.List;
  * 워치로 보내는 메시지 (글자 그대로 보내고 워치가 그린다)
  *  F + 글자크기                            : 글자 크기
  *  C + 전체 개수                           : 워치 메모 모두 지우고 받기 시작 (화면 켜 둠)
+ *  A + 개수                                : 지우지 않고 추가로 받기 시작 (화면 켜 둠)
  *  E                                       : 받기 끝 (목록 저장, 화면 꺼짐 허용)
  *  X + id(13)                              : 메모 하나 지우기
  *  P + 순번(3) + d|e + 묶음이름(13) + 조각 : 메모 여러 개를 묶은 JSON 배열 (e = 마지막 조각)
@@ -70,9 +71,11 @@ public final class WatchSender {
     }
 
     /** 컬러노트 백업 전체: 지우기 → 글자 크기 → 묶음들 → 끝 */
-    public static Plan importPlan(List<Memo> memos, int fontSize) {
+    public static Plan importPlan(List<Memo> memos, int fontSize, boolean replace) {
         Plan p = new Plan();
-        p.add("C" + memos.size());
+        p.add((replace ? "C" : "A") + memos.size());
+        // 묶음 이름은 보낼 때마다 달라야 워치에 있던 다른 묶음을 덮어쓰지 않는다 (시각 기반 13자리)
+        long base = System.currentTimeMillis() % 1_000_000_000_000L * 10;
         p.add(fontMessageStr(fontSize));
         List<String> cur = new ArrayList<>();
         int curBytes = 0, n = 0;
@@ -80,14 +83,14 @@ public final class WatchSender {
             String j = m.toJson();
             int b = utf8(j) + 1;
             if (!cur.isEmpty() && curBytes + b > BUNDLE_BYTES) {
-                addBundle(p, String.format("b%012d", n++), cur);
+                addBundle(p, String.format("%013d", base + n++), cur);
                 cur = new ArrayList<>();
                 curBytes = 0;
             }
             cur.add(j);
             curBytes += b;
         }
-        if (!cur.isEmpty()) addBundle(p, String.format("b%012d", n), cur);
+        if (!cur.isEmpty()) addBundle(p, String.format("%013d", base + n), cur);
         p.add("E");
         return p;
     }

@@ -58,7 +58,7 @@ public class MainActivity extends Activity {
         root.addView(button("배터리 최적화 제외", v -> askBattery()));
 
         root.addView(section("2. 컬러노트 메모 한꺼번에 보내기"));
-        root.addView(text("컬러노트 → 더보기 → 설정 → 백업에서 백업 파일을 기기(다운로드 폴더 등)에 저장한 뒤, 아래 버튼으로 그 파일을 고르세요. 파일을 고르면 \"최근 30개만 / 직접 고르기 / 전체\" 중에서 보낼 메모를 정할 수 있어요. 잠긴 메모는 빠지고, 워치의 메모는 보낸 메모로 바뀝니다.", 14));
+        root.addView(text("컬러노트 → 더보기 → 설정 → 백업에서 백업 파일을 기기(다운로드 폴더 등)에 저장한 뒤, 아래 버튼으로 그 파일을 고르세요. 파일을 고르면 \"최근 30개만 / 직접 고르기 / 전체\" 중에서 보낼 메모를 정할 수 있어요. 잠긴 메모는 빠져요. 일부만 보내면 워치에 있던 메모는 그대로 두고 날짜 순서에 맞춰 추가(같은 메모는 새 내용으로)되고, \"전체\"를 고르면 워치 메모가 백업 내용으로 통째로 바뀌어요.", 14));
         root.addView(button("컬러노트 백업 파일 고르기 → 워치로 보내기", v -> pickBackup()));
         root.addView(button("백업 비밀번호 바꾸기 (기본 0000)", v -> askPassword(null)));
 
@@ -168,7 +168,7 @@ public class MainActivity extends Activity {
     private void confirmSend(List<Memo> memos, int locked, int bad) {
         int n = Math.min(store.recentCount(), memos.size());
         String info = "메모 " + memos.size() + "개를 찾았어요. [" + ColorNoteBackup.lastMethod + "]\n(잠긴 메모 " + locked + "개 제외"
-                + (bad > 0 ? ", 읽지 못한 " + bad + "개" : "") + ")\n어떤 메모를 보낼까요? 워치의 메모는 보낸 것으로 바뀌어요.";
+                + (bad > 0 ? ", 읽지 못한 " + bad + "개" : "") + ")\n어떤 메모를 보낼까요?\n· 최근 N개 / 직접 고르기: 워치 메모에 추가\n· 전체: 워치 메모를 통째로 바꿈";
         String[] items = {
                 "최근 " + n + "개만",
                 "최근 몇 개인지 정하기…",
@@ -181,10 +181,10 @@ public class MainActivity extends Activity {
                 .setTitle("컬러노트 백업")
                 .setCustomTitle(head)
                 .setItems(items, (d, which) -> {
-                    if (which == 0) startSend(new ArrayList<>(memos.subList(0, n)));
+                    if (which == 0) startSend(new ArrayList<>(memos.subList(0, n)), false);
                     else if (which == 1) askRecent(memos, locked, bad);
                     else if (which == 2) pickMemos(memos);
-                    else startSend(memos);
+                    else startSend(memos, true);
                 })
                 .setNegativeButton("취소", null)
                 .show();
@@ -229,24 +229,27 @@ public class MainActivity extends Activity {
                     for (int i = 0; i < memos.size(); i++) if (checked[i]) { out.add(memos.get(i)); ids.add(memos.get(i).id); }
                     if (out.isEmpty()) { say("고른 메모가 없어요."); return; }
                     store.setPicked(ids);
-                    startSend(out);
+                    startSend(out, false);
                 })
                 .setNegativeButton("취소", null)
                 .show();
     }
 
-    private void startSend(List<Memo> memos) {
+    /** replace = 워치 메모를 지우고 통째로 바꿈 / false = 추가만 */
+    private void startSend(List<Memo> memos, boolean replace) {
         new AlertDialog.Builder(this)
-                .setMessage("메모 " + memos.size() + "개를 워치로 보낼까요?\n워치에 있던 메모는 지워지고 이 메모들로 바뀌어요.")
-                .setPositiveButton("보내기", (d, w) -> sendAll(memos))
+                .setMessage("메모 " + memos.size() + "개를 워치로 보낼까요?\n" + (replace
+                        ? "워치에 있던 메모는 지워지고 이 메모들로 바뀌어요."
+                        : "워치에 있던 메모는 그대로 두고 날짜 순서에 맞춰 추가돼요. (같은 메모는 새 내용으로 바뀜)"))
+                .setPositiveButton("보내기", (d, w) -> sendAll(memos, replace))
                 .setNegativeButton("취소", null)
                 .show();
     }
 
     private WatchSender.Plan lastPlan;
 
-    private void sendAll(List<Memo> memos) {
-        lastPlan = WatchSender.importPlan(memos, store.fontSize());
+    private void sendAll(List<Memo> memos, boolean replace) {
+        lastPlan = WatchSender.importPlan(memos, store.fontSize(), replace);
         sendPlan(0);
     }
 

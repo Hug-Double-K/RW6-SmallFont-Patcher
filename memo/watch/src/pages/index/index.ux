@@ -89,6 +89,14 @@ export default {
       this.status = this.total ? `받는 중… 0 / ${this.total}` : ''
       return
     }
+    if (k === 'A') { // 지우지 않고 추가로 받기
+      this.total = Number(d.substr(1)) || 0
+      this.got = 0
+      recv = null
+      if (this.total) this.keepOn(true)
+      this.status = `추가 받는 중… 0 / ${this.total}`
+      return
+    }
     if (k === 'E') {
       this.saveNow()
       this.keepOn(false)
