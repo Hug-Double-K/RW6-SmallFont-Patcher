@@ -100,7 +100,10 @@ public class NotiListener extends NotificationListenerService {
                 Object uri = m.get("uri");
                 if (type != null && type.startsWith("image/") && uri instanceof Uri && !sentUris.contains(uri.toString())) {
                     CharSequence t = m.getCharSequence("text");
-                    photos.add(0, new PhotoMsg(who, t == null ? "" : t.toString(), (Uri) uri, m.getLong("time", sbn.getPostTime())));
+                    String ts = t == null ? "" : t.toString();
+                    // 카톡 이모티콘: '이모티콘을 보냈습니다.' + 그림 → 사진보다 작게 보냄
+                    boolean emo = ts.contains(EMOTICON) || (i == msgs.length - 1 && text.contains(EMOTICON));
+                    photos.add(0, new PhotoMsg(who, ts, (Uri) uri, m.getLong("time", sbn.getPostTime()), emo));
                 }
             }
         }
@@ -133,7 +136,7 @@ public class NotiListener extends NotificationListenerService {
             for (PhotoMsg ph : photos) {
                 sentUris.add(ph.uri.toString());
                 // 사진은 받는 데 시간이 걸리니, 먼저 '보낸 사람: 사진' 글 알림을 즉시 보내고 같은 자리에 사진을 끼움
-                sendText(prefs, fIcon, fApp, fConv, ph.sender, "사진", ph.time, ph.stamp, true);
+                sendText(prefs, fIcon, fApp, fConv, ph.sender, ph.emoticon ? "이모티콘" : "사진", ph.time, ph.stamp, true);
                 // 카톡은 알림을 먼저 띄우고 사진을 나중에 내려받는 일이 있어, 실패하면 잠시 뒤 다시 읽는다
                 worker.post(() -> loadAndSend(prefs, fIcon, fApp, fConv, ph, fs, 0));
             }
@@ -155,13 +158,14 @@ public class NotiListener extends NotificationListenerService {
         lastSent.put(key, sig);
         if (lastSent.size() > 200) lastSent.clear();
 
-        renderAndSend(prefs, icon, appName, conv, sender, text, picture, sbn.getPostTime(), String.valueOf(System.currentTimeMillis()));
+        renderAndSend(prefs, icon, appName, conv, sender, text, picture, sbn.getPostTime(), String.valueOf(System.currentTimeMillis()),
+                text.contains(EMOTICON));
     }
 
     private static final long[] RETRY_MS = {0, 1500, 3000, 6000, 10000};
 
     private void loadAndSend(Prefs prefs, Drawable icon, String app, String conv, PhotoMsg ph, int fs, int attempt) {
-        Bitmap pic = loadUri(ph.uri);
+        Bitmap pic = loadUri(ph.uri, ph.emoticon ? 1 : 2); // 이모티콘은 원래 작아서 줄이지 않고 읽음
         if (pic == null && attempt + 1 < RETRY_MS.length) {
             worker.postDelayed(() -> loadAndSend(prefs, icon, app, conv, ph, fs, attempt + 1), RETRY_MS[attempt + 1]);
             return;
@@ -170,7 +174,7 @@ public class NotiListener extends NotificationListenerService {
             prefs.addHistory(now() + " " + ph.sender + ": 사진 읽기 실패 (" + RETRY_MS.length + "번 시도) — " + lastLoadError);
             return;
         }
-        renderAndSend(prefs, icon, app, conv, ph.sender, ph.text, pic, ph.time, ph.stamp);
+        renderAndSend(prefs, icon, app, conv, ph.sender, ph.text, pic, ph.time, ph.stamp, ph.emoticon);
     }
 
     /** 글 알림 JSON (워치가 직접 그림). pending = 사진이 뒤따라옴 */
@@ -197,7 +201,9 @@ public class NotiListener extends NotificationListenerService {
     }
 
     private void renderAndSend(Prefs prefs, Drawable icon, String appName, String conv, String sender,
-                               String text, Bitmap picture, long when, String stamp) {
+                               String text, Bitmap picture, long when, String stamp, boolean emoticon) {
+        // 이모티콘은 원본과 화면 폭 70% 중 작은 쪽으로 (확대하지 않음 → 선명하고 데이터도 작음)
+        final int maxPicW = emoticon ? Math.round(Renderer.WIDTH * 0.7f) : 0;
         String b64;
         boolean emoji = hasEmoji(text) || hasEmoji(sender) || hasEmoji(conv);
         if (picture == null && text != null && hasEmoji(text) && stripEmoji(text).trim().isEmpty() && text.length() <= 24) {
@@ -225,16 +231,17 @@ public class NotiListener extends NotificationListenerService {
                     : textJson(icon, appName, conv, sender, text, when, false);
             if (b64 == null) return;
         } else {
-            b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, picture, prefs.fontSize(), when));
+            b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, picture, prefs.fontSize(), when, maxPicW));
         }
         if (b64.length() > 1_500_000 && picture != null) { // 너무 크면 사진을 더 줄여서
             Bitmap small = Bitmap.createScaledBitmap(picture, Math.max(1, picture.getWidth() / 2), Math.max(1, picture.getHeight() / 2), true);
-            b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, small, prefs.fontSize(), when));
+            b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, small, prefs.fontSize(), when, maxPicW));
         }
-        final String summary = sender + (picture != null ? " [사진]" : "");
+        final String summary = sender + (picture == null ? "" : emoticon
+                ? " [이모티콘 " + picture.getWidth() + "→" + Math.min(picture.getWidth(), maxPicW) + "px]" : " [사진]");
         final int kb = b64.length() / 1024;
         final String app = appName;
-        final String line = sender + ": " + (picture != null ? "사진" : text);
+        final String line = sender + ": " + (picture == null ? text : emoticon ? "이모티콘" : "사진");
         WatchSender.send(this, b64, stamp, (ok, msg) -> {
             prefs.setLastLog(now() + " " + summary + " → " + msg);
             prefs.addHistory(now() + " " + summary + " " + kb + "KB → " + (ok ? "✔ " : "✘ ") + msg);
@@ -247,12 +254,14 @@ public class NotiListener extends NotificationListenerService {
     }
 
     private static int SEQ = 0;
+    static final String EMOTICON = "이모티콘을 보냈습니다";
 
     static final class PhotoMsg {
         final String sender, text; final Uri uri; final long time;
         /** 워치에서 쓰는 이름 (글 알림 먼저 → 사진이 같은 이름으로 대체) */
         final String stamp = String.valueOf(System.currentTimeMillis() + (SEQ++ % 1000));
-        PhotoMsg(String s, String t, Uri u, long w) { sender = s; text = t; uri = u; time = w; }
+        final boolean emoticon;
+        PhotoMsg(String s, String t, Uri u, long w, boolean e) { sender = s; text = t; uri = u; time = w; emoticon = e; }
     }
 
     private String diagnose(StatusBarNotification sbn) {
@@ -273,7 +282,11 @@ public class NotiListener extends NotificationListenerService {
             b.append("type=").append(last.getString("type"));
             Object uri = last.get("uri");
             b.append(" / uri=").append(uri == null ? "없음" : String.valueOf(uri).replaceAll("(?<=://[^/]{0,40}/).*", "…"));
-            if (uri instanceof Uri) b.append(" / 읽기=").append(loadUri((Uri) uri) != null ? "성공" : "실패");
+            if (uri instanceof Uri) {
+                Bitmap d = loadUri((Uri) uri, 1);
+                b.append(" / 읽기=").append(d != null ? "성공" : "실패");
+                if (d != null) b.append("\n원본 크기=").append(d.getWidth()).append("×").append(d.getHeight());
+            }
         }
         return b.toString();
     }
@@ -293,11 +306,14 @@ public class NotiListener extends NotificationListenerService {
         return null;
     }
 
-    private Bitmap loadUri(Uri uri) {
+    private Bitmap loadUri(Uri uri) { return loadUri(uri, 2); }
+
+    /** sample: 1 = 원본 그대로, 2 = 가로세로 절반으로 읽기(큰 사진용) */
+    private Bitmap loadUri(Uri uri, int sample) {
         try (InputStream in = getContentResolver().openInputStream(uri)) {
             if (in == null) { lastLoadError = "빈 파일"; return null; }
             BitmapFactory.Options o = new BitmapFactory.Options();
-            o.inSampleSize = 2;
+            o.inSampleSize = sample;
             Bitmap b = BitmapFactory.decodeStream(in, null, o);
             if (b == null) lastLoadError = "사진 형식을 읽지 못함(아직 내려받는 중일 수 있음)";
             return b;

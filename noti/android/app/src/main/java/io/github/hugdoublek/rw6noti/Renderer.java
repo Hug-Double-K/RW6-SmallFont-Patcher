@@ -30,6 +30,12 @@ public final class Renderer {
 
     public static Bitmap render(Drawable icon, String appName, String convTitle, String sender,
                                 String body, Bitmap picture, int fontSize, long when) {
+        return render(icon, appName, convTitle, sender, body, picture, fontSize, when, 0);
+    }
+
+    /** maxPicW > 0 이면 사진 가로를 이 값과 원본 중 작은 쪽으로 (확대 안 함, 가운데 정렬). 카톡 이모티콘용 */
+    public static Bitmap render(Drawable icon, String appName, String convTitle, String sender,
+                                String body, Bitmap picture, int fontSize, long when, int maxPicW) {
         int fs = Math.max(14, fontSize);
         int smallFs = Math.round(fs * 0.78f * HEADER_SCALE);
         int senderFs = Math.round(fs * 1.05f);
@@ -48,7 +54,7 @@ public final class Renderer {
         int iconSize = Math.round(fs * 0.78f * 1.6f * HEADER_SCALE);
         List<String> headerLines = wrap(header, small, contentW - iconSize - 10, 1);
         List<String> senderLines = wrap(sender == null ? "" : sender, senderP, contentW, 2);
-        if (picture != null && body != null && body.contains("사진을 보냈습니다")) body = ""; // 사진이 보이면 안내문은 생략
+        if (picture != null && body != null && (body.contains("사진을 보냈습니다") || body.contains("이모티콘을 보냈습니다"))) body = ""; // 그림이 보이면 안내문은 생략
         List<String> bodyLines = wrap(body == null ? "" : body, bodyP, contentW, 0);
 
         float lhSmall = lineHeight(small), lhSender = lineHeight(senderP), lhBody = lineHeight(bodyP);
@@ -61,6 +67,7 @@ public final class Renderer {
             // 가로를 카드 폭에 꽉 채우고 세로는 비율대로. 세로가 한도(PIC_MAX_H)를 넘는 긴 사진만
             // 잘라내지 않고 전체를 비율 그대로 줄여서 한도 안에 맞춤 (가로가 조금 좁아지고 가운데 정렬)
             float scale = Math.min((float) contentW / picture.getWidth(), (float) PIC_MAX_H / picture.getHeight());
+            if (maxPicW > 0) scale = Math.min(scale, Math.min(1f, (float) maxPicW / picture.getWidth()));
             int pw = Math.max(1, Math.round(picture.getWidth() * scale));
             picH = Math.max(1, Math.round(picture.getHeight() * scale));
             pic = Bitmap.createScaledBitmap(picture, pw, picH, true);
