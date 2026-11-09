@@ -77,6 +77,7 @@ const MAX_SAVE = 40
 const WAIT_MS = 700
 let conn = null
 let waitTimer = null
+let screenTimer = null // 알림이 연달아 오면 마지막 알림 기준 5초
 const receiving = {}
 const done = {} // 이미 처리한 것 (폰이 같은 글을 여러 번 보내므로)
 
@@ -446,11 +447,11 @@ export default {
   },
 
   notifyArrival() {
-    // 화면 깨우기: 켜기만 하고 바로 시스템에 돌려줌 → 꺼지는 시간은 워치 디스플레이 설정을 따름
-    // (예전: 8초 동안 강제로 켜 둠. 앱이 워치의 화면 꺼짐 시간을 읽을 방법은 없음)
+    // 화면 깨우기: 5초 동안 강제로 켜 둔 뒤 시스템에 돌려줌 (사용자 요청, 3.7)
     if (this.alert.wake) {
       try { brightness.setKeepScreenOn({ keepScreenOn: true }) } catch (e) {}
-      setTimeout(() => this.releaseScreen(), 300)
+      if (screenTimer) clearTimeout(screenTimer)
+      screenTimer = setTimeout(() => { screenTimer = null; this.releaseScreen() }, 5000)
     }
     if (this.alert.vibe) {
       try { vibrator.vibrate({ mode: 'long' }) } catch (e) {}
