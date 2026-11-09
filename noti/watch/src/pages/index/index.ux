@@ -31,7 +31,7 @@
       <text class="btn danger" if="{{ deleteOn && notis }}" @click="deleteAll">모두 지우기</text>
       <text class="empty" if="{{ loaded && !notis }}">수신된 알림이 없습니다.</text>
       <list id="list" style="width: 100%; flex: 1" if="{{ notis }}">
-        <list-item type="{{ li.kind === 'img' ? 'img' : (li.e ? 'emo' : 'text') }}" for="(i, li) in list" class="card">
+        <list-item type="{{ li.kind === 'img' ? 'img' : (li.e ? 'emo' : 'text') }}" for="(i, li) in list" class="card" show="{{ !li.gone }}">
           <text class="btn danger" if="{{ deleteOn }}" @click="deleteOne(li, i)">지우기</text>
           <image if="{{ li.kind === 'img' }}" src="{{ li.uri }}" style="width: 100%" @click="openPopup(li)" />
           <div if="{{ li.kind === 'text' }}" class="tcard" @click="openPopup(li)">
@@ -344,11 +344,23 @@ export default {
   refreshList() {
     const self = this
     IDX = null // 상세 화면에서 지웠을 수 있으니 다시 읽음 (파일 하나라 빠름)
-    self.idxLoad(() => self.applyList())
+    self.idxLoad(() => {
+      // 새 알림이 없고 지워진 것만 있으면 목록을 새로 그리지 않고 숨기기만 → 보던 위치 그대로
+      const now = {}
+      IDX.forEach((e) => { now[e.uri] = true })
+      const have = {}
+      self.list.forEach((li) => { have[li.uri] = true })
+      if (self.list.length && IDX.every((e) => have[e.uri])) {
+        self.list.forEach((li) => { if (!now[li.uri]) li.gone = true })
+        self.notis = IDX.length
+        if (!self.notis) self.deleteOn = false
+        self.report()
+      } else self.applyList()
+    })
   },
 
   applyList() {
-    this.list = (IDX || []).map((e) => ({ uri: e.uri, kind: e.kind, a: e.a, s: e.s, b: e.b, icon: e.icon, e: e.e || '', ew: e.ew || 0, eh: e.eh || 0 }))
+    this.list = (IDX || []).map((e) => ({ uri: e.uri, kind: e.kind, a: e.a, s: e.s, b: e.b, icon: e.icon, e: e.e || '', ew: e.ew || 0, eh: e.eh || 0, gone: false }))
     this.notis = this.list.length
     this.loaded = true
     this.report()
@@ -376,11 +388,13 @@ export default {
     this.report()
   },
 
+  // 지운 칸은 목록에서 빼지 않고 숨김 → 목록을 다시 그리지 않아 보던 위치 그대로
   deleteOne(li, i) {
+    if (li.gone) return
     this.removeFile(li)
     this.idxRemove((e) => e.uri === li.uri)
-    this.list.splice(i, 1)
-    this.notis = this.list.length
+    li.gone = true
+    this.notis = Math.max(0, this.notis - 1)
     if (!this.notis) this.deleteOn = false
     this.report()
   },
