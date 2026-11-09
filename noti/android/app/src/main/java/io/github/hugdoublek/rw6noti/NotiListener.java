@@ -202,7 +202,7 @@ public class NotiListener extends NotificationListenerService {
         boolean emoji = hasEmoji(text) || hasEmoji(sender) || hasEmoji(conv);
         if (picture == null && text != null && hasEmoji(text) && stripEmoji(text).trim().isEmpty() && text.length() <= 24) {
             // 이모지만 있는 메시지: 카드 전체가 아니라 이모지만 작게 그려 글 알림에 붙임 → 메시지 1번, 가로도 딱 맞게
-            Bitmap eb = Renderer.emojiBitmap(text, 72);
+            Bitmap eb = Renderer.emojiBitmap(text, 54); // 72의 75%: 데이터·워치 메모리 약 절반
             b64 = textJson(icon, appName, stripEmoji(conv == null ? "" : conv), stripEmoji(sender == null ? "" : sender), "", when, false);
             if (b64 == null) return;
             try {
