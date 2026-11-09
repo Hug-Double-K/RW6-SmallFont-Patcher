@@ -11,7 +11,10 @@
           </div>
           <text class="t-snd" style="font-size: {{ alert.fs || 26 }}px">{{ cur.sender }}</text>
           <image if="{{ cur.e }}" src="{{ cur.e }}" style="width: {{ cur.ew }}px; height: {{ cur.eh }}px; margin-top: 6px" />
-          <text for="(i, p) in cur.parts" style="width: 100%; font-size: {{ alert.fs || 26 }}px; color: #eeeeee; margin-top: 4px">{{ p }}</text>
+          <div for="(i, p) in cur.parts" class="seg">
+            <text if="{{ !p.img }}" style="width: 100%; font-size: {{ alert.fs || 26 }}px; color: #eeeeee; margin-top: 4px">{{ p.t }}</text>
+            <image if="{{ p.img }}" src="{{ p.img }}" style="width: {{ p.w }}px; height: {{ p.h }}px; margin-top: 4px" />
+          </div>
           <text if="{{ cur.pending }}" class="t-app" style="margin-top: 10px">사진 받는 중…</text>
         </div>
       </scroll>
@@ -89,6 +92,17 @@ function split(body) {
     if (cur && cur.length + line.length + 1 > 300) { out.push(cur); cur = line } else cur = cur ? `${cur}\n${line}` : line
   })
   if (cur) out.push(cur)
+  return out
+}
+
+// 글 → 표시 조각 [{t}] / 이모지 조각 포함 [{t} | {img, w, h}]
+function toParts(body, sg) {
+  if (!sg) return split(body).map((t) => ({ t, img: '', w: 0, h: 0 }))
+  const out = []
+  sg.forEach((g) => {
+    if (g.f) out.push({ t: '', img: g.f, w: g.w, h: g.h })
+    else split(g.t || '').forEach((t) => out.push({ t, img: '', w: 0, h: 0 }))
+  })
   return out
 }
 
@@ -195,10 +209,26 @@ export default {
             sender: m.s || '', parts: [], pending: false, e, ew, eh })
         } })
       } })
+    } else if (m.sg) {
+      // 이모지가 든 줄은 그림 조각 → 파일로 저장한 뒤 글 조각과 함께 순서대로 표시
+      const jobs = []
+      m.sg.forEach((g, k) => {
+        if (!g.i) return
+        g.f = `${META}/${name}_${k}.png`
+        jobs.push({ uri: g.f, buf: self.decode(g.i) })
+        delete g.i
+      })
+      file.mkdir({ uri: META, recursive: true, complete() {
+        Promise.all(jobs.map((j) => new Promise((res) => file.writeArrayBuffer({ uri: j.uri, buffer: j.buf, complete: res }))))
+          .then(() => self.show({
+          name, img: '', icon: m.k ? `${ICONS}/${m.k}.png` : '',
+          app: m.c ? `${m.a} · ${m.c}` : (m.a || ''), sender: m.s || '', parts: toParts(m.b || '', m.sg), pending: !!m.p, e: '', ew: 0, eh: 0,
+        }))
+      } })
     } else {
       self.show({
         name, img: '', icon: m.k ? `${ICONS}/${m.k}.png` : '',
-        app: m.c ? `${m.a} · ${m.c}` : (m.a || ''), sender: m.s || '', parts: split(m.b || ''), pending: !!m.p, e: '', ew: 0, eh: 0,
+        app: m.c ? `${m.a} · ${m.c}` : (m.a || ''), sender: m.s || '', parts: toParts(m.b || ''), pending: !!m.p, e: '', ew: 0, eh: 0,
       })
     }
     self.notifyArrival()
@@ -442,4 +472,5 @@ export default {
   @import '../../common/common.css';
   .arrive { width: 100%; flex: 1; flex-direction: column; align-items: center; }
   .tview { width: 100%; flex-direction: column; padding: 28px 24px 16px; }
+  .seg { width: 100%; flex-direction: column; }
 </style>

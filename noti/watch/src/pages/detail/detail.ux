@@ -11,8 +11,9 @@
         <text class="t-snd" style="font-size: {{ fs }}px">{{ sender }}</text>
         <image if="{{ emo }}" src="{{ emo }}" style="width: {{ ew }}px; height: {{ eh }}px; margin-top: 6px" />
       </list-item>
-      <list-item type="para" for="(i, p) in parts" class="tcard-para">
-        <text style="width: 100%; font-size: {{ fs }}px; color: #eeeeee; line-height: {{ lh }}px">{{ p }}</text>
+      <list-item type="{{ p.img ? 'pimg' : 'para' }}" for="(i, p) in parts" class="tcard-para">
+        <text if="{{ !p.img }}" style="width: 100%; font-size: {{ fs }}px; color: #eeeeee; line-height: {{ lh }}px">{{ p.t }}</text>
+        <image if="{{ p.img }}" src="{{ p.img }}" style="width: {{ p.w }}px; height: {{ p.h }}px; margin-top: 4px" />
       </list-item>
       <list-item type="end" class="tcard-end"><text class="t-app">{{ time }}</text></list-item>
     </list>
@@ -56,12 +57,20 @@ export default {
           const m = JSON.parse(r.text)
           self.app = m.c ? `${m.a} · ${m.c}` : m.a
           self.sender = m.s || ''
-          if (m.ef) { self.emo = m.ef; self.ew = m.ew || 80; self.eh = m.eh || 80 } else self.parts = split(m.b || '')
+          if (m.ef) { self.emo = m.ef; self.ew = m.ew || 80; self.eh = m.eh || 80 }
+          else if (m.sg) {
+            const out = []
+            m.sg.forEach((g) => {
+              if (g.f) out.push({ t: '', img: g.f, w: g.w, h: g.h })
+              else split(g.t || '').forEach((t) => out.push({ t, img: '', w: 0, h: 0 }))
+            })
+            self.parts = out
+          } else self.parts = split(m.b || '').map((t) => ({ t, img: '', w: 0, h: 0 }))
           const t = new Date(m.w)
           self.time = `${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`
-        } catch (e) { self.parts = [`알림을 읽지 못했어요 (${e})`] }
+        } catch (e) { self.parts = [{ t: `알림을 읽지 못했어요 (${e})`, img: '', w: 0, h: 0 }] }
       },
-      fail() { self.parts = ['알림을 찾지 못했어요'] },
+      fail() { self.parts = [{ t: '알림을 찾지 못했어요', img: '', w: 0, h: 0 }] },
     })
   },
   remove() {

@@ -142,6 +142,21 @@ public final class Renderer {
         return b;
     }
 
+    /** 이모지가 든 문단 하나를 워치 글 화면과 비슷한 모양의 그림으로 (투명 배경, 글자 흰색, 줄 폭에 딱 맞게) */
+    public static Bitmap paraBitmap(String text, int fs, int maxW) {
+        android.text.TextPaint p = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+        p.setTextSize(fs);
+        p.setColor(0xFFEEEEEE);
+        android.text.StaticLayout l = android.text.StaticLayout.Builder.obtain(text, 0, text.length(), p, maxW)
+                .setLineSpacing(0, 1.1f).build();
+        float w = 1;
+        for (int i = 0; i < l.getLineCount(); i++) w = Math.max(w, l.getLineWidth(i));
+        int bw = Math.min(maxW, (int) Math.ceil(w) + 2), bh = Math.max(1, l.getHeight());
+        Bitmap b = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+        l.draw(new Canvas(b));
+        return b;
+    }
+
     /** 이모지만 있는 메시지: 이모지만 딱 맞는 크기로 (투명 배경 PNG, 몇 KB) */
     public static Bitmap emojiBitmap(String text, int size) {
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);

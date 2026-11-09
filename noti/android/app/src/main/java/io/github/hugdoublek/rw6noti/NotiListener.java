@@ -210,9 +210,15 @@ public class NotiListener extends NotificationListenerService {
                 o.put("e", Renderer.toBase64Png(eb)); o.put("ew", eb.getWidth()); o.put("eh", eb.getHeight());
                 b64 = o.toString();
             } catch (org.json.JSONException ex) { return; }
-        } else if (picture == null && emoji && (text == null || text.length() <= 400)) {
-            // 이모지는 워치 글꼴에 없어 X 박스가 됨 → 이모지가 있는 짧은 글만 폰에서 그림으로 그려 보냄 (JPEG라 가벼움)
-            b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, null, prefs.fontSize(), when));
+        } else if (picture == null && text != null && hasEmoji(text)) {
+            // 이모지는 워치 글꼴에 없어 X 박스가 됨 → 이모지가 든 문단만 작은 그림으로, 나머지는 글 그대로 (길이 상관없이)
+            b64 = textJson(icon, appName, stripEmoji(conv == null ? "" : conv), stripEmoji(sender == null ? "" : sender), stripEmoji(text), when, false);
+            if (b64 == null) return;
+            try {
+                org.json.JSONObject o = new org.json.JSONObject(b64);
+                o.put("sg", segments(text, prefs.fontSize()));
+                b64 = o.toString();
+            } catch (org.json.JSONException ex) { return; }
         } else if (picture == null) {
             // 글만 있는 알림: 이미지로 그리지 않고 글 그대로 (워치가 직접 그림). 아주 긴 글의 이모지는 빼고 보냄
             b64 = emoji ? textJson(icon, appName, stripEmoji(conv == null ? "" : conv), stripEmoji(sender == null ? "" : sender), stripEmoji(text == null ? "" : text), when, false)
@@ -299,6 +305,38 @@ public class NotiListener extends NotificationListenerService {
             lastLoadError = e.getClass().getSimpleName() + ": " + e.getMessage();
             return null; // 앱이 사진 접근을 허용하지 않았거나 아직 내려받는 중
         }
+    }
+
+    /**
+     * 글을 조각으로: 이모지 없는 줄은 글({"t"}), 이모지가 든 줄은 그림({"i","w","h"}).
+     * 긴 줄은 150자 안팎으로 나눠 그림이 너무 커지지 않게. 그림이 너무 많으면(약 200KB) 나머지는 이모지만 빼고 글로.
+     */
+    private org.json.JSONArray segments(String text, int fs) throws org.json.JSONException {
+        org.json.JSONArray arr = new org.json.JSONArray();
+        java.util.List<String> buf = new java.util.ArrayList<>();
+        int total = 0;
+        for (String para : text.split("\n", -1)) {
+            if (!hasEmoji(para) || total > 200_000) { buf.add(hasEmoji(para) ? stripEmoji(para) : para); continue; }
+            if (!buf.isEmpty()) { arr.put(new org.json.JSONObject().put("t", String.join("\n", buf))); buf.clear(); }
+            int i = 0;
+            while (i < para.length()) {
+                int end = Math.min(para.length(), i + 150);
+                if (end < para.length()) { // 공백에서 끊고, 글자(이모지)를 반으로 자르지 않게
+                    int sp = para.lastIndexOf(' ', end);
+                    if (sp > i + 60) end = sp + 1;
+                    while (end < para.length() && (Character.isLowSurrogate(para.charAt(end)) || para.charAt(end) == 0x200D
+                            || para.charAt(end) == 0xFE0F)) end++;
+                }
+                String piece = para.substring(i, end);
+                Bitmap pb = Renderer.paraBitmap(piece, fs, 384);
+                String png = Renderer.toBase64Png(pb);
+                total += png.length();
+                arr.put(new org.json.JSONObject().put("i", png).put("w", pb.getWidth()).put("h", pb.getHeight()));
+                i = end;
+            }
+        }
+        if (!buf.isEmpty()) arr.put(new org.json.JSONObject().put("t", String.join("\n", buf)));
+        return arr;
     }
 
     /** 워치 글꼴에 없는 이모지인지 */
