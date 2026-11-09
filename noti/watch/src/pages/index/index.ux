@@ -65,6 +65,10 @@ const ICONS = 'internal://mass/rw6noti_icons'
 const META = 'internal://mass/rw6noti_meta'
 const INDEX = `${META}/index.json`
 let IDX = null // [{ name, kind, uri, a, s, b, icon }] 최신이 앞
+let idxWaiters = []
+let saving = false
+let saveAgain = false
+let saveDone = []
 const MAX_SAVE = 40
 // 앱을 연 뒤 이 시간 안에 폰에서 알림이 오면 목록 없이 그 알림만 보여줌
 const WAIT_MS = 700
@@ -120,8 +124,9 @@ export default {
   },
 
   // 도착 화면에서 뒤로(스와이프) = 목록으로
+  // 도착 화면에서 왼쪽→오른쪽 스와이프 = 워치 메인 화면으로 (알림은 목록에 남음)
   onBackPress() {
-    if (this.mode === 'arrive') { this.showList(); return true }
+    if (this.mode === 'arrive') { app.terminate(); return true }
     return false
   },
 
@@ -171,7 +176,8 @@ export default {
   // 글: 받은 내용을 메모리에서 바로 그림 (파일은 뒤에서 저장)
   gotText(name, json) {
     const self = this
-    const m = JSON.parse(json)
+    let m
+    try { m = JSON.parse(json) } catch (e) { self.status = `알림 읽기 실패: ${e}`; return }
     if (m.k && m.i) {
       file.mkdir({ uri: ICONS, recursive: true, complete() { file.writeArrayBuffer({ uri: `${ICONS}/${m.k}.png`, buffer: self.decode(m.i) }) } })
       delete m.i
@@ -254,19 +260,42 @@ export default {
   },
 
   // ---- 목록 미리보기 모음 ----
+  // 목록 읽기는 한 번에 하나만 (동시에 읽고 쓰다 목록이 비어 보이던 문제 방지)
   idxLoad(cb) {
     const self = this
     if (IDX) { cb(IDX); return }
+    idxWaiters.push(cb)
+    if (idxWaiters.length > 1) return
+    const finish = (list) => { IDX = list; const w = idxWaiters; idxWaiters = []; w.forEach((f) => f(IDX)) }
     file.readText({
       uri: INDEX,
-      success(r) { try { IDX = JSON.parse(r.text) } catch (e) { IDX = null } if (IDX) cb(IDX); else self.idxRebuild(cb) },
-      fail() { self.idxRebuild(cb) },
+      success(r) {
+        let list = null
+        try { list = JSON.parse(r.text) } catch (e) { list = null }
+        if (!Array.isArray(list)) { self.idxRebuild(finish); return }
+        if (list.length) { finish(list); return }
+        // 비어 있다는데 알림 파일이 남아 있으면 다시 만듦
+        file.list({ uri: DIR, success(d) { if (d.fileList.length) self.idxRebuild(finish); else finish(list) }, fail() { finish(list) } })
+      },
+      fail() { self.idxRebuild(finish) },
     })
   },
+  // 저장도 한 번에 하나씩, 마지막 내용으로
   idxSave(done) {
-    file.mkdir({ uri: META, recursive: true, complete() {
-      file.writeText({ uri: INDEX, text: JSON.stringify(IDX || []), complete() { if (done) done() } })
-    } })
+    if (done) saveDone.push(done)
+    if (saving) { saveAgain = true; return }
+    saving = true
+    const run = () => {
+      saveAgain = false
+      file.mkdir({ uri: META, recursive: true, complete() {
+        file.writeText({ uri: INDEX, text: JSON.stringify(IDX || []), complete() {
+          if (saveAgain) { run(); return }
+          saving = false
+          const d = saveDone; saveDone = []; d.forEach((f) => f())
+        } })
+      } })
+    }
+    run()
   },
   idxPut(e) {
     const self = this

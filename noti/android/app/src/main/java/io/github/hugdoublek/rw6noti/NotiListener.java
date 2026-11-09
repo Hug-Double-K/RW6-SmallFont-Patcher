@@ -107,6 +107,15 @@ public class NotiListener extends NotificationListenerService {
 
         // 펼친 알림(긴 글)에 더 많은 글자가 있으면 그걸 사용
         text = longer(text, str(ex.getCharSequence(Notification.EXTRA_BIG_TEXT)));
+        // 채널·봇(북클럽, 카카오이모티콘 등) 알림은 여러 줄 묶음(InboxStyle)으로 오기도 함
+        CharSequence[] lines = ex.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
+        if (lines != null && lines.length > 0) {
+            StringBuilder lb = new StringBuilder();
+            for (CharSequence l : lines) if (l != null && l.length() > 0) lb.append(lb.length() > 0 ? "\n" : "").append(l);
+            if (lb.length() > text.length()) text = lb.toString();
+        }
+        // 워치가 버거워하지 않게 아주 긴 글은 3000자까지
+        if (text.length() > 3000) text = text.substring(0, 3000) + "…";
 
         PackageManager pm = getPackageManager();
         String appName = pkg;
