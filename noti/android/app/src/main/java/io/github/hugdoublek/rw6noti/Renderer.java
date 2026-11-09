@@ -118,7 +118,8 @@ public final class Renderer {
         // 사진
         if (pic != null) {
             cy += 12;
-            c.drawBitmap(pic, PAD + (contentW - pic.getWidth()) / 2f, cy, null);
+            // 이모티콘(maxPicW > 0)은 왼쪽 정렬, 일반 사진은 가운데
+            c.drawBitmap(pic, maxPicW > 0 ? PAD : PAD + (contentW - pic.getWidth()) / 2f, cy, null);
         }
         return bmp;
     }
