@@ -3,8 +3,8 @@
     <!-- 도착 화면: 폰이 보낸 알림만 바로 보여줌 (목록·빈 화면을 먼저 보여주지 않음) -->
     <div if="{{ mode === 'arrive' }}" class="arrive">
       <scroll style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
-        <image if="{{ cur.img }}" src="{{ cur.img }}" style="width: 100%; margin-top: 28px" />
-        <div if="{{ !cur.img }}" class="tview">
+        <image if="{{ cur.img }}" src="{{ cur.img }}" style="width: 100%; margin-top: 28px" @click="openCur" />
+        <div if="{{ !cur.img }}" class="tview" @click="openCur">
           <div class="t-row">
             <image if="{{ cur.icon }}" src="{{ cur.icon }}" class="t-icon" />
             <text class="t-app">{{ cur.app }}</text>
@@ -267,6 +267,13 @@ export default {
     this.mode = 'list'
     // 미리 읽어 둔 게 있으면 그대로 바로
     if (IDX) this.applyList(); else this.idxLoad(() => this.applyList())
+  },
+
+  // 도착 화면에서 알림을 누르면 읽기 화면으로 ('끄기' = 지우고 앱 닫기, 뒤로 = 도착 화면)
+  openCur() {
+    const c = this.cur
+    if (!c.name) return
+    router.push({ uri: '/pages/detail', params: { uri: c.img || `${DIR}/${c.name}.json`, arrival: '1' } })
   },
 
   // 도착 화면의 '끄기' = 이 알림 지우고 앱 닫기
