@@ -446,16 +446,22 @@ export default {
   },
 
   notifyArrival() {
+    // 화면 깨우기: 켜기만 하고 바로 시스템에 돌려줌 → 꺼지는 시간은 워치 디스플레이 설정을 따름
+    // (예전: 8초 동안 강제로 켜 둠. 앱이 워치의 화면 꺼짐 시간을 읽을 방법은 없음)
     if (this.alert.wake) {
       try { brightness.setKeepScreenOn({ keepScreenOn: true }) } catch (e) {}
-      setTimeout(() => { try { brightness.setKeepScreenOn({ keepScreenOn: false }) } catch (e) {} }, 8000)
+      setTimeout(() => this.releaseScreen(), 300)
     }
     if (this.alert.vibe) {
       try { vibrator.vibrate({ mode: 'long' }) } catch (e) {}
     }
   },
 
-  onDestroy() { app.terminate() },
+  releaseScreen() { try { brightness.setKeepScreenOn({ keepScreenOn: false }) } catch (e) {} },
+
+  onHide() { this.releaseScreen() },
+
+  onDestroy() { this.releaseScreen(); app.terminate() },
 
   decode(b64) {
     let n = b64.length
