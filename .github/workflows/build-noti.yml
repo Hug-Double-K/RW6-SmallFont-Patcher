@@ -9,6 +9,8 @@ on:
       - 'noti/sign/**'
       - 'memo/android/**'
       - 'memo/watch/**'
+      - 'ai/android/**'
+      - 'ai/watch/**'
       - '.github/workflows/build-noti.yml'
   workflow_dispatch:
 
@@ -54,6 +56,18 @@ jobs:
           npm install --no-audit --no-fund 2>&1 | tail -20
           npx aiot release 2>&1 | tee ../../build-memo-watch.log
 
+      # ---------- RW6 AI 시험 ----------
+      - name: Build ai apk
+        if: always()
+        working-directory: ai/android
+        run: gradle --no-daemon assembleRelease 2>&1 | tee ../../build-ai-android.log
+      - name: Build ai rpk
+        if: always()
+        working-directory: ai/watch
+        run: |
+          npm install --no-audit --no-fund 2>&1 | tail -20
+          npx aiot release 2>&1 | tee ../../build-ai-watch.log
+
       # ---------- 결과물을 저장소에 올림 ----------
       - name: Commit outputs
         if: always()
@@ -70,7 +84,12 @@ jobs:
           tail -60 build-memo-watch.log > memo/release/build-watch.log 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add noti/release memo/release
+          mkdir -p ai/release
+          cp ai/android/app/build/outputs/apk/release/*.apk ai/release/RW6AI.apk 2>/dev/null || true
+          cp ai/watch/dist/*.rpk ai/release/RW6AI.rpk 2>/dev/null || true
+          tail -60 build-ai-android.log > ai/release/build-android.log 2>/dev/null || true
+          tail -60 build-ai-watch.log > ai/release/build-watch.log 2>/dev/null || true
+          git add noti/release memo/release ai/release
           git commit -m "Build outputs ${GITHUB_SHA::7} [skip ci]" || echo "nothing to commit"
           git pull --rebase origin main || true
           git push

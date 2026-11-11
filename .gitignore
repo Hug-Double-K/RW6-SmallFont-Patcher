@@ -10,3 +10,9 @@ memo/watch/build/
 memo/android/.gradle/
 memo/android/app/build/
 memo/android/build/
+ai/watch/node_modules/
+ai/watch/dist/
+ai/watch/build/
+ai/android/.gradle/
+ai/android/app/build/
+ai/android/build/

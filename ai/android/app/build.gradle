@@ -1,0 +1,49 @@
+plugins {
+    id 'com.android.application'
+}
+
+def ksProps = new Properties()
+ksProps.load(new FileInputStream(rootProject.file("../../noti/sign/keystore.properties")))
+
+android {
+    namespace 'io.github.hugdoublek.rw6ai'
+    compileSdk 34
+
+    defaultConfig {
+        // 워치 앱(manifest.json의 package)과 반드시 같아야 함
+        applicationId "io.github.hugdoublek.rw6ai"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "0.1"
+    }
+
+    signingConfigs {
+        release {
+            storeFile rootProject.file("../../noti/sign/rw6noti.jks")
+            storePassword ksProps['storePassword']
+            keyAlias ksProps['keyAlias']
+            keyPassword ksProps['keyPassword']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+        debug {
+            signingConfig signingConfigs.release
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
