@@ -32,10 +32,9 @@ Daemon will be stopped at the end of the build
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:processReleaseResources
 > Task :app:collectReleaseDependencies
 > Task :app:mergeReleaseJavaResource
-> Task :app:processReleaseResources
-> Task :app:sdkReleaseDependencyData
 
 > Task :app:compileReleaseJavaWithJavac
 Note: /home/runner/work/RW6-SmallFont-Patcher/RW6-SmallFont-Patcher/ai/android/app/src/main/java/io/github/hugdoublek/rw6ai/MainActivity.java uses or overrides a deprecated API.
@@ -43,16 +42,17 @@ Note: Recompile with -Xlint:deprecation for details.
 
 > Task :app:dexBuilderRelease
 > Task :app:mergeReleaseGlobalSynthetics
-> Task :app:validateSigningRelease
-> Task :app:writeReleaseAppMetadata
-> Task :app:writeReleaseSigningConfigVersions
+> Task :app:sdkReleaseDependencyData
 > Task :app:optimizeReleaseResources
+> Task :app:validateSigningRelease
 > Task :app:mergeDexRelease
+> Task :app:writeReleaseAppMetadata
 > Task :app:compileReleaseArtProfile
+> Task :app:writeReleaseSigningConfigVersions
 > Task :app:packageRelease
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_5-1794400521467.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_5-1794402111993.json
 
 BUILD SUCCESSFUL in 13s
 38 actionable tasks: 38 executed
