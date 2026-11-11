@@ -7,9 +7,11 @@
         <div if="{{ !cur.img }}" class="tview" @click="openCur">
           <div class="t-row">
             <image if="{{ cur.icon }}" src="{{ cur.icon }}" class="t-icon" />
-            <text class="t-app">{{ cur.app }}</text>
+            <image if="{{ cur.hf }}" src="{{ cur.hf }}" style="width: {{ cur.hw }}px; height: {{ cur.hh }}px" />
+            <text if="{{ !cur.hf }}" class="t-app">{{ cur.app }}</text>
           </div>
-          <text class="t-snd" style="font-size: {{ alert.fs || 26 }}px">{{ cur.sender }}</text>
+          <image if="{{ cur.sf }}" src="{{ cur.sf }}" style="width: {{ cur.sw }}px; height: {{ cur.sh }}px; margin-top: 6px" />
+          <text if="{{ !cur.sf }}" class="t-snd" style="font-size: {{ alert.fs || 26 }}px">{{ cur.sender }}</text>
           <image if="{{ cur.e }}" src="{{ cur.e }}" style="width: {{ cur.ew }}px; height: {{ cur.eh }}px; margin-top: 6px" />
           <div for="(i, p) in cur.parts" class="seg">
             <text if="{{ !p.img }}" style="width: 100%; font-size: {{ alert.fs || 26 }}px; color: #eeeeee; margin-top: 4px">{{ p.t }}</text>
@@ -40,9 +42,11 @@
           <div if="{{ li.kind === 'text' }}" class="tcard" @click="openPopup(li)">
             <div class="t-row">
               <image if="{{ li.icon }}" src="{{ li.icon }}" class="t-icon" />
-              <text class="t-app">{{ li.a || '알림' }}</text>
+              <image if="{{ li.hf }}" src="{{ li.hf }}" style="width: {{ li.hw }}px; height: {{ li.hh }}px" />
+              <text if="{{ !li.hf }}" class="t-app">{{ li.a || '알림' }}</text>
             </div>
-            <text class="t-snd">{{ li.s }}</text>
+            <image if="{{ li.sf }}" src="{{ li.sf }}" style="width: {{ li.sw }}px; height: {{ li.sh }}px; margin-top: 6px" />
+            <text if="{{ !li.sf }}" class="t-snd">{{ li.s }}</text>
             <image if="{{ li.e }}" src="{{ li.e }}" style="width: {{ li.ew }}px; height: {{ li.eh }}px; margin-top: 4px" />
             <text if="{{ !li.e }}" class="t-body">{{ li.b }}</text>
           </div>
@@ -114,7 +118,7 @@ function preview(body) { return body.length > 120 ? body.substr(0, 120) + '…' 
 export default {
   private: {
     mode: 'wait', // wait(검은 화면) → arrive(알림) / list(목록)
-    cur: { name: '', img: '', icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0 },
+    cur: { name: '', img: '', icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0, sf: '', sw: 0, sh: 0, hf: '', hw: 0, hh: 0 },
     list: [],
     notis: 0,
     loaded: false,
@@ -192,52 +196,39 @@ export default {
   },
 
   // 글: 받은 내용을 메모리에서 바로 그림 (파일은 뒤에서 저장)
+  // 폰이 그려 보낸 그림 조각(이모지만 있는 메시지 e, 이모지 든 줄 sg, 보낸 사람 si, 윗줄 hi)은 파일로 저장한 뒤 한 번에 표시
   gotText(name, json) {
     const self = this
     let m
     try { m = JSON.parse(json) } catch (e) { self.status = `알림 읽기 실패: ${e}`; return }
     if (m.k && m.i) {
-      file.mkdir({ uri: ICONS, recursive: true, complete() { file.writeArrayBuffer({ uri: `${ICONS}/${m.k}.png`, buffer: self.decode(m.i) }) } })
+      const ib = self.decode(m.i)
+      file.mkdir({ uri: ICONS, recursive: true, complete() { file.writeArrayBuffer({ uri: `${ICONS}/${m.k}.png`, buffer: ib }) } })
       delete m.i
     }
-    // 이모지만 있는 메시지: 폰이 그린 작은 이모지 그림을 저장해 그 크기 그대로 표시
-    let e = '', ew = 0, eh = 0
-    if (m.e) {
-      e = `${META}/${name}.png`; ew = m.ew || 80; eh = m.eh || 80
-      const buf = self.decode(m.e)
-      delete m.e
-      m.ef = e
-      file.mkdir({ uri: META, recursive: true, complete() {
-        file.writeArrayBuffer({ uri: e, buffer: buf, complete() {
-          self.show({ name, img: '', icon: m.k ? `${ICONS}/${m.k}.png` : '', app: m.c ? `${m.a} · ${m.c}` : (m.a || ''),
-            sender: m.s || '', parts: [], pending: false, e, ew, eh })
-        } })
-      } })
-    } else if (m.sg) {
-      // 이모지가 든 줄은 그림 조각 → 파일로 저장한 뒤 글 조각과 함께 순서대로 표시
-      const jobs = []
-      m.sg.forEach((g, k) => {
-        if (!g.i) return
-        g.f = `${META}/${name}_${k}.png`
-        jobs.push({ uri: g.f, buf: self.decode(g.i) })
-        delete g.i
-      })
-      file.mkdir({ uri: META, recursive: true, complete() {
-        Promise.all(jobs.map((j) => new Promise((res) => file.writeArrayBuffer({ uri: j.uri, buffer: j.buf, complete: res }))))
-          .then(() => self.show({
-          name, img: '', icon: m.k ? `${ICONS}/${m.k}.png` : '',
-          app: m.c ? `${m.a} · ${m.c}` : (m.a || ''), sender: m.s || '', parts: toParts(m.b || '', m.sg), pending: !!m.p, e: '', ew: 0, eh: 0,
-        }))
-      } })
-    } else {
-      self.show({
-        name, img: '', icon: m.k ? `${ICONS}/${m.k}.png` : '',
-        app: m.c ? `${m.a} · ${m.c}` : (m.a || ''), sender: m.s || '', parts: toParts(m.b || ''), pending: !!m.p, e: '', ew: 0, eh: 0,
-      })
+    const jobs = []
+    const keep = (b64, uri) => { jobs.push({ uri, buf: self.decode(b64) }); return uri }
+    if (m.e) { m.ef = keep(m.e, `${META}/${name}.png`); delete m.e }
+    if (m.si) { m.sf = keep(m.si, `${META}/${name}_s.png`); delete m.si }
+    if (m.hi) { m.hf = keep(m.hi, `${META}/${name}_h.png`); delete m.hi }
+    if (m.sg) m.sg.forEach((g, k) => { if (g.i) { g.f = keep(g.i, `${META}/${name}_${k}.png`); delete g.i } })
+    const icon = m.k ? `${ICONS}/${m.k}.png` : ''
+    const appLine = m.c ? `${m.a} · ${m.c}` : (m.a || '')
+    const cur = {
+      name, img: '', icon, app: appLine, sender: m.s || '', parts: m.ef ? [] : toParts(m.b || '', m.sg), pending: !!m.p,
+      e: m.ef || '', ew: m.ew || 80, eh: m.eh || 80,
+      sf: m.sf || '', sw: m.siw || 0, sh: m.sih || 0, hf: m.hf || '', hw: m.hiw || 0, hh: m.hih || 0,
     }
-    self.notifyArrival()
+    const showNow = () => { self.show(cur); self.notifyArrival() }
+    if (!jobs.length) showNow()
+    else {
+      file.mkdir({ uri: META, recursive: true, complete() {
+        Promise.all(jobs.map((j) => new Promise((res) => file.writeArrayBuffer({ uri: j.uri, buffer: j.buf, complete: res })))).then(showNow)
+      } })
+    }
     file.writeText({ uri: `${DIR}/${name}.json`, text: JSON.stringify(m), complete() { self.trim() } })
-    self.idxPut({ name, kind: 'text', uri: `${DIR}/${name}.json`, a: m.c ? `${m.a} · ${m.c}` : (m.a || ''), s: m.s || '', b: preview(m.b || ''), icon: m.k ? `${ICONS}/${m.k}.png` : '', e, ew, eh })
+    self.idxPut({ name, kind: 'text', uri: `${DIR}/${name}.json`, a: appLine, s: m.s || '', b: preview(m.b || ''), icon,
+      e: m.ef || '', ew: m.ew || 0, eh: m.eh || 0, sf: m.sf || '', sw: m.siw || 0, sh: m.sih || 0, hf: m.hf || '', hw: m.hiw || 0, hh: m.hih || 0 })
   },
 
   // 사진: 저장 후 표시. 먼저 온 같은 이름의 글 알림은 지우고 사진으로 바꿈
@@ -250,7 +241,7 @@ export default {
       success() {
         const hadText = done[`${name}.json`]
         try { file.delete({ uri: `${DIR}/${name}.json` }) } catch (e) {}
-        if (self.mode !== 'list' || self.cur.name === name) self.show({ name, img: uri, icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0 })
+        if (self.mode !== 'list' || self.cur.name === name) self.show({ name, img: uri, icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0, sf: '', sw: 0, sh: 0, hf: '', hw: 0, hh: 0 })
         if (!hadText) self.notifyArrival()
         else if (self.alert.quiet) self.quietClose() // 사진 저장이 끝난 뒤 닫히도록 다시 맞춤
         else if (self.alert.wake && screenTimer && !userTouched) self.keepOn5s() // 사진이 뜬 뒤 다시 5초
@@ -291,6 +282,7 @@ export default {
     ;['json', 'jpg', 'png'].forEach((e) => { try { file.delete({ uri: `${DIR}/${n}.${e}` }) } catch (x) {} })
     try { file.delete({ uri: `${META}/${n}.png` }) } catch (x) {}
     try { conn.send({ data: { del: 1 } }) } catch (x) {}
+    this.trimSoon()
     this.idxRemove((e) => e.name === n, () => app.terminate())
   },
 
@@ -301,9 +293,27 @@ export default {
       success(data) {
         const files = data.fileList.sort((a, b) => b.uri.localeCompare(a.uri))
         files.slice(MAX_SAVE).forEach((f) => { try { file.delete({ uri: f.uri }) } catch (e) {} })
+        // 남은 알림 이름(13자리) → 그에 딸린 그림 조각만 남기고 나머지 그림 조각은 지움
+        const alive = {}
+        let newest = ''
+        files.slice(0, MAX_SAVE).forEach((f) => { const n = f.uri.replace(/^.*\//, '').substr(0, 13); alive[n] = true; if (n > newest) newest = n })
+        file.list({
+          uri: META,
+          success(md) {
+            md.fileList.forEach((f) => {
+              const base = f.uri.replace(/^.*\//, '')
+              if (!/^\d{13}.*\.png$/.test(base)) return // index.json 등은 그대로
+              const n = base.substr(0, 13)
+              // 가장 최근 알림보다 새 것은 아직 저장 중일 수 있어 남김
+              if (!alive[n] && n < newest) { try { file.delete({ uri: f.uri }) } catch (e) {} }
+            })
+          },
+        })
       },
     })
   },
+
+  trimSoon() { setTimeout(() => this.trim(), 300) },
 
   // ---- 목록 미리보기 모음 ----
   // 목록 읽기는 한 번에 하나만 (동시에 읽고 쓰다 목록이 비어 보이던 문제 방지)
@@ -406,7 +416,10 @@ export default {
   },
 
   applyList() {
-    this.list = (IDX || []).map((e) => ({ uri: e.uri, kind: e.kind, a: e.a, s: e.s, b: e.b, icon: e.icon, e: e.e || '', ew: e.ew || 0, eh: e.eh || 0, gone: false }))
+    // 목록의 보낸 사람 글자는 24px → 폰이 글자 크기(fs)로 그린 그림도 같은 비율로 줄여 표시
+    const r = 24 / (this.alert.fs || 26)
+    this.list = (IDX || []).map((e) => ({ uri: e.uri, kind: e.kind, a: e.a, s: e.s, b: e.b, icon: e.icon, e: e.e || '', ew: e.ew || 0, eh: e.eh || 0,
+      sf: e.sf || '', sw: Math.round((e.sw || 0) * r), sh: Math.round((e.sh || 0) * r), hf: e.hf || '', hw: e.hw || 0, hh: e.hh || 0, gone: false }))
     this.notis = this.list.length
     this.loaded = true
     this.report()
@@ -479,7 +492,8 @@ export default {
   quietClose() {
     if (this.mode === 'list') return
     if (quietTimer) clearTimeout(quietTimer)
-    quietTimer = setTimeout(() => { if (this.mode !== 'list') { this.releaseScreen(); app.terminate() } }, 1500)
+    const wait = this.cur.pending ? 12000 : 1500
+    quietTimer = setTimeout(() => { if (this.mode !== 'list') { this.releaseScreen(); app.terminate() } }, wait)
   },
 
   releaseScreen() { try { brightness.setKeepScreenOn({ keepScreenOn: false }) } catch (e) {} },

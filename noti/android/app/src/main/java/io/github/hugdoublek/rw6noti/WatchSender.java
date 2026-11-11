@@ -37,10 +37,21 @@ public final class WatchSender {
     public static void send(Context ctx, String base64, String stamp, Result cb) {
         Handler main = new Handler(Looper.getMainLooper());
         main.post(() -> {
-            QUEUE.add(() -> sendWithRetry(ctx, base64, stamp, 0, (ok, msg) -> {
-                if (cb != null) cb.done(ok, msg);
-                main.post(() -> { running = false; pump(); });
-            }));
+            QUEUE.add(() -> {
+                // 한 건이 끝나면 다음 건. 연결 문제로 답이 끝내 안 오더라도 60초 뒤엔 다음 건으로 (줄이 영영 막히지 않게)
+                java.util.concurrent.atomic.AtomicBoolean fin = new java.util.concurrent.atomic.AtomicBoolean(false);
+                Runnable next = () -> { running = false; pump(); };
+                main.postDelayed(() -> {
+                    if (!fin.compareAndSet(false, true)) return;
+                    if (cb != null) cb.done(false, "응답 없음 (60초) — 다음 알림으로 넘어감");
+                    next.run();
+                }, 60_000);
+                sendWithRetry(ctx, base64, stamp, 0, (ok, msg) -> {
+                    if (!fin.compareAndSet(false, true)) return;
+                    if (cb != null) cb.done(ok, msg);
+                    main.post(next);
+                });
+            });
             pump();
         });
     }
@@ -143,6 +154,9 @@ public final class WatchSender {
                     readyWaiter = sendAll;
                     // 화면이 꺼져 있으면 워치 앱이 잠들어 있을 수 있어 매번 연다 (켜져 있으면 금방 끝남)
                     Runnable launch = () -> { if (!acked.get()) nodeApi.launchWearApp(node.id, "/index"); };
+                    // 방금 전(3초 안)에 워치가 받았다고 답했다면 앱이 아직 켜져 있음 → 앱 열기를 기다리지 않고 바로 보냄
+                    // (사진 알림의 '사진 먼저 알림' 바로 뒤에 오는 사진이 1.5초 빨라짐)
+                    if (ackSeen && System.currentTimeMillis() - lastOk < 3000) main.post(sendAll);
                     nodeApi.launchWearApp(node.id, "/index")
                             .addOnSuccessListener(v -> {
                                 long[] times = text ? TEXT_RETRY : IMG_RETRY;

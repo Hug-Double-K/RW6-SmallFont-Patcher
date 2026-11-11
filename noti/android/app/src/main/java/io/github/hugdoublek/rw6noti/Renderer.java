@@ -165,6 +165,22 @@ public final class Renderer {
         return b;
     }
 
+    /** 한 줄(넘치면 2줄까지)을 글자 폭에 딱 맞는 투명 그림으로. 보낸 사람·대화방 이름의 이모지 표시용 */
+    public static Bitmap lineBitmap(String text, int fs, int color, boolean bold, int maxW) {
+        android.text.TextPaint p = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+        p.setTextSize(fs);
+        p.setColor(color);
+        if (bold) p.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+        android.text.StaticLayout l = android.text.StaticLayout.Builder.obtain(text, 0, text.length(), p, maxW)
+                .setMaxLines(2).setEllipsize(android.text.TextUtils.TruncateAt.END).build();
+        float w = 1;
+        for (int i = 0; i < l.getLineCount(); i++) w = Math.max(w, l.getLineWidth(i));
+        int bw = Math.min(maxW, (int) Math.ceil(w) + 2), bh = Math.max(1, l.getHeight());
+        Bitmap b = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+        l.draw(new Canvas(b));
+        return b;
+    }
+
     /** 이모지만 있는 메시지: 이모지만 딱 맞는 크기로 (투명 배경 PNG, 몇 KB) */
     public static Bitmap emojiBitmap(String text, int size) {
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);

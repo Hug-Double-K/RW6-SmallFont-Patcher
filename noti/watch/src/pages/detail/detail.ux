@@ -7,8 +7,10 @@
     <!-- 글 알림: 워치가 직접 그림. 긴 글은 문단으로 나눠 보이는 만큼만 -->
     <list if="{{ isText }}" style="width: 100%; flex: 1">
       <list-item type="head" class="tcard-head">
-        <text class="t-app">{{ app }}</text>
-        <text class="t-snd" style="font-size: {{ fs }}px">{{ sender }}</text>
+        <image if="{{ hf }}" src="{{ hf }}" style="width: {{ hw }}px; height: {{ hh }}px" />
+        <text if="{{ !hf }}" class="t-app">{{ app }}</text>
+        <image if="{{ sf }}" src="{{ sf }}" style="width: {{ sw }}px; height: {{ sh }}px; margin-top: 6px" />
+        <text if="{{ !sf }}" class="t-snd" style="font-size: {{ fs }}px">{{ sender }}</text>
         <image if="{{ emo }}" src="{{ emo }}" style="width: {{ ew }}px; height: {{ eh }}px; margin-top: 6px" />
       </list-item>
       <list-item type="{{ p.img ? 'pimg' : 'para' }}" for="(i, p) in parts" class="tcard-para">
@@ -44,7 +46,7 @@ export default {
     uri: '',
     arrival: '0',
   },
-  private: { isText: false, app: '', sender: '', parts: [], time: '', fs: 26, lh: 35, emo: '', ew: 0, eh: 0 },
+  private: { isText: false, app: '', sender: '', parts: [], time: '', fs: 26, lh: 35, emo: '', ew: 0, eh: 0, sf: '', sw: 0, sh: 0, hf: '', hw: 0, hh: 0 },
   onInit() {
     const self = this
     if (self.uri.indexOf('.json') < 0) return
@@ -57,6 +59,9 @@ export default {
           const m = JSON.parse(r.text)
           self.app = m.c ? `${m.a} · ${m.c}` : m.a
           self.sender = m.s || ''
+          // 이모지가 든 보낸 사람·윗줄은 폰이 그린 그림으로
+          if (m.sf) { self.sf = m.sf; self.sw = m.siw || 0; self.sh = m.sih || 0 }
+          if (m.hf) { self.hf = m.hf; self.hw = m.hiw || 0; self.hh = m.hih || 0 }
           if (m.ef) { self.emo = m.ef; self.ew = m.ew || 80; self.eh = m.eh || 80 }
           else if (m.sg) {
             const out = []

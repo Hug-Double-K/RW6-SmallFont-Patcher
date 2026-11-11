@@ -28,7 +28,8 @@ import java.util.Map;
 public class NotiListener extends NotificationListenerService {
 
     private final Map<String, String> lastSent = new HashMap<>();
-    private static final java.util.Set<String> ICON_SENT = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    /** 앱 아이콘을 워치에 보낸 시각 (1시간마다 다시 보냄) */
+    private static final Map<String, Long> ICON_AT = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.Set<String> sentUris = new java.util.HashSet<>();
     private static String lastLoadError = "";
     private static final android.os.HandlerThread THREAD = new android.os.HandlerThread("rw6noti");
@@ -48,11 +49,14 @@ public class NotiListener extends NotificationListenerService {
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
-        try {
-            handle(sbn);
-        } catch (Throwable t) {
-            new Prefs(this).setLastLog(now() + " 오류: " + t);
-        }
+        // 그림 그리기·사진 읽기는 작업 스레드에서 (메인 스레드가 막히면 다음 알림 수신이 늦어짐)
+        worker.post(() -> {
+            try {
+                handle(sbn);
+            } catch (Throwable t) {
+                new Prefs(this).setLastLog(now() + " 오류: " + t);
+            }
+        });
     }
 
     private void handle(StatusBarNotification sbn) {
@@ -117,8 +121,8 @@ public class NotiListener extends NotificationListenerService {
             for (CharSequence l : lines) if (l != null && l.length() > 0) lb.append(lb.length() > 0 ? "\n" : "").append(l);
             if (lb.length() > text.length()) text = lb.toString();
         }
-        // 워치가 버거워하지 않게 아주 긴 글은 3000자까지
-        if (text.length() > 3000) text = text.substring(0, 3000) + "…";
+        // 최대한 많은 글자를 보여 주는 게 원칙. 워치 메모리 보호를 위해 6000자까지만
+        if (text.length() > MAX_TEXT) text = text.substring(0, MAX_TEXT) + "…";
 
         PackageManager pm = getPackageManager();
         String appName = pkg;
@@ -165,7 +169,7 @@ public class NotiListener extends NotificationListenerService {
     private static final long[] RETRY_MS = {0, 1500, 3000, 6000, 10000};
 
     private void loadAndSend(Prefs prefs, Drawable icon, String app, String conv, PhotoMsg ph, int fs, int attempt) {
-        Bitmap pic = loadUri(ph.uri, ph.emoticon ? 1 : 2); // 이모티콘은 원래 작아서 줄이지 않고 읽음
+        Bitmap pic = loadUri(ph.uri, ph.emoticon); // 이모티콘은 원래 작아서 줄이지 않고 읽음
         if (pic == null && attempt + 1 < RETRY_MS.length) {
             worker.postDelayed(() -> loadAndSend(prefs, icon, app, conv, ph, fs, attempt + 1), RETRY_MS[attempt + 1]);
             return;
@@ -187,15 +191,46 @@ public class NotiListener extends NotificationListenerService {
             Bitmap ib = Renderer.iconBitmap(icon, 40);
             String k = String.valueOf(Math.abs(appName.hashCode()));
             o.put("k", k);
-            if (ib != null && ICON_SENT.add(k)) o.put("i", Renderer.toBase64Png(ib));
+            Long at = ICON_AT.get(k);
+            if (ib != null && (at == null || System.currentTimeMillis() - at > 3_600_000L)) {
+                o.put("i", Renderer.toBase64Png(ib));
+                ICON_AT.put(k, System.currentTimeMillis());
+            }
             return o.toString();
         } catch (org.json.JSONException e) { return null; }
     }
 
+    /**
+     * 보낸 사람(si)·윗줄 '앱 · 대화방'(hi)에 이모지가 있으면 그 줄을 폰에서 그린 그림으로 붙인다.
+     * 워치는 그림이 있으면 글 대신 그림을 보여 줌 (글은 이모지를 뺀 채로 남겨 목록 미리보기 등에 사용)
+     */
+    private static void addEmojiLines(org.json.JSONObject o, String appName, String conv, String sender, int fs) {
+        try {
+            if (hasEmoji(sender)) {
+                Bitmap b = Renderer.lineBitmap(sender, fs, 0xFFFFFFFF, true, 384);
+                o.put("si", Renderer.toBase64Png(b)); o.put("siw", b.getWidth()); o.put("sih", b.getHeight());
+            }
+            String head = conv == null || conv.isEmpty() ? appName : appName + " · " + conv;
+            if (hasEmoji(head)) {
+                Bitmap b = Renderer.lineBitmap(head, 19, 0xFFAAAAAA, false, 340);
+                o.put("hi", Renderer.toBase64Png(b)); o.put("hiw", b.getWidth()); o.put("hih", b.getHeight());
+            }
+        } catch (Throwable ignored) { }
+    }
+
     private void sendText(Prefs prefs, Drawable icon, String appName, String conv, String sender, String text,
                           long when, String stamp, boolean pending) {
-        String json = textJson(icon, appName, conv, sender, text, when, pending);
+        String json = hasEmoji(sender) || hasEmoji(conv) || hasEmoji(appName)
+                ? textJson(icon, appName, stripEmoji(conv == null ? "" : conv), stripEmoji(sender == null ? "" : sender), text, when, pending)
+                : textJson(icon, appName, conv, sender, text, when, pending);
         if (json == null) return;
+        if (hasEmoji(sender) || hasEmoji(conv) || hasEmoji(appName)) {
+            try {
+                org.json.JSONObject o = new org.json.JSONObject(json);
+                addEmojiLines(o, appName, conv, sender, prefs.fontSize());
+                json = o.toString();
+            } catch (org.json.JSONException ignored) { }
+        }
         final String q = WatchSender.quiet(this) ? "[조용히] " : "";
         WatchSender.send(this, json, stamp, (ok, msg) ->
                 prefs.addHistory(now() + " " + q + sender + (pending ? " [사진 먼저 알림]" : "") + " → " + (ok ? "✔ " : "✘ ") + msg));
@@ -205,7 +240,7 @@ public class NotiListener extends NotificationListenerService {
                                String text, Bitmap picture, long when, String stamp, boolean emoticon) {
         // 이모티콘은 원본과 화면 폭 70% 중 작은 쪽으로 (확대하지 않음 → 선명하고 데이터도 작음)
         final int maxPicW = emoticon ? Math.round(Renderer.WIDTH * 0.7f) : 0;
-        String b64;
+        String b64 = null;
         boolean emoji = hasEmoji(text) || hasEmoji(sender) || hasEmoji(conv);
         if (picture == null && text != null && hasEmoji(text) && stripEmoji(text).trim().isEmpty() && text.length() <= 24) {
             // 이모지만 있는 메시지: 카드 전체가 아니라 이모지만 작게 그려 글 알림에 붙임 → 메시지 1번, 가로도 딱 맞게
@@ -231,7 +266,15 @@ public class NotiListener extends NotificationListenerService {
             b64 = emoji ? textJson(icon, appName, stripEmoji(conv == null ? "" : conv), stripEmoji(sender == null ? "" : sender), stripEmoji(text == null ? "" : text), when, false)
                     : textJson(icon, appName, conv, sender, text, when, false);
             if (b64 == null) return;
-        } else {
+        }
+        if (picture == null && (hasEmoji(sender) || hasEmoji(conv) || hasEmoji(appName))) {
+            try {
+                org.json.JSONObject o = new org.json.JSONObject(b64);
+                addEmojiLines(o, appName, conv, sender, prefs.fontSize());
+                b64 = o.toString();
+            } catch (org.json.JSONException ex) { return; }
+        }
+        if (picture != null) {
             b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, picture, prefs.fontSize(), when, maxPicW));
         }
         if (b64.length() > 1_500_000 && picture != null) { // 너무 크면 사진을 더 줄여서
@@ -256,6 +299,7 @@ public class NotiListener extends NotificationListenerService {
     }
 
     private static int SEQ = 0;
+    static final int MAX_TEXT = 6000;
     static final String EMOTICON = "이모티콘을 보냈습니다";
 
     static final class PhotoMsg {
@@ -285,9 +329,9 @@ public class NotiListener extends NotificationListenerService {
             Object uri = last.get("uri");
             b.append(" / uri=").append(uri == null ? "없음" : String.valueOf(uri).replaceAll("(?<=://[^/]{0,40}/).*", "…"));
             if (uri instanceof Uri) {
-                Bitmap d = loadUri((Uri) uri, 1);
-                b.append(" / 읽기=").append(d != null ? "성공" : "실패");
-                if (d != null) b.append("\n원본 크기=").append(d.getWidth()).append("×").append(d.getHeight());
+                int[] wh = bounds((Uri) uri);
+                b.append(" / 읽기=").append(wh != null ? "성공" : "실패");
+                if (wh != null) b.append("\n원본 크기=").append(wh[0]).append("×").append(wh[1]);
             }
         }
         return b.toString();
@@ -308,10 +352,32 @@ public class NotiListener extends NotificationListenerService {
         return null;
     }
 
-    private Bitmap loadUri(Uri uri) { return loadUri(uri, 2); }
+    /** 사진 가로·세로만 읽음 (풀지 않음). 실패하면 null */
+    private int[] bounds(Uri uri) {
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            if (in == null) return null;
+            BitmapFactory.Options o = new BitmapFactory.Options();
+            o.inJustDecodeBounds = true;
+            BitmapFactory.decodeStream(in, null, o);
+            return o.outWidth > 0 && o.outHeight > 0 ? new int[]{o.outWidth, o.outHeight} : null;
+        } catch (Throwable e) { return null; }
+    }
 
-    /** sample: 1 = 원본 그대로, 2 = 가로세로 절반으로 읽기(큰 사진용) */
-    private Bitmap loadUri(Uri uri, int sample) {
+    /**
+     * 사진 읽기. 카드에 들어갈 크기(가로 404 · 세로 640)보다 작아지지 않는 선에서 최대한 줄여 읽음
+     * → 작은 사진은 원본 그대로(선명), 큰 사진은 2·4·8배 줄여(빠르고 메모리 적음). keepFull = 이모티콘은 원본 그대로
+     */
+    private Bitmap loadUri(Uri uri, boolean keepFull) {
+        int sample = 1;
+        if (!keepFull) {
+            int[] wh = bounds(uri);
+            if (wh != null) {
+                int needW = Renderer.WIDTH - 28, needH = 640;
+                // 줄인 뒤에도 '가로 ≥ 404' 또는 '세로 ≥ 640' 중 카드에 맞출 쪽은 유지
+                float fit = Math.min((float) needW / wh[0], (float) needH / wh[1]);
+                while (fit * sample * 2 <= 1f) sample *= 2;
+            }
+        }
         try (InputStream in = getContentResolver().openInputStream(uri)) {
             if (in == null) { lastLoadError = "빈 파일"; return null; }
             BitmapFactory.Options o = new BitmapFactory.Options();
@@ -359,8 +425,16 @@ public class NotiListener extends NotificationListenerService {
 
     /** 워치 글꼴에 없는 이모지인지 */
     static boolean isEmoji(int cp) {
-        return cp >= 0x1F000 || (cp >= 0x2600 && cp <= 0x27BF) || (cp >= 0x2300 && cp <= 0x23FF)
-                || (cp >= 0x2B00 && cp <= 0x2BFF) || cp == 0xFE0F || cp == 0x200D || (cp >= 0xE000 && cp <= 0xF8FF);
+        if (cp >= 0x1F000 || (cp >= 0x2600 && cp <= 0x27BF) || (cp >= 0x2300 && cp <= 0x23FF)
+                || (cp >= 0x2B00 && cp <= 0x2BFF) || cp == 0xFE0F || cp == 0x200D || (cp >= 0xE000 && cp <= 0xF8FF)) return true;
+        // 큰 범위 밖의 이모지들 (워치 글꼴에 없어 X 박스가 되는 것): 키캡 1️⃣의 ⃣, ‼ ⁉ ™ ℹ ↔~↙ ↩ ↪ Ⓜ ▪ ▫ ▶ ◀ ◻~◾ ⤴ ⤵ 〰 〽 ㊗ ㊙, 변형 선택자
+        switch (cp) {
+            case 0x20E3: case 0x203C: case 0x2049: case 0x2122: case 0x2139: case 0x21A9: case 0x21AA:
+            case 0x24C2: case 0x25AA: case 0x25AB: case 0x25B6: case 0x25C0: case 0x2934: case 0x2935:
+            case 0x3030: case 0x303D: case 0x3297: case 0x3299: case 0xFE0E:
+                return true;
+        }
+        return (cp >= 0x2194 && cp <= 0x2199) || (cp >= 0x25FB && cp <= 0x25FE);
     }
 
     static boolean hasEmoji(String s) {
