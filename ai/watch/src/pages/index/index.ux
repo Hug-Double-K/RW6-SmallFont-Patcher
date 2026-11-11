@@ -1,74 +1,107 @@
 <template>
   <div class="main">
     <scroll style="flex-direction: column; width: 100%; flex: 1; align-items: center" scroll-y="{{ true }}">
-      <text class="title">RW6 AI 시험</text>
-      <text class="log">{{ info }}</text>
-      <text class="btn" @click="rec">워치 녹음 시험 (3초)</text>
-      <text class="btn" @click="play">녹음 들어 보기</text>
-      <text class="log">{{ out }}</text>
+      <text class="btn {{ busy ? 'busy' : '' }}" @click="ask">{{ busy ? '진행 중…' : '말하기' }}</text>
+      <text class="st" if="{{ status }}">{{ status }}</text>
+      <text class="q" if="{{ q }}">나: {{ q }}</text>
+      <text class="a" if="{{ a }}">{{ a }}</text>
+      <text class="st" if="{{ !a && !status }}">'말하기'를 누르면 전화처럼 연결됩니다. 삑 소리 뒤에 말하세요.</text>
     </scroll>
   </div>
 </template>
 
 <script>
-// 시험용: 이 워치에서 퀵앱이 직접 녹음·재생을 할 수 있는지 확인 (공식 문서에는 REDMI Watch 6 미지원으로 나옴)
-import app from '@system.app'
-import file from '@system.file'
+// 워치 쪽은 버튼과 글 표시만 맡는다. 듣기·AI·읽어 주기는 폰 앱이 한다 (워치는 앱 녹음을 지원하지 않음).
+// 폰 → 워치 메시지: S상태글 / E오류글 / R{"id","q","a"}
+import interconnect from '@system.interconnect'
+import storage from '@system.storage'
 
-let record = null
-let audio = null
-let recErr = ''
-let audErr = ''
-try { record = require('@system.record'); if (record && record.default) record = record.default } catch (e) { recErr = `${e}` }
-try { audio = require('@system.audio'); if (audio && audio.default) audio = audio.default } catch (e) { audErr = `${e}` }
-
-function can(n) { try { return String(app.canIUse(n)) } catch (e) { return 'x' } }
+let conn = null
+let noReply = null
+let giveUp = null
+let lastId = 0   // 지금 화면에 보이는 답의 번호
+let waitFrom = -1 // 질문을 보낸 시점의 답 번호 (같은 번호의 옛 답이 다시 와도 무시)
 
 export default {
-  private: { info: '', out: '', uri: '' },
+  private: { busy: false, status: '', q: '', a: '' },
 
   onInit() {
-    this.info = `녹음 기능: ${record && record.start ? '있음' : `없음 ${recErr}`}\n`
-      + `소리 기능: ${audio ? '있음' : `없음 ${audErr}`}\n`
-      + `확인값: ${can('@system.record')} ${can('system.record')} ${can('@system.record.start')} / ${can('@system.audio')}`
-  },
-
-  rec() {
     const self = this
-    if (!record || !record.start) { self.out = '결과: 이 워치는 앱 녹음을 지원하지 않음'; return }
-    self.out = '녹음 중… 워치에 대고 말하세요'
-    try {
-      record.start({
-        duration: 3000, sampleRate: 16000, numberOfChannels: 1, format: 'wav',
-        success(d) {
-          self.uri = (d && d.uri) || ''
-          self.out = `결과: 녹음 성공\n${self.uri}`
-          try {
-            file.get({ uri: self.uri, success(f) { self.out += `\n크기 ${f.length} bytes` }, fail(e, c) { self.out += `\n파일 확인 실패 ${c}` } })
-          } catch (e) {}
-        },
-        fail(d, code) { self.out = `결과: 녹음 실패 (${code}) ${d}` },
-      })
-    } catch (e) { self.out = `결과: 녹음 오류 ${e}` }
+    storage.get({
+      key: 'last',
+      success(v) {
+        try { if (v && !self.a) { const m = JSON.parse(v); self.q = m.q || ''; self.a = m.a || ''; lastId = m.id || 0 } } catch (e) {}
+      },
+    })
+    conn = interconnect.instance()
+    conn.onmessage = (msg) => { self.onMsg(msg.data) }
+    self.send({ hello: 1 })
   },
 
-  play() {
-    if (!audio) { this.out = '소리 기능 없음'; return }
-    if (!this.uri) { this.out = '먼저 녹음하세요'; return }
-    try {
-      audio.onerror = () => { this.out += '\n재생 오류' }
-      audio.onended = () => { this.out += '\n재생 끝' }
-      audio.src = this.uri
-      audio.play()
-      this.out += '\n재생 중…'
-    } catch (e) { this.out = `재생 오류 ${e}` }
+  onShow() { this.send({ hello: 1 }) },
+
+  send(data, onFail) {
+    try { conn.send({ data, fail(d, code) { if (onFail) onFail(code) } }) } catch (e) { if (onFail) onFail(-1) }
+  },
+
+  clearTimers() {
+    if (noReply) { clearTimeout(noReply); noReply = null }
+    if (giveUp) { clearTimeout(giveUp); giveUp = null }
+  },
+
+  ask() {
+    const self = this
+    if (self.busy) return
+    self.busy = true
+    self.status = '폰에 요청 중…'
+    waitFrom = lastId
+    self.clearTimers()
+    // 폰이 8초 안에 아무 답도 안 하면 안내
+    noReply = setTimeout(() => {
+      self.busy = false
+      self.status = "폰에서 답이 없어요. 폰의 RW6 AI 앱에서 'AI 대기'를 켜 주세요."
+    }, 8000)
+    giveUp = setTimeout(() => { self.busy = false }, 120000)
+    self.send({ ask: 1 }, (code) => {
+      self.clearTimers()
+      self.busy = false
+      self.status = `폰에 연결 안 됨 (${code}). Mi Fitness 연결과 폰의 RW6 AI 앱을 확인해 주세요.`
+    })
+  },
+
+  onMsg(d) {
+    const k = d.substr(0, 1)
+    const body = d.substr(1)
+    if (k === 'S') {
+      if (noReply) { clearTimeout(noReply); noReply = null }
+      this.status = body
+      this.busy = true
+    } else if (k === 'E') {
+      this.clearTimers()
+      this.status = body
+      this.busy = false
+    } else if (k === 'R') {
+      try {
+        const m = JSON.parse(body)
+        if (this.busy && m.id === waitFrom) return // 방금 누르기 전의 옛 답
+        this.clearTimers()
+        this.q = m.q || ''
+        this.a = m.a || ''
+        lastId = m.id || 0
+        this.status = ''
+        this.busy = false
+        storage.set({ key: 'last', value: body })
+      } catch (e) {}
+    }
   },
 }
 </script>
 
 <style>
   .main { flex-direction: column; align-items: center; width: 100%; height: 100%; padding: 14px 0px 24px; background-color: black; }
-  .title { margin-top: 34px; font-size: 28px; color: #ffffff; }
-  .log { width: 86%; margin-top: 10px; font-size: 22px; color: #dddddd; }
-  .btn { width: 86%; margin-top: 14px; padding: 16px 10px; border-radius: 30px; background-color: #2f4a8a; text-align: center; font-size: 26px; color: #ffffff; }
+  .btn { width: 80%; margin-top: 44px; padding: 22px 10px; border-radius: 40px; background-color: #2f4a8a; text-align: center; font-size: 34px; color: #ffffff; }
+  .busy { background-color: #444444; }
+  .st { width: 86%; margin-top: 14px; font-size: 22px; color: #aaaaaa; text-align: center; }
+  .q { width: 86%; margin-top: 16px; font-size: 22px; color: #9fb7ff; }
+  .a { width: 86%; margin-top: 10px; margin-bottom: 30px; font-size: 26px; color: #ffffff; }
 </style>

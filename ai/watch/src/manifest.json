@@ -1,8 +1,8 @@
 {
   "package": "io.github.hugdoublek.rw6ai",
-  "name": "RW6 AI 시험",
-  "versionName": "0.1",
-  "versionCode": 1,
+  "name": "RW6 AI",
+  "versionName": "0.5",
+  "versionCode": 5,
   "minPlatformVersion": 1000,
   "icon": "/common/logo.png",
   "deviceTypeList": [
@@ -10,9 +10,8 @@
   ],
   "features": [
     { "name": "system.router" },
-    { "name": "system.file" },
-    { "name": "system.record" },
-    { "name": "system.audio" }
+    { "name": "system.interconnect" },
+    { "name": "system.storage" }
   ],
   "config": {
     "logLevel": "log",

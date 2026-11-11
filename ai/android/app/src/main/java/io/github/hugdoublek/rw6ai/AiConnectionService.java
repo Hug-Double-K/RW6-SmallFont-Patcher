@@ -41,6 +41,8 @@ public class AiConnectionService extends ConnectionService {
     static final class AiConnection extends Connection {
         volatile boolean answered = false;
         volatile boolean ended = false;
+        /** 지금 소리 경로 (CallAudioState.ROUTE_*) */
+        volatile int route = 0;
 
         @Override public void onShowIncomingCallUi() { log("   [전화] 시스템이 전화로 받아들임"); }
 
@@ -60,6 +62,7 @@ public class AiConnectionService extends ConnectionService {
         @Override public void onAbort() { end(DisconnectCause.CANCELED); }
 
         @Override public void onCallAudioStateChanged(CallAudioState st) {
+            route = st.getRoute();
             String r;
             switch (st.getRoute()) {
                 case CallAudioState.ROUTE_BLUETOOTH: r = "블루투스"; break;
