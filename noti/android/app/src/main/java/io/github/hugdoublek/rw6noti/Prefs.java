@@ -45,6 +45,9 @@ public final class Prefs {
     public boolean vibrate() { return sp.getBoolean("vibrate", false); }
     public void setVibrate(boolean v) { sp.edit().putBoolean("vibrate", v).apply(); }
     public boolean wake() { return sp.getBoolean("wake", false); }
+    /** 화면 깨우기: 켜 두는 시간(0.1초 단위). 3.0~30.0초, 0.5초 간격, 기본 5초 */
+    public int wakeTenths() { return Math.max(30, Math.min(300, sp.getInt("wakeTenths", 50))); }
+    public void setWakeTenths(int v) { sp.edit().putInt("wakeTenths", Math.max(30, Math.min(300, v))).apply(); }
     /** 폰이 방해금지면 워치도 조용히 (진동·화면 켜기·워치 알림 목록 표시 안 함) */
     public boolean followDnd() { return sp.getBoolean("followDnd", true); }
     public void setFollowDnd(boolean v) { sp.edit().putBoolean("followDnd", v).apply(); }

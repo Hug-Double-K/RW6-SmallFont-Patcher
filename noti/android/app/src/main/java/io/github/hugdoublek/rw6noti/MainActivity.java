@@ -84,6 +84,21 @@ public class MainActivity extends Activity {
         root.addView(text("워치에 알림이 오면"));
         root.addView(check("진동 울리기", prefs.vibrate(), prefs::setVibrate));
         root.addView(check("화면 깨우기", prefs.wake(), prefs::setWake));
+        // 켜 두는 시간: 3~30초, 0.5초 간격 (막대 한 칸 = 0.5초)
+        TextView wakeLabel = text("");
+        root.addView(wakeLabel);
+        SeekBar wakeBar = new SeekBar(this);
+        wakeBar.setMax(54); // (30 - 3) / 0.5
+        wakeBar.setProgress((prefs.wakeTenths() - 30) / 5);
+        Runnable showWake = () -> wakeLabel.setText(String.format(java.util.Locale.US,
+                "   화면 켜 두는 시간: %.1f초 (안 만지면 지나서 앱 닫힘)", prefs.wakeTenths() / 10f));
+        showWake.run();
+        wakeBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar s, int v, boolean u) { prefs.setWakeTenths(30 + v * 5); showWake.run(); }
+            @Override public void onStartTrackingTouch(SeekBar s) { }
+            @Override public void onStopTrackingTouch(SeekBar s) { }
+        });
+        root.addView(wakeBar);
         root.addView(check("폰이 방해금지면 진동·화면 켜기 안 함", prefs.followDnd(), prefs::setFollowDnd));
         root.addView(check("워치 알림 목록에 'OO 알림 - N건' 표시 (누르면 RW6 알림으로)", prefs.watchList(), prefs::setWatchList));
 

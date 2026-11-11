@@ -91,7 +91,8 @@ public final class WatchSender {
         // 폰 방해금지 중이면 진동·깨우기를 끄고 조용히(q=1) → 워치는 받기만 하고 바로 앱을 닫음
         boolean quiet = quiet(app);
         String settingStr = "S" + (p.vibrate() && !quiet ? "1" : "0") + (p.wake() && !quiet ? "1" : "0")
-                + String.format("%02d", p.fontSize()) + (quiet ? "1" : "0");
+                + String.format("%02d", p.fontSize()) + (quiet ? "1" : "0")
+                + String.format("%03d", p.wakeTenths()); // 화면 켜 두는 시간(0.1초 단위)
         if (!settingStr.equals(lastSetting)) chunks.add(settingStr.getBytes(StandardCharsets.UTF_8));
         // 종류: 글(JSON) = D/E, 사진 JPEG = f/g, PNG = d/e
         boolean text = base64.startsWith("{");

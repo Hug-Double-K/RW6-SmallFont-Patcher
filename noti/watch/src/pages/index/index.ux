@@ -161,7 +161,8 @@ export default {
     try {
       const k = d.substr(0, 1)
       if (k === 'S') {
-        self.alert = { vibe: d.substr(1, 1) === '1', wake: d.substr(2, 1) === '1', fs: Number(d.substr(3, 2)) || 26, quiet: d.substr(5, 1) === '1' }
+        self.alert = { vibe: d.substr(1, 1) === '1', wake: d.substr(2, 1) === '1', fs: Number(d.substr(3, 2)) || 26, quiet: d.substr(5, 1) === '1',
+          wakeMs: Math.max(3000, Math.min(30000, (Number(d.substr(6, 3)) || 50) * 100)) }
         storage.set({ key: 'alert', value: JSON.stringify(self.alert) })
         return
       }
@@ -456,7 +457,7 @@ export default {
   notifyArrival() {
     // 폰 방해금지 중: 진동·화면 켜기 없이 저장만 하고 곧 앱을 닫음 (목록을 보고 있을 땐 그대로)
     if (this.alert.quiet) { this.quietClose(); return }
-    // 화면 깨우기: 5초 동안 강제로 켜 둔 뒤 시스템에 돌려줌 (사용자 요청, 3.7)
+    // 화면 깨우기: 정한 시간(3~30초) 동안 강제로 켜 둔 뒤 시스템에 돌려줌
     if (this.alert.wake) this.keepOn5s()
     if (this.alert.vibe) {
       try { vibrator.vibrate({ mode: 'long' }) } catch (e) {}
@@ -467,12 +468,12 @@ export default {
     try { brightness.setKeepScreenOn({ keepScreenOn: true }) } catch (e) {}
     if (screenTimer) clearTimeout(screenTimer)
     userTouched = false
-    // 5초 동안 안 만지면 앱을 닫음 → 화면이 꺼진 뒤 다시 켜면 워치 메인 화면 (알림은 목록에 남음)
+    // 정한 시간(폰 앱 설정, 기본 5초) 동안 안 만지면 앱을 닫음 → 화면이 꺼진 뒤 다시 켜면 워치 메인 화면 (알림은 목록에 남음)
     screenTimer = setTimeout(() => {
       screenTimer = null
       this.releaseScreen()
       if (!userTouched && this.mode === 'arrive') app.terminate()
-    }, 5000)
+    }, this.alert.wakeMs || 5000)
   },
 
   quietClose() {
