@@ -77,7 +77,8 @@ const MAX_SAVE = 40
 const WAIT_MS = 700
 let conn = null
 let waitTimer = null
-let screenTimer = null // 알림이 연달아 오면 마지막 알림 기준 5초
+let screenTimer = null
+let quietTimer = null // 방해금지 중 받은 뒤 앱 닫기 // 알림이 연달아 오면 마지막 알림 기준 5초
 const receiving = {}
 const done = {} // 이미 처리한 것 (폰이 같은 글을 여러 번 보내므로)
 
@@ -159,7 +160,7 @@ export default {
     try {
       const k = d.substr(0, 1)
       if (k === 'S') {
-        self.alert = { vibe: d.substr(1, 1) === '1', wake: d.substr(2, 1) === '1', fs: Number(d.substr(3, 2)) || 26 }
+        self.alert = { vibe: d.substr(1, 1) === '1', wake: d.substr(2, 1) === '1', fs: Number(d.substr(3, 2)) || 26, quiet: d.substr(5, 1) === '1' }
         storage.set({ key: 'alert', value: JSON.stringify(self.alert) })
         return
       }
@@ -249,6 +250,7 @@ export default {
         try { file.delete({ uri: `${DIR}/${name}.json` }) } catch (e) {}
         if (self.mode !== 'list' || self.cur.name === name) self.show({ name, img: uri, icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0 })
         if (!hadText) self.notifyArrival()
+        else if (self.alert.quiet) self.quietClose() // 사진 저장이 끝난 뒤 닫히도록 다시 맞춤
         self.idxPut({ name, kind: 'img', uri, a: '', s: '', b: '', icon: '' })
         if (self.mode === 'list') self.refreshList()
         self.trim()
@@ -447,6 +449,8 @@ export default {
   },
 
   notifyArrival() {
+    // 폰 방해금지 중: 진동·화면 켜기 없이 저장만 하고 곧 앱을 닫음 (목록을 보고 있을 땐 그대로)
+    if (this.alert.quiet) { this.quietClose(); return }
     // 화면 깨우기: 5초 동안 강제로 켜 둔 뒤 시스템에 돌려줌 (사용자 요청, 3.7)
     if (this.alert.wake) {
       try { brightness.setKeepScreenOn({ keepScreenOn: true }) } catch (e) {}
@@ -456,6 +460,12 @@ export default {
     if (this.alert.vibe) {
       try { vibrator.vibrate({ mode: 'long' }) } catch (e) {}
     }
+  },
+
+  quietClose() {
+    if (this.mode === 'list') return
+    if (quietTimer) clearTimeout(quietTimer)
+    quietTimer = setTimeout(() => { if (this.mode !== 'list') { this.releaseScreen(); app.terminate() } }, 1500)
   },
 
   releaseScreen() { try { brightness.setKeepScreenOn({ keepScreenOn: false }) } catch (e) {} },

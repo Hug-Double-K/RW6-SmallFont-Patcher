@@ -45,6 +45,9 @@ public final class Prefs {
     public boolean vibrate() { return sp.getBoolean("vibrate", false); }
     public void setVibrate(boolean v) { sp.edit().putBoolean("vibrate", v).apply(); }
     public boolean wake() { return sp.getBoolean("wake", false); }
+    /** 폰이 방해금지면 워치도 조용히 (진동·화면 켜기·워치 알림 목록 표시 안 함) */
+    public boolean followDnd() { return sp.getBoolean("followDnd", true); }
+    public void setFollowDnd(boolean v) { sp.edit().putBoolean("followDnd", v).apply(); }
     public void setWake(boolean v) { sp.edit().putBoolean("wake", v).apply(); }
 
     /** 워치 알림 목록(위→아래 스와이프)에 'OO 알림 - N건' 표시 */

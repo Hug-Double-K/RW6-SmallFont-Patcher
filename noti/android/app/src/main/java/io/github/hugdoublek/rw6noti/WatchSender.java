@@ -88,7 +88,10 @@ public final class WatchSender {
         List<byte[]> chunks = new ArrayList<>();
         // 설정(S + 진동 + 깨우기 + 글자크기)은 바뀌었을 때만 같이 보낸다
         Prefs p = new Prefs(app);
-        String settingStr = "S" + (p.vibrate() ? "1" : "0") + (p.wake() ? "1" : "0") + String.format("%02d", p.fontSize());
+        // 폰 방해금지 중이면 진동·깨우기를 끄고 조용히(q=1) → 워치는 받기만 하고 바로 앱을 닫음
+        boolean quiet = quiet(app);
+        String settingStr = "S" + (p.vibrate() && !quiet ? "1" : "0") + (p.wake() && !quiet ? "1" : "0")
+                + String.format("%02d", p.fontSize()) + (quiet ? "1" : "0");
         if (!settingStr.equals(lastSetting)) chunks.add(settingStr.getBytes(StandardCharsets.UTF_8));
         // 종류: 글(JSON) = D/E, 사진 JPEG = f/g, PNG = d/e
         boolean text = base64.startsWith("{");
@@ -159,6 +162,18 @@ public final class WatchSender {
     }
 
     /** 워치 알림 목록(알림 센터)에 한 줄 띄운다. 워치 앱과 연결된 알림이라 누르면 워치 앱이 열린다 */
+    /** 폰이 방해금지(모든 알림 허용이 아닌 상태)이고 설정이 켜져 있으면 true */
+    public static boolean quiet(Context ctx) {
+        if (!new Prefs(ctx).followDnd()) return false;
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            int f = nm.getCurrentInterruptionFilter();
+            return f == android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                    || f == android.app.NotificationManager.INTERRUPTION_FILTER_NONE
+                    || f == android.app.NotificationManager.INTERRUPTION_FILTER_ALARMS;
+        } catch (Throwable t) { return false; }
+    }
+
     public static void notify(Context ctx, String title, String message) {
         Context app = ctx.getApplicationContext();
         Wearable.getNodeApi(app).getConnectedNodes().addOnSuccessListener(nodes -> {

@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
         root.addView(text("워치에 알림이 오면"));
         root.addView(check("진동 울리기", prefs.vibrate(), prefs::setVibrate));
         root.addView(check("화면 깨우기", prefs.wake(), prefs::setWake));
+        root.addView(check("폰이 방해금지면 진동·화면 켜기 안 함", prefs.followDnd(), prefs::setFollowDnd));
         root.addView(check("워치 알림 목록에 'OO 알림 - N건' 표시 (누르면 RW6 알림으로)", prefs.watchList(), prefs::setWatchList));
 
         root.addView(section("4. 확인"));

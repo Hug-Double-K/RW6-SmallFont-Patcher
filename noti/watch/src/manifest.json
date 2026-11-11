@@ -1,8 +1,8 @@
 {
   "package": "io.github.hugdoublek.rw6noti",
   "name": "메신저 알림",
-  "versionName": "3.7",
-  "versionCode": 29,
+  "versionName": "3.8",
+  "versionCode": 30,
   "minPlatformVersion": 1000,
   "icon": "/common/logo.png",
   "deviceTypeList": [

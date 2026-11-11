@@ -196,8 +196,9 @@ public class NotiListener extends NotificationListenerService {
                           long when, String stamp, boolean pending) {
         String json = textJson(icon, appName, conv, sender, text, when, pending);
         if (json == null) return;
+        final String q = WatchSender.quiet(this) ? "[조용히] " : "";
         WatchSender.send(this, json, stamp, (ok, msg) ->
-                prefs.addHistory(now() + " " + sender + (pending ? " [사진 먼저 알림]" : "") + " → " + (ok ? "✔ " : "✘ ") + msg));
+                prefs.addHistory(now() + " " + q + sender + (pending ? " [사진 먼저 알림]" : "") + " → " + (ok ? "✔ " : "✘ ") + msg));
     }
 
     private void renderAndSend(Prefs prefs, Drawable icon, String appName, String conv, String sender,
@@ -237,7 +238,8 @@ public class NotiListener extends NotificationListenerService {
             Bitmap small = Bitmap.createScaledBitmap(picture, Math.max(1, picture.getWidth() / 2), Math.max(1, picture.getHeight() / 2), true);
             b64 = Renderer.toBase64Jpeg(Renderer.render(icon, appName, conv, sender, text, small, prefs.fontSize(), when, maxPicW));
         }
-        final String summary = sender + (picture == null ? "" : emoticon
+        final boolean quiet = WatchSender.quiet(this);
+        final String summary = (quiet ? "[조용히] " : "") + sender + (picture == null ? "" : emoticon
                 ? " [이모티콘 " + picture.getWidth() + "→" + Math.min(picture.getWidth(), maxPicW) + "px]" : " [사진]");
         final int kb = b64.length() / 1024;
         final String app = appName;
@@ -245,7 +247,7 @@ public class NotiListener extends NotificationListenerService {
         WatchSender.send(this, b64, stamp, (ok, msg) -> {
             prefs.setLastLog(now() + " " + summary + " → " + msg);
             prefs.addHistory(now() + " " + summary + " " + kb + "KB → " + (ok ? "✔ " : "✘ ") + msg);
-            if (ok && prefs.watchList()) {
+            if (ok && prefs.watchList() && !quiet) { // 방해금지 중엔 워치 알림 목록 표시도 안 함 (진동·화면 켜짐 방지)
                 prefs.setUnread(prefs.unread() + 1);
                 // 워치가 실제 개수를 알려줄 시간을 조금 준 뒤 표시
                 worker.postDelayed(() -> WatchSender.notify(this, app + " 알림 - " + prefs.unread() + "건", line), 3000);
