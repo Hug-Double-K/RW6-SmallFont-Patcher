@@ -1,7 +1,7 @@
 <template>
   <div class="main">
     <!-- 도착 화면: 폰이 보낸 알림만 바로 보여줌 (목록·빈 화면을 먼저 보여주지 않음) -->
-    <div if="{{ mode === 'arrive' }}" class="arrive">
+    <div if="{{ mode === 'arrive' }}" class="arrive" @touchstart="touched">
       <scroll style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
         <image if="{{ cur.img }}" src="{{ cur.img }}" style="width: 100%; margin-top: 28px" @click="openCur" />
         <div if="{{ !cur.img }}" class="tview" @click="openCur">
@@ -78,6 +78,7 @@ const WAIT_MS = 700
 let conn = null
 let waitTimer = null
 let screenTimer = null
+let userTouched = false // 도착 화면을 만졌으면 5초 뒤 자동으로 닫지 않음
 let quietTimer = null // 방해금지 중 받은 뒤 앱 닫기 // 알림이 연달아 오면 마지막 알림 기준 5초
 const receiving = {}
 const done = {} // 이미 처리한 것 (폰이 같은 글을 여러 번 보내므로)
@@ -251,6 +252,7 @@ export default {
         if (self.mode !== 'list' || self.cur.name === name) self.show({ name, img: uri, icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0 })
         if (!hadText) self.notifyArrival()
         else if (self.alert.quiet) self.quietClose() // 사진 저장이 끝난 뒤 닫히도록 다시 맞춤
+        else if (self.alert.wake && screenTimer && !userTouched) self.keepOn5s() // 사진이 뜬 뒤 다시 5초
         self.idxPut({ name, kind: 'img', uri, a: '', s: '', b: '', icon: '' })
         if (self.mode === 'list') self.refreshList()
         self.trim()
@@ -273,7 +275,10 @@ export default {
   },
 
   // 도착 화면에서 알림을 누르면 읽기 화면으로 ('끄기' = 지우고 앱 닫기, 뒤로 = 도착 화면)
+  touched() { userTouched = true },
+
   openCur() {
+    userTouched = true
     const c = this.cur
     if (!c.name) return
     router.push({ uri: '/pages/detail', params: { uri: c.img || `${DIR}/${c.name}.json`, arrival: '1' } })
@@ -452,14 +457,22 @@ export default {
     // 폰 방해금지 중: 진동·화면 켜기 없이 저장만 하고 곧 앱을 닫음 (목록을 보고 있을 땐 그대로)
     if (this.alert.quiet) { this.quietClose(); return }
     // 화면 깨우기: 5초 동안 강제로 켜 둔 뒤 시스템에 돌려줌 (사용자 요청, 3.7)
-    if (this.alert.wake) {
-      try { brightness.setKeepScreenOn({ keepScreenOn: true }) } catch (e) {}
-      if (screenTimer) clearTimeout(screenTimer)
-      screenTimer = setTimeout(() => { screenTimer = null; this.releaseScreen() }, 5000)
-    }
+    if (this.alert.wake) this.keepOn5s()
     if (this.alert.vibe) {
       try { vibrator.vibrate({ mode: 'long' }) } catch (e) {}
     }
+  },
+
+  keepOn5s() {
+    try { brightness.setKeepScreenOn({ keepScreenOn: true }) } catch (e) {}
+    if (screenTimer) clearTimeout(screenTimer)
+    userTouched = false
+    // 5초 동안 안 만지면 앱을 닫음 → 화면이 꺼진 뒤 다시 켜면 워치 메인 화면 (알림은 목록에 남음)
+    screenTimer = setTimeout(() => {
+      screenTimer = null
+      this.releaseScreen()
+      if (!userTouched && this.mode === 'arrive') app.terminate()
+    }, 5000)
   },
 
   quietClose() {
@@ -470,7 +483,7 @@ export default {
 
   releaseScreen() { try { brightness.setKeepScreenOn({ keepScreenOn: false }) } catch (e) {} },
 
-  onHide() { this.releaseScreen() },
+  onHide() { userTouched = true; this.releaseScreen() }, // 읽기 화면으로 갔으면 자동으로 닫지 않음
 
   onDestroy() { this.releaseScreen(); app.terminate() },
 
