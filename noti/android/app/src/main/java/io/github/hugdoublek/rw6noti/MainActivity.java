@@ -91,7 +91,7 @@ public class MainActivity extends Activity {
         wakeBar.setMax(54); // (30 - 3) / 0.5
         wakeBar.setProgress((prefs.wakeTenths() - 30) / 5);
         Runnable showWake = () -> wakeLabel.setText(String.format(java.util.Locale.US,
-                "   화면 켜 두는 시간: %.1f초 (안 만지면 지나서 앱 닫힘)", prefs.wakeTenths() / 10f));
+                "알림을 보여 주는 시간: %.1f초 (지나면 닫혀 메인 화면으로)\n· 화면 깨우기가 켜져 있으면 이 시간 동안 화면을 켜 둠\n· 화면을 만지면 그때부터 15초, 눌러서 읽는 동안은 최대 3분", prefs.wakeTenths() / 10f));
         showWake.run();
         wakeBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar s, int v, boolean u) { prefs.setWakeTenths(30 + v * 5); showWake.run(); }
