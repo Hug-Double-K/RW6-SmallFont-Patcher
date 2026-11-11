@@ -95,6 +95,17 @@ public class MainActivity extends Activity {
             ttsReady = r != android.speech.tts.TextToSpeech.LANG_MISSING_DATA && r != android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED;
         });
 
+        Button fake = new Button(this);
+        fake.setAllCaps(false);
+        fake.setText("(시험 0.4) 가짜 전화로 워치 통화 연결 깨우기");
+        fake.setOnClickListener(v -> {
+            if (running || !permitted()) return;
+            running = true;
+            text.setLength(0);
+            new Thread(this::fakeCall).start();
+        });
+        root.addView(fake);
+
         Button go = new Button(this);
         go.setAllCaps(false);
         go.setText("(점검용) 워치 마이크·스피커 시험");
@@ -369,6 +380,71 @@ public class MainActivity extends Activity {
             try { unregisterReceiver(rcv); } catch (Throwable ignored) { }
             running = false;
             say("끝.");
+        }
+    }
+
+    /** 가짜 수신 전화를 만들어 워치가 통화용으로 붙는지, 붙으면 워치 마이크로 녹음되는지 확인 */
+    private void fakeCall() {
+        android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+        AiConnectionService.logger = this::say;
+        try {
+            say("RW6 AI 시험 0.4 — 가짜 수신 전화 (SDK " + Build.VERSION.SDK_INT + ")");
+            if (adapter != null) {
+                adapter.getProfileProxy(this, new android.bluetooth.BluetoothProfile.ServiceListener() {
+                    @Override public void onServiceConnected(int profile, android.bluetooth.BluetoothProfile proxy) { headset = (android.bluetooth.BluetoothHeadset) proxy; }
+                    @Override public void onServiceDisconnected(int profile) { headset = null; }
+                }, android.bluetooth.BluetoothProfile.HEADSET);
+                for (int i = 0; i < 15 && headset == null; i++) Thread.sleep(200);
+            }
+            android.telecom.TelecomManager tm = (android.telecom.TelecomManager) getSystemService(TELECOM_SERVICE);
+            android.telecom.PhoneAccountHandle handle = new android.telecom.PhoneAccountHandle(
+                    new android.content.ComponentName(this, AiConnectionService.class), "rw6ai");
+            tm.registerPhoneAccount(android.telecom.PhoneAccount.builder(handle, "RW6 AI")
+                    .setCapabilities(android.telecom.PhoneAccount.CAPABILITY_SELF_MANAGED)
+                    .addSupportedUriScheme(android.telecom.PhoneAccount.SCHEME_TEL).build());
+            AiConnectionService.current = null;
+            Bundle ex = new Bundle();
+            ex.putParcelable(android.telecom.TelecomManager.EXTRA_INCOMING_CALL_ADDRESS, android.net.Uri.fromParts("tel", "000", null));
+            tm.addNewIncomingCall(handle, ex);
+            say("1) 가짜 전화를 만들었습니다. 워치에 전화 화면이 뜨는지 보세요 (뜨면 '받기'를 누르세요)…");
+            AiConnectionService.AiConnection conn = null;
+            for (int i = 0; i < 30 && conn == null; i++) { Thread.sleep(100); conn = AiConnectionService.current; }
+            if (conn == null) { say("결론: ✘ 전화가 만들어지지 않음"); return; }
+
+            String last = null;
+            int hfpSecs = 0;
+            for (int sec = 1; sec <= 20 && !conn.answered && !conn.ended; sec++) {
+                Thread.sleep(1000);
+                String now = "없음";
+                android.bluetooth.BluetoothHeadset hs = headset;
+                if (hs != null) {
+                    List<android.bluetooth.BluetoothDevice> ds = hs.getConnectedDevices();
+                    if (!ds.isEmpty()) now = String.valueOf(ds.get(0).getName());
+                }
+                if (!now.equals(last)) { say("   " + sec + "초: 통화용 블루투스 연결 = " + now); last = now; }
+                if (!"없음".equals(now)) hfpSecs++;
+                if (hfpSecs >= 4 && !conn.answered && !conn.ended) { say("   (워치가 붙었으니 자동으로 받습니다)"); conn.onAnswer(); }
+            }
+            if (conn.ended) { say("결론: 전화가 거절되거나 끊김"); return; }
+            if (!conn.answered) {
+                say("결론: 20초 동안 워치가 통화용으로 붙지 않았고 받지도 않음 → 이 방식으로는 워치를 깨우지 못함");
+                conn.end(android.telecom.DisconnectCause.MISSED);
+                return;
+            }
+            say("2) 통화 중 상태. 워치로 소리 길을 엽니다…");
+            conn.setAudioRoute(android.telecom.CallAudioState.ROUTE_BLUETOOTH);
+            Thread.sleep(2500);
+            boolean ok = recordAndPlay(MediaRecorder.AudioSource.VOICE_COMMUNICATION, "통화용");
+            conn.end(android.telecom.DisconnectCause.LOCAL);
+            say(ok ? "결론: ★ 가짜 전화 방식으로 워치 마이크를 쓸 수 있음" : "결론: 전화는 됐지만 워치 마이크로 녹음되지 않음");
+        } catch (Throwable t) {
+            say("오류: " + t);
+        } finally {
+            try { AiConnectionService.AiConnection c = AiConnectionService.current; if (c != null) c.end(android.telecom.DisconnectCause.LOCAL); } catch (Throwable ignored) { }
+            try { if (adapter != null && headset != null) adapter.closeProfileProxy(android.bluetooth.BluetoothProfile.HEADSET, headset); } catch (Throwable ignored) { }
+            headset = null;
+            running = false;
+            say("끝. '결과 복사'를 눌러 대화창에 붙여 넣어 주세요.");
         }
     }
 
