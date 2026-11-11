@@ -38,15 +38,17 @@ public final class WatchSender {
         Handler main = new Handler(Looper.getMainLooper());
         main.post(() -> {
             QUEUE.add(() -> {
+                final int gen = ++GEN; // 60초 안전장치로 넘어가면 이전 건은 더 보내지 않음 (조각이 섞이지 않게)
                 // 한 건이 끝나면 다음 건. 연결 문제로 답이 끝내 안 오더라도 60초 뒤엔 다음 건으로 (줄이 영영 막히지 않게)
                 java.util.concurrent.atomic.AtomicBoolean fin = new java.util.concurrent.atomic.AtomicBoolean(false);
                 Runnable next = () -> { running = false; pump(); };
                 main.postDelayed(() -> {
                     if (!fin.compareAndSet(false, true)) return;
+                    GEN++; // 이전 건 취소
                     if (cb != null) cb.done(false, "응답 없음 (60초) — 다음 알림으로 넘어감");
                     next.run();
                 }, 60_000);
-                sendWithRetry(ctx, base64, stamp, 0, (ok, msg) -> {
+                sendWithRetry(ctx, base64, stamp, 0, gen, (ok, msg) -> {
                     if (!fin.compareAndSet(false, true)) return;
                     if (cb != null) cb.done(ok, msg);
                     main.post(next);
@@ -62,10 +64,14 @@ public final class WatchSender {
         QUEUE.poll().run();
     }
 
-    private static void sendWithRetry(Context ctx, String base64, String stamp, int attempt, Result cb) {
-        sendNow(ctx, base64, stamp, (ok, msg) -> {
+    /** 지금 보내는 건의 번호. 다르면 이미 취소된 건 */
+    private static volatile int GEN = 0;
+
+    private static void sendWithRetry(Context ctx, String base64, String stamp, int attempt, int gen, Result cb) {
+        if (gen != GEN) return;
+        sendNow(ctx, base64, stamp, gen, (ok, msg) -> {
             if (!ok && attempt == 0) { // 한 번 더 시도
-                new Handler(Looper.getMainLooper()).postDelayed(() -> sendWithRetry(ctx, base64, stamp, 1, cb), 2000);
+                new Handler(Looper.getMainLooper()).postDelayed(() -> sendWithRetry(ctx, base64, stamp, 1, gen, cb), 2000);
             } else {
                 cb.done(ok, attempt > 0 && ok ? msg + " (재시도)" : msg);
             }
@@ -89,7 +95,7 @@ public final class WatchSender {
     /** 확인 결과를 기록에 남길 곳 (NotiListener가 설정) */
     static volatile Result ackLog = null;
 
-    private static void sendNow(Context ctx, String base64, String stamp, Result cb) {
+    private static void sendNow(Context ctx, String base64, String stamp, int gen, Result cb) {
         Context app = ctx.getApplicationContext();
         if (!listening) listen(app);
         NodeApi nodeApi = Wearable.getNodeApi(app);
@@ -124,9 +130,10 @@ public final class WatchSender {
                     Node node = nodes.get(0);
                     java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean(false);
                     java.util.concurrent.atomic.AtomicBoolean acked = new java.util.concurrent.atomic.AtomicBoolean(false);
+                    java.util.concurrent.atomic.AtomicReference<Runnable> mine = new java.util.concurrent.atomic.AtomicReference<>();
                     Result once = (ok, msg) -> {
                         if (!done.compareAndSet(false, true)) return;
-                        readyWaiter = null;
+                        if (readyWaiter == mine.get()) readyWaiter = null; // 다음 건이 기다리는 신호는 지우지 않음
                         if (ok) { lastOk = System.currentTimeMillis(); lastSetting = settingStr; }
                         report(cb, ok, msg);
                     };
@@ -141,7 +148,7 @@ public final class WatchSender {
                     java.util.concurrent.atomic.AtomicBoolean inFlight = new java.util.concurrent.atomic.AtomicBoolean(false);
                     java.util.concurrent.atomic.AtomicInteger sentTimes = new java.util.concurrent.atomic.AtomicInteger(0);
                     Runnable sendAll = () -> {
-                        if (acked.get() || !inFlight.compareAndSet(false, true)) return;
+                        if (gen != GEN || acked.get() || !inFlight.compareAndSet(false, true)) return;
                         // 사진은 확인 응답이 지원될 때만 다시 보냄 (아니면 같은 사진을 여러 번 보내 느려짐)
                         if (!text && sentTimes.get() > 0 && !ackSeen) { inFlight.set(false); return; }
                         sentTimes.incrementAndGet();
@@ -151,9 +158,10 @@ public final class WatchSender {
                             if (!ok && !text) once.done(false, m);
                         });
                     };
+                    mine.set(sendAll);
                     readyWaiter = sendAll;
                     // 화면이 꺼져 있으면 워치 앱이 잠들어 있을 수 있어 매번 연다 (켜져 있으면 금방 끝남)
-                    Runnable launch = () -> { if (!acked.get()) nodeApi.launchWearApp(node.id, "/index"); };
+                    Runnable launch = () -> { if (gen == GEN && !acked.get()) nodeApi.launchWearApp(node.id, "/index"); };
                     // 방금 전(3초 안)에 워치가 받았다고 답했다면 앱이 아직 켜져 있음 → 앱 열기를 기다리지 않고 바로 보냄
                     // (사진 알림의 '사진 먼저 알림' 바로 뒤에 오는 사진이 1.5초 빨라짐)
                     if (ackSeen && System.currentTimeMillis() - lastOk < 3000) main.post(sendAll);

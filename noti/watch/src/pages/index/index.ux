@@ -219,7 +219,12 @@ export default {
       e: m.ef || '', ew: m.ew || 80, eh: m.eh || 80,
       sf: m.sf || '', sw: m.siw || 0, sh: m.sih || 0, hf: m.hf || '', hw: m.hiw || 0, hh: m.hih || 0,
     }
-    const showNow = () => { self.show(cur); self.notifyArrival() }
+    const showNow = () => {
+      // 그림 저장을 기다리는 사이 같은 이름의 사진이 먼저 떴거나, 더 새 알림이 떠 있으면 덮지 않음
+      if (done[`${name}.jpg`] || done[`${name}.png`]) return
+      if (self.mode === 'arrive' && self.cur.name && self.cur.name > name) return
+      self.show(cur); self.notifyArrival()
+    }
     if (!jobs.length) showNow()
     else {
       file.mkdir({ uri: META, recursive: true, complete() {
@@ -278,12 +283,20 @@ export default {
 
   // 도착 화면의 '끄기' = 이 알림 지우고 앱 닫기
   arriveOff() {
+    const self = this
     const n = this.cur.name
     ;['json', 'jpg', 'png'].forEach((e) => { try { file.delete({ uri: `${DIR}/${n}.${e}` }) } catch (x) {} })
-    try { file.delete({ uri: `${META}/${n}.png` }) } catch (x) {}
     try { conn.send({ data: { del: 1 } }) } catch (x) {}
-    this.trimSoon()
-    this.idxRemove((e) => e.name === n, () => app.terminate())
+    // 이 알림의 그림 조각(이모지·보낸 사람·윗줄)도 지운 뒤 닫기
+    const close = () => self.idxRemove((e) => e.name === n, () => app.terminate())
+    file.list({
+      uri: META,
+      success(md) {
+        md.fileList.forEach((f) => { if (f.uri.replace(/^.*\//, '').indexOf(n) === 0) { try { file.delete({ uri: f.uri }) } catch (x) {} } })
+        close()
+      },
+      fail: close,
+    })
   },
 
   // 오래된 알림 정리
@@ -312,8 +325,6 @@ export default {
       },
     })
   },
-
-  trimSoon() { setTimeout(() => this.trim(), 300) },
 
   // ---- 목록 미리보기 모음 ----
   // 목록 읽기는 한 번에 하나만 (동시에 읽고 쓰다 목록이 비어 보이던 문제 방지)
