@@ -43,7 +43,8 @@
             <div class="t-row">
               <image if="{{ li.icon }}" src="{{ li.icon }}" class="t-icon" />
               <image if="{{ li.hf }}" src="{{ li.hf }}" style="width: {{ li.hw }}px; height: {{ li.hh }}px" />
-              <text if="{{ !li.hf }}" class="t-app">{{ li.a || '알림' }}</text>
+              <text if="{{ li.hf && li.tm }}" class="t-app" style="margin-left: 8px">{{ li.tm }}</text>
+              <text if="{{ !li.hf }}" class="t-app">{{ li.al }}</text>
             </div>
             <image if="{{ li.sf }}" src="{{ li.sf }}" style="width: {{ li.sw }}px; height: {{ li.sh }}px; margin-top: 6px" />
             <text if="{{ !li.sf }}" class="t-snd">{{ li.s }}</text>
@@ -82,6 +83,11 @@ const WAIT_MS = 700
 let conn = null
 let waitTimer = null
 let screenTimer = null
+let inDetailAt = 0 // 읽기 화면을 연 시각 (0 = 안 열림). 읽는 동안엔 앱을 자동으로 닫지 않음
+let needS = false // 저장된 설정이 없어 폰에 요청한 상태
+// 읽기 화면을 연 지 3분 안일 때만 '읽는 중'으로 봄 (열어 둔 채 화면이 꺼져 계속 남는 경우 대비)
+function reading() { return inDetailAt > 0 && Date.now() - inDetailAt < 180000 }
+let gotSetting = false // 이번에 폰에서 설정을 받았는지 (받았으면 저장돼 있던 옛 설정으로 덮지 않음)
 let userTouched = false // 도착 화면을 만졌으면 5초 뒤 자동으로 닫지 않음
 let quietTimer = null // 방해금지 중 받은 뒤 앱 닫기 // 알림이 연달아 오면 마지막 알림 기준 5초
 const receiving = {}
@@ -113,6 +119,15 @@ function toParts(body, sg) {
   return out
 }
 
+// 받은 시각: 오늘이면 '14:05', 다른 날이면 '11/10 14:05'
+function fmtTime(w) {
+  if (!w) return ''
+  const t = new Date(w), n = new Date()
+  const hm = `${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`
+  const today = t.getFullYear() === n.getFullYear() && t.getMonth() === n.getMonth() && t.getDate() === n.getDate()
+  return today ? hm : `${t.getMonth() + 1}/${t.getDate()} ${hm}`
+}
+
 function preview(body) { return body.length > 120 ? body.substr(0, 120) + '…' : body }
 
 export default {
@@ -129,9 +144,19 @@ export default {
 
   onInit() {
     const self = this
-    storage.get({ key: 'alert', success(v) { try { if (v) self.alert = JSON.parse(v) } catch (e) {} } })
+    gotSetting = false
+    needS = false
+    inDetailAt = 0
     conn = interconnect.instance()
     conn.onmessage = (msg) => { self.onMsg(msg.data) }
+    storage.get({
+      key: 'alert',
+      success(v) {
+        if (gotSetting) return
+        try { if (v) self.alert = JSON.parse(v); else self.needSetting() } catch (e) { self.needSetting() }
+      },
+      fail() { self.needSetting() },
+    })
     self.ready()
     // 기다리는 동안 목록을 미리 읽어 둠 → 목록으로 넘어갈 때 바로 그림
     self.idxLoad(() => {})
@@ -140,6 +165,7 @@ export default {
   },
 
   onShow() {
+    inDetailAt = 0
     this.ready()
     if (this.mode === 'list') this.refreshList()
   },
@@ -157,7 +183,16 @@ export default {
   },
 
   ready() {
-    try { if (conn) conn.send({ data: { ready: 1 } }) } catch (e) {}
+    // 워치 앱 버전도 같이 알려 줌 (폰 앱이 버전이 다르면 알려 주도록)
+    let v = ''
+    try { v = app.getInfo().versionName || '' } catch (e) {}
+    try { if (conn) conn.send({ data: { ready: 1, v } }) } catch (e) {}
+  },
+
+  // 워치 앱을 새로 깔아 저장된 설정(진동·화면 켜기·글자 크기)이 없으면 폰에 다시 보내 달라고 함
+  needSetting() {
+    needS = true
+    try { if (conn && !gotSetting) conn.send({ data: { need: 1 } }) } catch (e) {}
   },
 
   onMsg(d) {
@@ -165,6 +200,7 @@ export default {
     try {
       const k = d.substr(0, 1)
       if (k === 'S') {
+        gotSetting = true
         self.alert = { vibe: d.substr(1, 1) === '1', wake: d.substr(2, 1) === '1', fs: Number(d.substr(3, 2)) || 26, quiet: d.substr(5, 1) === '1',
           wakeMs: Math.max(3000, Math.min(30000, (Number(d.substr(6, 3)) || 50) * 100)) }
         storage.set({ key: 'alert', value: JSON.stringify(self.alert) })
@@ -176,6 +212,8 @@ export default {
       const kind = (flag === 'D' || flag === 'E') ? 'json' : (flag === 'f' || flag === 'g') ? 'jpg' : 'png'
       const isEnd = flag === 'E' || flag === 'g' || flag === 'e'
       const offset = Number(d.substr(0, 2))
+      // 설정 요청이 폰에 안 닿았을 수 있어, 알림이 올 때 한 번 더 요청
+      if (offset === 0 && needS && !gotSetting) self.needSetting()
       const name = d.substr(3, 13)
       const key = `${name}.${kind}`
       if (done[key]) { if (isEnd) self.ack(name); return } // 이미 받은 것 → 받았다고 다시 알려줌
@@ -232,7 +270,7 @@ export default {
       } })
     }
     file.writeText({ uri: `${DIR}/${name}.json`, text: JSON.stringify(m), complete() { self.trim() } })
-    self.idxPut({ name, kind: 'text', uri: `${DIR}/${name}.json`, a: appLine, s: m.s || '', b: preview(m.b || ''), icon,
+    self.idxPut({ name, kind: 'text', uri: `${DIR}/${name}.json`, a: appLine, s: m.s || '', b: preview(m.b || ''), icon, w: m.w || 0,
       e: m.ef || '', ew: m.ew || 0, eh: m.eh || 0, sf: m.sf || '', sw: m.siw || 0, sh: m.sih || 0, hf: m.hf || '', hw: m.hiw || 0, hh: m.hih || 0 })
   },
 
@@ -278,6 +316,7 @@ export default {
     userTouched = true
     const c = this.cur
     if (!c.name) return
+    inDetailAt = Date.now()
     router.push({ uri: '/pages/detail', params: { uri: c.img || `${DIR}/${c.name}.json`, arrival: '1' } })
   },
 
@@ -395,7 +434,7 @@ export default {
             success(r) {
               try {
                 const m = JSON.parse(r.text)
-                e.a = m.c ? `${m.a} · ${m.c}` : (m.a || ''); e.s = m.s || ''; e.b = preview(m.b || '')
+                e.a = m.c ? `${m.a} · ${m.c}` : (m.a || ''); e.s = m.s || ''; e.b = preview(m.b || ''); e.w = m.w || 0
                 if (m.k) e.icon = `${ICONS}/${m.k}.png`
               } catch (x) {}
               res(e)
@@ -430,6 +469,7 @@ export default {
     // 목록의 보낸 사람 글자는 24px → 폰이 글자 크기(fs)로 그린 그림도 같은 비율로 줄여 표시
     const r = 24 / (this.alert.fs || 26)
     this.list = (IDX || []).map((e) => ({ uri: e.uri, kind: e.kind, a: e.a, s: e.s, b: e.b, icon: e.icon, e: e.e || '', ew: e.ew || 0, eh: e.eh || 0,
+      tm: fmtTime(e.w), al: (e.a || '알림') + (e.w ? ` · ${fmtTime(e.w)}` : ''),
       sf: e.sf || '', sw: Math.round((e.sw || 0) * r), sh: Math.round((e.sh || 0) * r), hf: e.hf || '', hw: e.hw || 0, hh: e.hh || 0, gone: false }))
     this.notis = this.list.length
     this.loaded = true
@@ -475,6 +515,7 @@ export default {
 
   openPopup(li) {
     if (this.deleteOn) return
+    inDetailAt = Date.now()
     router.push({ uri: '/pages/detail', params: { uri: li.uri, arrival: '0' } })
   },
 
@@ -491,12 +532,12 @@ export default {
   keepOn5s() {
     try { brightness.setKeepScreenOn({ keepScreenOn: true }) } catch (e) {}
     if (screenTimer) clearTimeout(screenTimer)
-    userTouched = false
+    userTouched = reading() // 읽기 화면을 보는 중에 새 알림이 와도 읽던 화면을 닫지 않음
     // 정한 시간(폰 앱 설정, 기본 5초) 동안 안 만지면 앱을 닫음 → 화면이 꺼진 뒤 다시 켜면 워치 메인 화면 (알림은 목록에 남음)
     screenTimer = setTimeout(() => {
       screenTimer = null
       this.releaseScreen()
-      if (!userTouched && this.mode === 'arrive') app.terminate()
+      if (!userTouched && !reading() && this.mode === 'arrive') app.terminate()
     }, this.alert.wakeMs || 5000)
   },
 
@@ -504,7 +545,7 @@ export default {
     if (this.mode === 'list') return
     if (quietTimer) clearTimeout(quietTimer)
     const wait = this.cur.pending ? 12000 : 1500
-    quietTimer = setTimeout(() => { if (this.mode !== 'list') { this.releaseScreen(); app.terminate() } }, wait)
+    quietTimer = setTimeout(() => { if (this.mode !== 'list' && !reading()) { this.releaseScreen(); app.terminate() } }, wait)
   },
 
   releaseScreen() { try { brightness.setKeepScreenOn({ keepScreenOn: false }) } catch (e) {} },

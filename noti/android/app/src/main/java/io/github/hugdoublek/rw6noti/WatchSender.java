@@ -106,10 +106,7 @@ public final class WatchSender {
         // 설정(S + 진동 + 깨우기 + 글자크기)은 바뀌었을 때만 같이 보낸다
         Prefs p = new Prefs(app);
         // 폰 방해금지 중이면 진동·깨우기를 끄고 조용히(q=1) → 워치는 받기만 하고 바로 앱을 닫음
-        boolean quiet = quiet(app);
-        String settingStr = "S" + (p.vibrate() && !quiet ? "1" : "0") + (p.wake() && !quiet ? "1" : "0")
-                + String.format("%02d", p.fontSize()) + (quiet ? "1" : "0")
-                + String.format("%03d", p.wakeTenths()); // 화면 켜 두는 시간(0.1초 단위)
+        String settingStr = settingStr(app);
         if (!settingStr.equals(lastSetting)) chunks.add(settingStr.getBytes(StandardCharsets.UTF_8));
         // 종류: 글(JSON) = D/E, 사진 JPEG = f/g, PNG = d/e
         boolean text = base64.startsWith("{");
@@ -175,6 +172,7 @@ public final class WatchSender {
                                     ACK.remove(stamp);
                                     if (!acked.get()) {
                                         once.done(true, ackSeen ? "워치 확인 없음 (못 받았을 수 있음)" : "전송함");
+                                        if (ackSeen) relisten(app);
                                         if (ackLog != null && ackSeen) ackLog.done(false, stamp);
                                     }
                                 }, text ? 11000 : 20000);
@@ -182,6 +180,15 @@ public final class WatchSender {
                             .addOnFailureListener(e -> { ACK.remove(stamp); once.done(false, "워치 앱 열기 실패: " + e.getMessage() + "\n(워치 앱 설치·워치 권한 확인)"); });
                 })
                 .addOnFailureListener(e -> report(cb, false, "워치 조회 실패: " + e.getMessage()));
+    }
+
+    /** 워치로 보내는 설정: S + 진동 + 깨우기 + 글자크기(2) + 조용히 + 화면 켜 두는 시간(0.1초 단위, 3) */
+    private static String settingStr(Context app) {
+        Prefs p = new Prefs(app);
+        boolean quiet = quiet(app);
+        return "S" + (p.vibrate() && !quiet ? "1" : "0") + (p.wake() && !quiet ? "1" : "0")
+                + String.format("%02d", p.fontSize()) + (quiet ? "1" : "0")
+                + String.format("%03d", p.wakeTenths());
     }
 
     /** 워치 알림 목록(알림 센터)에 한 줄 띄운다. 워치 앱과 연결된 알림이라 누르면 워치 앱이 열린다 */
@@ -208,12 +215,32 @@ public final class WatchSender {
     }
 
     /** 워치 앱이 보내는 개수 정보를 받는다 ({"n":개수} 또는 {"del":1}) */
+    private static volatile long lastRelisten = 0;
+
+    /** 워치의 답이 안 들리면 듣기를 새로 등록 (30초에 한 번까지). 기존 등록을 먼저 지워 답이 두 번 들리지 않게 */
+    private static void relisten(Context app) {
+        long now = System.currentTimeMillis();
+        if (now - lastRelisten < 30_000) return;
+        lastRelisten = now;
+        Wearable.getNodeApi(app).getConnectedNodes().addOnSuccessListener(nodes -> {
+            if (nodes == null || nodes.isEmpty()) { listening = false; return; }
+            java.util.concurrent.atomic.AtomicBoolean once = new java.util.concurrent.atomic.AtomicBoolean(false);
+            Runnable add = () -> { if (once.compareAndSet(false, true)) listen(app); };
+            Wearable.getMessageApi(app).removeListener(nodes.get(0).id)
+                    .addOnSuccessListener(v -> add.run())
+                    .addOnFailureListener(e -> add.run());
+            new Handler(Looper.getMainLooper()).postDelayed(add, 2000);
+        }).addOnFailureListener(e -> listening = false);
+    }
+
     public static void listen(Context ctx) {
         Context app = ctx.getApplicationContext();
         listening = true;
-        Wearable.getNodeApi(app).getConnectedNodes().addOnSuccessListener(nodes -> {
-            if (nodes == null || nodes.isEmpty()) return;
-            Wearable.getMessageApi(app).addListener(nodes.get(0).id, (id, data) -> {
+        Wearable.getNodeApi(app).getConnectedNodes().addOnFailureListener(e -> listening = false).addOnSuccessListener(nodes -> {
+            // 워치가 아직 연결 안 됐으면 다음 전송 때 다시 등록 (예전엔 한 번 실패하면 앱을 다시 켤 때까지 답을 못 들음)
+            if (nodes == null || nodes.isEmpty()) { listening = false; return; }
+            final String nodeId = nodes.get(0).id;
+            Wearable.getMessageApi(app).addListener(nodeId, (id, data) -> {
                 String s = new String(data, StandardCharsets.UTF_8);
                 if (s.contains("ack")) { // 워치가 이 이름을 받았다고 확인
                     java.util.regex.Matcher am = java.util.regex.Pattern.compile("\\d{13}").matcher(s);
@@ -223,13 +250,24 @@ public final class WatchSender {
                 if (s.contains("ready")) { // 워치 앱 준비됨 → 기다리던 전송 시작
                     Runnable r = readyWaiter;
                     if (r != null) new Handler(Looper.getMainLooper()).post(r);
+                    java.util.regex.Matcher vm = java.util.regex.Pattern.compile("\"v\"\\s*:\\s*\"([^\"]*)\"").matcher(s);
+                    if (vm.find() && !vm.group(1).isEmpty()) { Prefs vp = new Prefs(app); if (!vm.group(1).equals(vp.watchVer())) vp.setWatchVer(vm.group(1)); }
+                    return;
+                }
+                if (s.contains("need")) { // 워치 앱에 설정이 없음(워치 앱을 새로 깐 직후) → 설정을 바로 다시 보냄
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        lastSetting = "";
+                        final String st = settingStr(app);
+                        Wearable.getMessageApi(app).sendMessage(nodeId, st.getBytes(StandardCharsets.UTF_8))
+                                .addOnSuccessListener(v -> lastSetting = st);
+                    });
                     return;
                 }
                 Prefs p = new Prefs(app);
                 if (s.contains("del")) { p.setUnread(p.unread() - 1); return; }
                 java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\d+").matcher(s);
                 if (m.find()) p.setUnread(Integer.parseInt(m.group()));
-            });
+            }).addOnFailureListener(e -> listening = false);
         });
     }
 

@@ -73,6 +73,10 @@ public final class Prefs {
     }
     public String history() { return sp.getString("history", "아직 기록 없음"); }
 
+    /** 워치 앱이 알려 온 버전 (폰 앱과 다르면 상태 줄에 경고) */
+    public String watchVer() { return sp.getString("watchVer", ""); }
+    public void setWatchVer(String v) { sp.edit().putString("watchVer", v).apply(); }
+
     public String lastLog() { return sp.getString("lastLog", "-"); }
     public void setLastLog(String v) { sp.edit().putString("lastLog", v).apply(); }
 

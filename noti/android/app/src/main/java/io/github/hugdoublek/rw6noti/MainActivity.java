@@ -137,7 +137,7 @@ public class MainActivity extends Activity {
             // 앱 업데이트 뒤에는 시스템이 수신 서비스를 다시 붙여주지 않는 경우가 많아 직접 요청
             try { NotificationListenerService.requestRebind(new ComponentName(this, NotiListener.class)); } catch (Throwable ignored) { }
         }
-        status.setText(listenerLine(listener) + "\n워치: 확인 중…");
+        status.setText(listenerLine(listener) + "\n워치: 확인 중…" + verLine());
         log.setText("최근 전송: " + prefs.lastLog());
         diag.setText(prefs.diag());
         hist.setText(prefs.history());
@@ -155,7 +155,7 @@ public class MainActivity extends Activity {
     }
 
     private void setStatus(boolean listener, String watch) {
-        runOnUiThread(() -> status.setText(listenerLine(listener) + "\n워치: " + watch));
+        runOnUiThread(() -> status.setText(listenerLine(listener) + "\n워치: " + watch + verLine()));
     }
 
     private void requestWatchPermission() {
@@ -226,6 +226,15 @@ public class MainActivity extends Activity {
     private void refreshOtherLabel() {
         int n = prefs.otherApps().size();
         otherBtn.setText("그 밖의 앱 선택 (" + (n == 0 ? "없음" : n + "개") + ")");
+    }
+
+    /** 폰 앱·워치 앱 버전. 서로 다르면 알려 줌 (두 앱은 같은 버전이어야 함) */
+    private String verLine() {
+        String mine = "?";
+        try { mine = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Throwable ignored) { }
+        String w = prefs.watchVer();
+        if (w.isEmpty()) return "\n버전: 폰 " + mine + " / 워치 (알림을 한 번 보내면 표시)";
+        return "\n버전: 폰 " + mine + " / 워치 " + w + (w.equals(mine) ? "" : " ← 다릅니다. 워치 앱도 " + mine + "(으)로 설치하세요");
     }
 
     private String listenerLine(boolean enabled) {

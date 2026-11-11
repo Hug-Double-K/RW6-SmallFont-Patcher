@@ -27,10 +27,15 @@ import java.util.Map;
 /** 폰 알림을 받아 카드 이미지로 그려 워치로 보낸다 */
 public class NotiListener extends NotificationListenerService {
 
-    private final Map<String, String> lastSent = new HashMap<>();
+    /** 같은 알림을 두 번 보내지 않기 위한 기록 (오래된 것부터 하나씩 버림. 서비스가 다시 붙어도 유지) */
+    private static final Map<String, String> lastSent = new java.util.LinkedHashMap<String, String>() {
+        @Override protected boolean removeEldestEntry(Map.Entry<String, String> e) { return size() > 200; }
+    };
+    /** 이 앱(프로세스)이 시작된 시각. 그보다 한참 전의 사진은 이미 보냈거나 지나간 것 → 다시 보내지 않음 */
+    private static final long STARTED = System.currentTimeMillis();
     /** 앱 아이콘을 워치에 보낸 시각 (1시간마다 다시 보냄) */
     private static final Map<String, Long> ICON_AT = new java.util.concurrent.ConcurrentHashMap<>();
-    private final java.util.Set<String> sentUris = new java.util.HashSet<>();
+    private static final java.util.Set<String> sentUris = new java.util.LinkedHashSet<>();
     private static String lastLoadError = "";
     private static final android.os.HandlerThread THREAD = new android.os.HandlerThread("rw6noti");
     static { THREAD.start(); }
@@ -45,7 +50,19 @@ public class NotiListener extends NotificationListenerService {
         Prefs lp = new Prefs(this);
         WatchSender.ackLog = (ok, stamp) -> { if (!ok) lp.addHistory(now() + " ⚠ 워치가 받았다는 확인이 없음 (" + stamp.substring(7) + ")"); };
     }
-    @Override public void onListenerDisconnected() { connected = false; }
+    @Override public void onListenerDisconnected() {
+        connected = false;
+        // 시스템이 연결을 끊으면 스스로 다시 붙여 달라고 요청 (알림 접근을 껐다 켜는 수고를 줄임)
+        try { requestRebind(new android.content.ComponentName(this, NotiListener.class)); } catch (Throwable ignored) { }
+    }
+
+    /**
+     * 앱 업데이트 뒤 수신 서비스가 안 붙는 문제 대비: 시스템에 다시 붙여 달라고 요청.
+     * (서비스를 껐다 켜는 방법은 쓰지 않음: 최근 안드로이드에선 그 사이에 알림 접근 허용이 지워질 수 있음)
+     */
+    static void rebind(android.content.Context ctx) {
+        try { requestRebind(new android.content.ComponentName(ctx, NotiListener.class)); } catch (Throwable ignored) { }
+    }
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
@@ -102,7 +119,11 @@ public class NotiListener extends NotificationListenerService {
                 }
                 String type = m.getString("type");
                 Object uri = m.get("uri");
-                if (type != null && type.startsWith("image/") && uri instanceof Uri && !sentUris.contains(uri.toString())) {
+                long mt = m.getLong("time", 0);
+                // 앱이 다시 시작된 뒤 새 메시지가 오면, 알림에 같이 들어 있는 예전 사진까지 또 보내던 문제 방지
+                // (가장 마지막 메시지는 방금 온 것이므로 항상 보냄)
+                boolean stale = i != msgs.length - 1 && mt > 0 && mt < STARTED - 60_000;
+                if (type != null && type.startsWith("image/") && uri instanceof Uri && !stale && !sentUris.contains(uri.toString())) {
                     CharSequence t = m.getCharSequence("text");
                     String ts = t == null ? "" : t.toString();
                     // 카톡 이모티콘: '이모티콘을 보냈습니다.' + 그림 → 사진보다 작게 보냄
@@ -144,7 +165,9 @@ public class NotiListener extends NotificationListenerService {
                 // 카톡은 알림을 먼저 띄우고 사진을 나중에 내려받는 일이 있어, 실패하면 잠시 뒤 다시 읽는다
                 worker.post(() -> loadAndSend(prefs, fIcon, fApp, fConv, ph, fs, 0));
             }
-            if (sentUris.size() > 500) sentUris.clear();
+            // 오래된 것부터 하나씩 버림 (한꺼번에 비우면 예전 사진이 다시 갈 수 있음)
+            java.util.Iterator<String> it = sentUris.iterator();
+            while (sentUris.size() > 500 && it.hasNext()) { it.next(); it.remove(); }
             return;
         }
 
@@ -160,7 +183,6 @@ public class NotiListener extends NotificationListenerService {
         String sig = sender + "|" + text + "|" + (picture != null);
         if (sig.equals(lastSent.get(key))) return;
         lastSent.put(key, sig);
-        if (lastSent.size() > 200) lastSent.clear();
 
         renderAndSend(prefs, icon, appName, conv, sender, text, picture, sbn.getPostTime(), String.valueOf(System.currentTimeMillis()),
                 text.contains(EMOTICON));
@@ -212,7 +234,7 @@ public class NotiListener extends NotificationListenerService {
             }
             String head = conv == null || conv.isEmpty() ? appName : appName + " · " + conv;
             if (hasEmoji(head)) {
-                Bitmap b = Renderer.lineBitmap(head, 19, 0xFFAAAAAA, false, 340);
+                Bitmap b = Renderer.lineBitmap(head, 19, 0xFFAAAAAA, false, 250); // 목록에서 옆에 시간이 들어갈 자리를 남김
                 o.put("hi", Renderer.toBase64Png(b)); o.put("hiw", b.getWidth()); o.put("hih", b.getHeight());
             }
         } catch (Throwable ignored) { }
