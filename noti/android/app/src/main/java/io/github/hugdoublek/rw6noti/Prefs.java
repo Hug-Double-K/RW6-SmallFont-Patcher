@@ -57,6 +57,10 @@ public final class Prefs {
     public boolean watchList() { return sp.getBoolean("watchList", false); }
     public void setWatchList(boolean v) { sp.edit().putBoolean("watchList", v).apply(); }
     /** 워치에 쌓인(아직 안 지운) 사진 알림 수 */
+    /** 알림 센터에 'RW6 알림 열기' 바로가기를 늘 남겨 둠 (목록을 보고 나가면 다시 올림) */
+    public boolean shortcut() { return sp.getBoolean("shortcut", false); }
+    public void setShortcut(boolean v) { sp.edit().putBoolean("shortcut", v).apply(); }
+
     public int unread() { return sp.getInt("unread", 0); }
     public void setUnread(int v) { sp.edit().putInt("unread", Math.max(0, v)).apply(); }
 

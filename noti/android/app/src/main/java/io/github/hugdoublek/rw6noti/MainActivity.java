@@ -101,6 +101,10 @@ public class MainActivity extends Activity {
         root.addView(wakeBar);
         root.addView(check("폰이 방해금지면 진동·화면 켜기 안 함", prefs.followDnd(), prefs::setFollowDnd));
         root.addView(check("워치 알림 목록에 'OO 알림 - N건' 표시 (누르면 RW6 알림으로)", prefs.watchList(), prefs::setWatchList));
+        root.addView(check("알림 센터에 'RW6 알림 열기' 바로가기 늘 두기 (위→아래로 쓸어내려 누르면 목록)", prefs.shortcut(), v -> {
+            prefs.setShortcut(v);
+            if (v) WatchSender.postShortcut(this); // 켜는 즉시 하나 올려 둠
+        }));
 
         root.addView(section("4. 확인"));
         root.addView(button("워치로 테스트 알림 보내기", v -> sendTest()));
