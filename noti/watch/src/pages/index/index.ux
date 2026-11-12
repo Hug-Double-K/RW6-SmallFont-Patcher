@@ -85,7 +85,6 @@ let waitTimer = null
 let closeTimer = null // 도착 화면을 닫는 타이머 (한 번에 하나만)
 let arrivedAt = 0 // 마지막 알림이 도착한 시각
 let browsing = false // 목록을 직접 만지며 보는 중 (그동안엔 새 알림이 와도 화면을 바꾸거나 앱을 닫지 않음)
-let byeSent = false // 목록을 보고 나갈 때 폰에 한 번만 알림 (폰이 알림 센터 바로가기를 다시 올림)
 let inDetailAt = 0 // 읽기 화면을 연 시각 (0 = 안 열림). 읽는 동안엔 앱을 자동으로 닫지 않음
 let needS = false // 저장된 설정이 없어 폰에 요청한 상태
 // 읽기 화면을 연 지 3분 안일 때만 '읽는 중'으로 봄 (열어 둔 채 화면이 꺼져 계속 남는 경우 대비)
@@ -168,7 +167,6 @@ export default {
   },
 
   onShow() {
-    byeSent = false
     inDetailAt = 0
     this.ready()
     if (this.mode === 'list') this.refreshList()
@@ -579,22 +577,9 @@ export default {
   releaseScreen() { try { brightness.setKeepScreenOn({ keepScreenOn: false }) } catch (e) {} },
 
   // 다른 화면(읽기 화면·시스템 팝업)에 가려지면 화면 켜 두기만 풂. 닫는 타이머는 그대로 돎
-  onHide() {
-    this.releaseScreen()
-    if (this.mode === 'list' && !reading()) this.sayBye()
-  },
+  onHide() { this.releaseScreen() },
 
-  onDestroy() {
-    if (this.mode === 'list') this.sayBye()
-    this.releaseScreen()
-    app.terminate()
-  },
-
-  sayBye() {
-    if (byeSent) return
-    byeSent = true
-    try { if (conn) conn.send({ data: { bye: 1 } }) } catch (e) {}
-  },
+  onDestroy() { this.releaseScreen(); app.terminate() },
 
   decode(b64) {
     let n = b64.length

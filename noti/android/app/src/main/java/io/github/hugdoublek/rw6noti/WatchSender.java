@@ -204,15 +204,6 @@ public final class WatchSender {
         } catch (Throwable t) { return false; }
     }
 
-    /** 알림 센터에 'RW6 알림 열기' 바로가기 (폰이 방해금지 중이면 진동 방지를 위해 올리지 않음) */
-    public static void postShortcut(Context ctx) {
-        Context app = ctx.getApplicationContext();
-        Prefs p = new Prefs(app);
-        if (!p.shortcut() || quiet(app)) return;
-        int n = p.unread();
-        notify(app, "RW6 알림 열기", n > 0 ? "눌러서 목록 보기 · 안 읽은 알림 " + n + "건" : "눌러서 목록 보기");
-    }
-
     public static void notify(Context ctx, String title, String message) {
         Context app = ctx.getApplicationContext();
         Wearable.getNodeApi(app).getConnectedNodes().addOnSuccessListener(nodes -> {
@@ -270,10 +261,6 @@ public final class WatchSender {
                         Wearable.getMessageApi(app).sendMessage(nodeId, st.getBytes(StandardCharsets.UTF_8))
                                 .addOnSuccessListener(v -> lastSetting = st);
                     });
-                    return;
-                }
-                if (s.contains("bye")) { // 워치에서 목록을 보고 나감 → 바로가기가 쓰였을 수 있으니 다시 올림
-                    if (new Prefs(app).shortcut()) new Handler(Looper.getMainLooper()).postDelayed(() -> postShortcut(app), 1500);
                     return;
                 }
                 Prefs p = new Prefs(app);
