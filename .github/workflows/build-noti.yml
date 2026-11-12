@@ -11,6 +11,7 @@ on:
       - 'memo/watch/**'
       - 'ai/android/**'
       - 'ai/watch/**'
+      - 'hub/android/**'
       - '.github/workflows/build-noti.yml'
   workflow_dispatch:
 
@@ -68,6 +69,12 @@ jobs:
           npm install --no-audit --no-fund 2>&1 | tail -20
           npx aiot release 2>&1 | tee ../../build-ai-watch.log
 
+      # ---------- RW6 허브 (Mi Fitness 대체) ----------
+      - name: Build hub apk
+        if: always()
+        working-directory: hub/android
+        run: gradle --no-daemon assembleRelease 2>&1 | tee ../../build-hub-android.log
+
       # ---------- 결과물을 저장소에 올림 ----------
       - name: Commit outputs
         if: always()
@@ -89,7 +96,10 @@ jobs:
           cp ai/watch/dist/*.rpk ai/release/RW6AI.rpk 2>/dev/null || true
           tail -60 build-ai-android.log > ai/release/build-android.log 2>/dev/null || true
           tail -60 build-ai-watch.log > ai/release/build-watch.log 2>/dev/null || true
-          git add noti/release memo/release ai/release
+          mkdir -p hub/release
+          cp hub/android/app/build/outputs/apk/release/*.apk hub/release/RW6Hub.apk 2>/dev/null || true
+          tail -60 build-hub-android.log > hub/release/build-android.log 2>/dev/null || true
+          git add noti/release memo/release ai/release hub/release
           git commit -m "Build outputs ${GITHUB_SHA::7} [skip ci]" || echo "nothing to commit"
           git pull --rebase origin main || true
           git push
