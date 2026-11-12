@@ -188,8 +188,99 @@ public final class WatchSender {
         boolean quiet = quiet(app);
         return "S" + (p.vibrate() && !quiet ? "1" : "0") + (p.wake() && !quiet ? "1" : "0")
                 + String.format("%02d", p.fontSize()) + (quiet ? "1" : "0")
-                + String.format("%03d", p.wakeTenths());
+                + String.format("%03d", p.wakeTenths())
+                + (p.group() ? "1" : "0"); // 같은 대화방 묶어 보기
     }
+
+    // ---------- 못 보낸 알림 다시 보내기 ----------
+
+    /** 이보다 오래된 알림은 다시 보내지 않음 (실시간성) */
+    static final long KEEP_MS = 10 * 60 * 1000L;
+
+    private static final class Pending {
+        final String data, stamp; final long at; final Result cb;
+        Pending(String d, String s, long a, Result c) { data = d; stamp = s; at = a; cb = c; }
+    }
+    /** 못 보낸 알림 (메인 스레드에서만 다룸) */
+    private static final java.util.ArrayList<Pending> PENDING = new java.util.ArrayList<>();
+    private static boolean retryArmed = false;
+    private static Context appCtx;
+
+    /**
+     * 알림 보내기. 실패하면(워치가 멀어짐, Mi Fitness 재시작 등) 들고 있다가 다시 연결되는 대로 보냄.
+     * 처음 받은 지 10분이 지난 알림은 버림.
+     */
+    public static void sendKeep(Context ctx, String data, String stamp, Result cb) {
+        sendKeep(ctx.getApplicationContext(), data, stamp, System.currentTimeMillis(), cb);
+    }
+
+    private static void sendKeep(Context app, String data, String stamp, long at, Result cb) {
+        appCtx = app;
+        send(app, data, stamp, (ok, msg) -> {
+            Prefs p = new Prefs(app);
+            if (ok) {
+                p.setLastOkAt(System.currentTimeMillis());
+                if (cb != null) cb.done(true, msg);
+                new Handler(Looper.getMainLooper()).post(WatchSender::kick); // 연결이 살아났으니 밀린 것도 바로
+            } else {
+                p.setLastFailAt(System.currentTimeMillis());
+                boolean keep = System.currentTimeMillis() - at < KEEP_MS;
+                if (cb != null) cb.done(false, msg + (keep ? " → 다시 연결되면 보냄" : ""));
+                if (keep) new Handler(Looper.getMainLooper()).post(() -> hold(new Pending(data, stamp, at, cb)));
+            }
+        });
+    }
+
+    private static void hold(Pending p) {
+        for (Pending q : PENDING) if (q.stamp.equals(p.stamp)) return;
+        PENDING.add(p);
+        arm(20_000);
+    }
+
+    private static void arm(long ms) {
+        if (retryArmed || PENDING.isEmpty()) return;
+        retryArmed = true;
+        new Handler(Looper.getMainLooper()).postDelayed(() -> { retryArmed = false; retry(); }, ms);
+    }
+
+    /** 밀린 알림이 있으면 곧바로 다시 시도 (워치가 응답했거나 다른 알림이 잘 갔을 때) */
+    static void kick() {
+        if (PENDING.isEmpty() || retrying) return;
+        new Handler(Looper.getMainLooper()).postDelayed(WatchSender::retry, 300);
+    }
+
+    private static boolean retrying = false;
+
+    private static void retry() {
+        if (retrying || PENDING.isEmpty() || appCtx == null) return;
+        final Context app = appCtx;
+        long now = System.currentTimeMillis();
+        java.util.Iterator<Pending> it = PENDING.iterator();
+        while (it.hasNext()) {
+            Pending p = it.next();
+            if (now - p.at >= KEEP_MS) {
+                it.remove();
+                new Prefs(app).addHistory(NotiListener.now() + " ⌛ 10분 넘게 못 보내 버림 (" + p.stamp.substring(7) + ")");
+            }
+        }
+        if (PENDING.isEmpty()) return;
+        retrying = true;
+        Wearable.getNodeApi(app).getConnectedNodes()
+                .addOnSuccessListener(nodes -> {
+                    retrying = false;
+                    if (nodes == null || nodes.isEmpty()) { arm(20_000); return; }
+                    // 오래된 것부터 다시 보냄 (실패하면 sendKeep이 다시 들고 있음)
+                    java.util.ArrayList<Pending> all = new java.util.ArrayList<>(PENDING);
+                    PENDING.clear();
+                    all.sort((a, b) -> Long.compare(a.at, b.at));
+                    new Prefs(app).addHistory(NotiListener.now() + " ↻ 워치 다시 연결됨 → 밀린 알림 " + all.size() + "개 보냄");
+                    for (Pending p : all) sendKeep(app, p.data, p.stamp, p.at, p.cb);
+                })
+                .addOnFailureListener(e -> { retrying = false; arm(20_000); });
+    }
+
+    /** 밀린 알림 수 (점검 화면용) */
+    static int pendingCount() { return PENDING.size(); }
 
     /** 워치 알림 목록(알림 센터)에 한 줄 띄운다. 워치 앱과 연결된 알림이라 누르면 워치 앱이 열린다 */
     /** 폰이 방해금지(모든 알림 허용이 아닌 상태)이고 설정이 켜져 있으면 true */
@@ -250,6 +341,7 @@ public final class WatchSender {
                 if (s.contains("ready")) { // 워치 앱 준비됨 → 기다리던 전송 시작
                     Runnable r = readyWaiter;
                     if (r != null) new Handler(Looper.getMainLooper()).post(r);
+                    else new Handler(Looper.getMainLooper()).post(WatchSender::kick); // 워치를 직접 열었으면 밀린 알림도
                     java.util.regex.Matcher vm = java.util.regex.Pattern.compile("\"v\"\\s*:\\s*\"([^\"]*)\"").matcher(s);
                     if (vm.find() && !vm.group(1).isEmpty()) { Prefs vp = new Prefs(app); if (!vm.group(1).equals(vp.watchVer())) vp.setWatchVer(vm.group(1)); }
                     return;

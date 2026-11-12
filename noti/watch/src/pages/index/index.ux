@@ -38,13 +38,15 @@
       <list id="list" style="width: 100%; flex: 1" if="{{ notis }}">
         <list-item type="{{ li.kind === 'img' ? 'img' : (li.e ? 'emo' : 'text') }}" for="(i, li) in list" class="card" show="{{ !li.gone }}">
           <text class="btn danger" if="{{ deleteOn }}" @click="deleteOne(li, i)">지우기</text>
+          <text if="{{ li.kind === 'img' && li.badge }}" class="t-app" style="margin: 0 0 4px 14px">{{ li.al }} · {{ li.badge }}</text>
           <image if="{{ li.kind === 'img' }}" src="{{ li.uri }}" style="width: 100%" @click="openPopup(li)" />
           <div if="{{ li.kind === 'text' }}" class="tcard" @click="openPopup(li)">
             <div class="t-row">
               <image if="{{ li.icon }}" src="{{ li.icon }}" class="t-icon" />
               <image if="{{ li.hf }}" src="{{ li.hf }}" style="width: {{ li.hw }}px; height: {{ li.hh }}px" />
               <text if="{{ li.hf && li.tm }}" class="t-app" style="margin-left: 8px">{{ li.tm }}</text>
-              <text if="{{ !li.hf }}" class="t-app">{{ li.al }}</text>
+              <text if="{{ !li.hf }}" class="t-app" style="flex: 1">{{ li.al }}</text>
+              <text class="t-badge">{{ li.badge }}</text>
             </div>
             <image if="{{ li.sf }}" src="{{ li.sf }}" style="width: {{ li.sw }}px; height: {{ li.sh }}px; margin-top: 6px" />
             <text if="{{ !li.sf }}" class="t-snd">{{ li.s }}</text>
@@ -129,6 +131,9 @@ function fmtTime(w) {
   return today ? hm : `${t.getMonth() + 1}/${t.getDate()} ${hm}`
 }
 
+// 같은 대화방 키: 앱 + (단톡방 이름 또는 1:1 상대)
+function roomKey(m) { return `${m.a || ''}|${m.c || m.s || ''}` }
+
 function preview(body) { return body.length > 120 ? body.substr(0, 120) + '…' : body }
 
 export default {
@@ -204,7 +209,9 @@ export default {
       if (k === 'S') {
         gotSetting = true
         self.alert = { vibe: d.substr(1, 1) === '1', wake: d.substr(2, 1) === '1', fs: Number(d.substr(3, 2)) || 26, quiet: d.substr(5, 1) === '1',
-          wakeMs: Math.max(3000, Math.min(30000, (Number(d.substr(6, 3)) || 50) * 100)) }
+          wakeMs: Math.max(3000, Math.min(30000, (Number(d.substr(6, 3)) || 50) * 100)),
+          group: d.length > 9 ? d.substr(9, 1) !== '0' : true }
+        if (self.mode === 'list') self.applyList()
         storage.set({ key: 'alert', value: JSON.stringify(self.alert) })
         return
       }
@@ -273,7 +280,7 @@ export default {
       } })
     }
     file.writeText({ uri: `${DIR}/${name}.json`, text: JSON.stringify(m), complete() { self.trim() } })
-    self.idxPut({ name, kind: 'text', uri: `${DIR}/${name}.json`, a: appLine, s: m.s || '', b: preview(m.b || ''), icon, w: m.w || 0,
+    self.idxPut({ name, kind: 'text', uri: `${DIR}/${name}.json`, a: appLine, s: m.s || '', b: preview(m.b || ''), icon, w: m.w || 0, rk: roomKey(m),
       e: m.ef || '', ew: m.ew || 0, eh: m.eh || 0, sf: m.sf || '', sw: m.siw || 0, sh: m.sih || 0, hf: m.hf || '', hw: m.hiw || 0, hh: m.hih || 0 })
   },
 
@@ -411,7 +418,10 @@ export default {
   idxPut(e) {
     const self = this
     self.idxLoad((list) => {
-      IDX = [e].concat(list.filter((x) => x.name !== e.name)).slice(0, MAX_SAVE)
+      const old = list.find((x) => x.name === e.name)
+      if (old && e.kind === 'img') { e.rk = e.rk || old.rk; e.a = e.a || old.a; e.s = e.s || old.s; e.w = e.w || old.w; e.icon = e.icon || old.icon }
+      // 다시 보낸 옛 알림도 제자리에 들어가게 이름(= 받은 시각) 순서로
+      IDX = [e].concat(list.filter((x) => x.name !== e.name)).sort((a, b) => b.name.localeCompare(a.name)).slice(0, MAX_SAVE)
       self.idxSave()
       if (self.mode === 'list') self.applyList()
     })
@@ -439,7 +449,7 @@ export default {
             success(r) {
               try {
                 const m = JSON.parse(r.text)
-                e.a = m.c ? `${m.a} · ${m.c}` : (m.a || ''); e.s = m.s || ''; e.b = preview(m.b || ''); e.w = m.w || 0
+                e.a = m.c ? `${m.a} · ${m.c}` : (m.a || ''); e.s = m.s || ''; e.b = preview(m.b || ''); e.w = m.w || 0; e.rk = roomKey(m)
                 if (m.k) e.icon = `${ICONS}/${m.k}.png`
               } catch (x) {}
               res(e)
@@ -460,9 +470,13 @@ export default {
       const now = {}
       IDX.forEach((e) => { now[e.uri] = true })
       const have = {}
-      self.list.forEach((li) => { have[li.uri] = true })
+      self.list.forEach((li) => { li.items.forEach((u) => { have[u] = true }) })
       if (self.list.length && IDX.every((e) => have[e.uri])) {
-        self.list.forEach((li) => { if (!now[li.uri]) li.gone = true })
+        self.list.forEach((li) => {
+          const left = li.items.filter((u) => now[u])
+          if (!left.length) li.gone = true
+          else if (left.length !== li.cnt) { li.items = left; li.cnt = left.length; li.badge = li.cnt > 1 ? `${li.cnt}개` : '' }
+        })
         self.notis = IDX.length
         if (!self.notis) self.deleteOn = false
         self.report()
@@ -473,9 +487,22 @@ export default {
   applyList() {
     // 목록의 보낸 사람 글자는 24px → 폰이 글자 크기(fs)로 그린 그림도 같은 비율로 줄여 표시
     const r = 24 / (this.alert.fs || 26)
-    this.list = (IDX || []).map((e) => ({ uri: e.uri, kind: e.kind, a: e.a, s: e.s, b: e.b, icon: e.icon, e: e.e || '', ew: e.ew || 0, eh: e.eh || 0,
-      tm: fmtTime(e.w), al: (e.a || '알림') + (e.w ? ` · ${fmtTime(e.w)}` : ''),
-      sf: e.sf || '', sw: Math.round((e.sw || 0) * r), sh: Math.round((e.sh || 0) * r), hf: e.hf || '', hw: e.hw || 0, hh: e.hh || 0, gone: false }))
+    const group = this.alert.group !== false
+    const out = []
+    const byRoom = {}
+    ;(IDX || []).forEach((e) => {
+      // 같은 대화방은 가장 최근 것 카드 하나로 (묶기 끄면 하나씩)
+      const rk = group && e.rk ? e.rk : `#${e.name}`
+      const g = byRoom[rk]
+      if (g) { g.cnt += 1; g.items.push(e.uri); g.badge = `${g.cnt}개`; return }
+      const li = { uri: e.uri, kind: e.kind, a: e.a, s: e.s, b: e.b, icon: e.icon, e: e.e || '', ew: e.ew || 0, eh: e.eh || 0,
+        tm: fmtTime(e.w), al: (e.a || '알림') + (e.w ? ` · ${fmtTime(e.w)}` : ''),
+        sf: e.sf || '', sw: Math.round((e.sw || 0) * r), sh: Math.round((e.sh || 0) * r), hf: e.hf || '', hw: e.hw || 0, hh: e.hh || 0,
+        rk, cnt: 1, items: [e.uri], badge: '', gone: false }
+      byRoom[rk] = li
+      out.push(li)
+    })
+    this.list = out
     this.notis = this.list.length
     this.loaded = true
     this.report()
@@ -494,7 +521,7 @@ export default {
   },
 
   deleteAll() {
-    this.list.forEach((li) => this.removeFile(li))
+    this.list.forEach((li) => li.items.forEach((u) => this.removeFile({ uri: u })))
     IDX = []
     this.idxSave()
     this.list = []
@@ -506,10 +533,11 @@ export default {
   // 지운 칸은 목록에서 빼지 않고 숨김 → 목록을 다시 그리지 않아 보던 위치 그대로
   deleteOne(li, i) {
     if (li.gone) return
-    this.removeFile(li)
-    this.idxRemove((e) => e.uri === li.uri)
+    const uris = {}
+    li.items.forEach((u) => { uris[u] = true; this.removeFile({ uri: u }) })
+    this.idxRemove((e) => uris[e.uri])
     li.gone = true
-    this.notis = Math.max(0, this.notis - 1)
+    this.notis = Math.max(0, this.notis - li.cnt)
     if (!this.notis) this.deleteOn = false
     this.report()
   },
@@ -521,7 +549,8 @@ export default {
   openPopup(li) {
     if (this.deleteOn) return
     inDetailAt = Date.now()
-    router.push({ uri: '/pages/detail', params: { uri: li.uri, arrival: '0' } })
+    if (li.cnt > 1) router.push({ uri: '/pages/detail', params: { uri: li.uri, room: li.rk, arrival: '0' } })
+    else router.push({ uri: '/pages/detail', params: { uri: li.uri, arrival: '0' } })
   },
 
   // ---- 알림 도착 뒤 화면 켜기와 닫기 ----

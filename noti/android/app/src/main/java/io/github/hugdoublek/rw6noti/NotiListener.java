@@ -36,6 +36,8 @@ public class NotiListener extends NotificationListenerService {
     /** 앱 아이콘을 워치에 보낸 시각 (1시간마다 다시 보냄) */
     private static final Map<String, Long> ICON_AT = new java.util.concurrent.ConcurrentHashMap<>();
     private static final java.util.Set<String> sentUris = new java.util.LinkedHashSet<>();
+    /** 이미 워치로 보낸 메시지 (대화방 알림에 쌓인 최근 메시지 중 놓친 것만 골라 보내기 위해) */
+    private static final java.util.Set<String> sentMsgs = new java.util.LinkedHashSet<>();
     private static String lastLoadError = "";
     private static final android.os.HandlerThread THREAD = new android.os.HandlerThread("rw6noti");
     static { THREAD.start(); }
@@ -100,6 +102,8 @@ public class NotiListener extends NotificationListenerService {
         // 메신저형 알림: 최근 메시지들 중 아직 안 보낸 사진을 모두 찾는다
         // (사진 뒤에 글이 바로 오거나, 여러 장을 한 번에 보내는 경우 대비)
         List<PhotoMsg> photos = new ArrayList<>();
+        // 알림 하나에 메시지가 여러 개 쌓여 오면(연달아 왔을 때) 마지막 것만 보내던 문제 → 놓친 글 메시지도 찾아 보냄
+        List<String[]> missed = new ArrayList<>(); // {보낸 사람, 글, 시각}
         Parcelable[] msgs = ex.getParcelableArray(Notification.EXTRA_MESSAGES);
         if (msgs != null && msgs.length > 0) {
             for (int i = msgs.length - 1; i >= Math.max(0, msgs.length - 6); i--) {
@@ -123,7 +127,18 @@ public class NotiListener extends NotificationListenerService {
                 // 앱이 다시 시작된 뒤 새 메시지가 오면, 알림에 같이 들어 있는 예전 사진까지 또 보내던 문제 방지
                 // (가장 마지막 메시지는 방금 온 것이므로 항상 보냄)
                 boolean stale = i != msgs.length - 1 && mt > 0 && mt < STARTED - 60_000;
-                if (type != null && type.startsWith("image/") && uri instanceof Uri && !stale && !sentUris.contains(uri.toString())) {
+                // 글 메시지: 처음 보는 것이면 기록. 마지막이 아닌데 아직 안 보낸 것은 '놓친 메시지'
+                CharSequence mtxt = m.getCharSequence("text");
+                boolean isImg = type != null && type.startsWith("image/");
+                if (!isImg && mtxt != null && mtxt.length() > 0) {
+                    String id = sbn.getKey() + "|" + mt + "|" + who + "|" + mtxt.toString().hashCode();
+                    boolean fresh = sentMsgs.add(id);
+                    long lastT = msgs[msgs.length - 1] instanceof Bundle ? ((Bundle) msgs[msgs.length - 1]).getLong("time", 0) : 0;
+                    // 시각이 있고, 앱이 켜진 뒤의 것이며, 마지막 메시지와 10분 안에 온 것만 (오래된 대화를 다시 보내지 않게)
+                    if (fresh && i != msgs.length - 1 && mt > 0 && !stale && lastT > 0 && lastT - mt < 10 * 60 * 1000L)
+                        missed.add(0, new String[]{who, mtxt.toString(), String.valueOf(mt)});
+                }
+                if (isImg && uri instanceof Uri && !stale && !sentUris.contains(uri.toString())) {
                     CharSequence t = m.getCharSequence("text");
                     String ts = t == null ? "" : t.toString();
                     // 카톡 이모티콘: '이모티콘을 보냈습니다.' + 그림 → 사진보다 작게 보냄
@@ -131,6 +146,11 @@ public class NotiListener extends NotificationListenerService {
                     photos.add(0, new PhotoMsg(who, ts, (Uri) uri, m.getLong("time", sbn.getPostTime()), emo));
                 }
             }
+        }
+
+        { // 기록이 너무 커지지 않게 오래된 것부터 버림
+            java.util.Iterator<String> it = sentMsgs.iterator();
+            while (sentMsgs.size() > 1000 && it.hasNext()) { it.next(); it.remove(); }
         }
 
         // 펼친 알림(긴 글)에 더 많은 글자가 있으면 그걸 사용
@@ -156,6 +176,18 @@ public class NotiListener extends NotificationListenerService {
         final String fApp = appName, fConv = conv;
         final Drawable fIcon = icon;
         final int fs = prefs.fontSize();
+
+        // 놓친 글 메시지를 먼저 (시간 순서대로) 보냄. 이름(시각)은 지금보다 조금 앞으로 → 목록에서도 순서가 맞음
+        if (!missed.isEmpty() && !prefs.photoOnly()) {
+            long base = System.currentTimeMillis() - missed.size() - 1;
+            for (int j = 0; j < missed.size(); j++) {
+                String[] mm = missed.get(j);
+                String t = mm[1].length() > MAX_TEXT ? mm[1].substring(0, MAX_TEXT) + "…" : mm[1];
+                long when = Long.parseLong(mm[2]);
+                prefs.addHistory(now() + " " + mm[0] + ": 한꺼번에 온 메시지라 따로 보냄");
+                renderAndSend(prefs, icon, appName, conv, mm[0], t, null, when, String.valueOf(base + j), t.contains(EMOTICON));
+            }
+        }
 
         if (prefs.pictures() && !photos.isEmpty()) {
             for (PhotoMsg ph : photos) {
@@ -254,7 +286,7 @@ public class NotiListener extends NotificationListenerService {
             } catch (org.json.JSONException ignored) { }
         }
         final String q = WatchSender.quiet(this) ? "[조용히] " : "";
-        WatchSender.send(this, json, stamp, (ok, msg) ->
+        WatchSender.sendKeep(this, json, stamp, (ok, msg) ->
                 prefs.addHistory(now() + " " + q + sender + (pending ? " [사진 먼저 알림]" : "") + " → " + (ok ? "✔ " : "✘ ") + msg));
     }
 
@@ -309,7 +341,7 @@ public class NotiListener extends NotificationListenerService {
         final int kb = b64.length() / 1024;
         final String app = appName;
         final String line = sender + ": " + (picture == null ? text : emoticon ? "이모티콘" : "사진");
-        WatchSender.send(this, b64, stamp, (ok, msg) -> {
+        WatchSender.sendKeep(this, b64, stamp, (ok, msg) -> {
             prefs.setLastLog(now() + " " + summary + " → " + msg);
             prefs.addHistory(now() + " " + summary + " " + kb + "KB → " + (ok ? "✔ " : "✘ ") + msg);
             if (ok && prefs.watchList() && !quiet) { // 방해금지 중엔 워치 알림 목록 표시도 안 함 (진동·화면 켜짐 방지)

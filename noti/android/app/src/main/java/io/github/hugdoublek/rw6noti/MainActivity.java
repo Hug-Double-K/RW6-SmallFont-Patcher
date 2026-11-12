@@ -100,11 +100,16 @@ public class MainActivity extends Activity {
         });
         root.addView(wakeBar);
         root.addView(check("폰이 방해금지면 진동·화면 켜기 안 함", prefs.followDnd(), prefs::setFollowDnd));
+        root.addView(check("워치 목록에서 같은 대화방 알림 묶어 보기 (누르면 그 방 메시지 전부)", prefs.group(), prefs::setGroup));
         // 워치 알림 센터에 올린 줄은 누르면 '무시'만 있고 앱이 열리지 않음 (샤오미 개발 도구의 한계)
         root.addView(check("워치 알림 목록에 'OO 알림 - N건' 한 줄 표시 (알림만, 눌러도 앱은 안 열림)", prefs.watchList(), prefs::setWatchList));
 
         root.addView(section("4. 확인"));
         root.addView(button("워치로 테스트 알림 보내기", v -> sendTest()));
+        root.addView(button("지금 상태 점검 (6시간마다 자동으로도 점검)", v -> {
+            log.setText("점검 중…");
+            HealthCheck.run(this, false, (text, problem) -> log.setText(text));
+        }));
         log = text("");
         root.addView(log);
 
@@ -130,6 +135,10 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshStatus();
+        HealthCheck.schedule(this);
+        // 안드로이드 13 이상은 점검 알림을 띄우려면 허락이 필요
+        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 3);
     }
 
     private void refreshStatus() {

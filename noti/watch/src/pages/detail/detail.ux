@@ -1,25 +1,32 @@
 <template>
   <div class="main">
     <!-- 사진 알림 한 건. 뒤로 = 오른쪽으로 스와이프, '끄기' = 이 알림 삭제 -->
-    <scroll if="{{ !isText }}" style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
+    <scroll if="{{ !isText && !room }}" style="flex-direction: column; width: 100%; flex: 1" scroll-y="{{ true }}">
       <image src="{{ uri }}" style="width: 100%; margin-top: 28px" />
     </scroll>
-    <!-- 글 알림: 워치가 직접 그림. 긴 글은 문단으로 나눠 보이는 만큼만 -->
-    <list if="{{ isText }}" style="width: 100%; flex: 1">
+    <!-- 글 알림 / 대화방 전체: 워치가 직접 그림. 긴 글은 문단으로 나눠 보이는 만큼만 -->
+    <list if="{{ isText || room }}" style="width: 100%; flex: 1">
       <list-item type="head" class="tcard-head">
         <image if="{{ hf }}" src="{{ hf }}" style="width: {{ hw }}px; height: {{ hh }}px" />
         <text if="{{ !hf }}" class="t-app">{{ app }}</text>
         <image if="{{ sf }}" src="{{ sf }}" style="width: {{ sw }}px; height: {{ sh }}px; margin-top: 6px" />
-        <text if="{{ !sf }}" class="t-snd" style="font-size: {{ fs }}px">{{ sender }}</text>
+        <text if="{{ !sf && sender }}" class="t-snd" style="font-size: {{ fs }}px">{{ sender }}</text>
         <image if="{{ emo }}" src="{{ emo }}" style="width: {{ ew }}px; height: {{ eh }}px; margin-top: 6px" />
       </list-item>
-      <list-item type="{{ p.img ? 'pimg' : 'para' }}" for="(i, p) in parts" class="tcard-para">
-        <text if="{{ !p.img }}" style="width: 100%; font-size: {{ fs }}px; color: #eeeeee; line-height: {{ lh }}px">{{ p.t }}</text>
-        <image if="{{ p.img }}" src="{{ p.img }}" style="width: {{ p.w }}px; height: {{ p.h }}px; margin-top: 4px" />
+      <list-item type="{{ p.k }}" for="(i, p) in parts" class="tcard-para">
+        <!-- 대화방 화면: 메시지마다 보낸 사람 · 시각 -->
+        <div if="{{ p.k === 'mh' }}" class="t-row" style="margin-top: 16px">
+          <image if="{{ p.img }}" src="{{ p.img }}" style="width: {{ p.w }}px; height: {{ p.h }}px" />
+          <text if="{{ !p.img }}" class="t-snd" style="font-size: {{ fs - 2 }}px">{{ p.t }}</text>
+          <text class="t-app" style="margin-left: 8px">{{ p.tm }}</text>
+        </div>
+        <text if="{{ p.k === 'para' }}" style="width: 100%; font-size: {{ fs }}px; color: #eeeeee; line-height: {{ lh }}px">{{ p.t }}</text>
+        <image if="{{ p.k === 'pimg' }}" src="{{ p.img }}" style="width: {{ p.w }}px; height: {{ p.h }}px; margin-top: 4px" />
+        <image if="{{ p.k === 'photo' }}" src="{{ p.img }}" style="width: 100%; margin-top: 6px" />
       </list-item>
       <list-item type="end" class="tcard-end"><text class="t-app">{{ time }}</text></list-item>
     </list>
-    <text class="btn off" @click="remove">끄기</text>
+    <text class="btn off" @click="remove">{{ room ? '모두 끄기' : '끄기' }}</text>
   </div>
 </template>
 
@@ -29,6 +36,8 @@ import file from '@system.file'
 import router from '@system.router'
 import interconnect from '@system.interconnect'
 import storage from '@system.storage'
+
+const INDEX = 'internal://mass/rw6noti_meta/index.json'
 
 function split(body) {
   const out = []
@@ -41,17 +50,38 @@ function split(body) {
   return out
 }
 
+function stamp(w) {
+  if (!w) return ''
+  const t = new Date(w)
+  return `${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`
+}
+
+// 알림 하나(JSON)의 본문 → 표시 조각 (글은 300자 문단, 이모지 든 줄은 그림). 글자는 하나도 줄이지 않음
+function bodyParts(m) {
+  if (m.ef) return [{ k: 'pimg', t: '', img: m.ef, w: m.ew || 80, h: m.eh || 80, tm: '' }]
+  const out = []
+  if (m.sg) {
+    m.sg.forEach((g) => {
+      if (g.f) out.push({ k: 'pimg', t: '', img: g.f, w: g.w, h: g.h, tm: '' })
+      else split(g.t || '').forEach((t) => out.push({ k: 'para', t, img: '', w: 0, h: 0, tm: '' }))
+    })
+  } else split(m.b || '').forEach((t) => out.push({ k: 'para', t, img: '', w: 0, h: 0, tm: '' }))
+  return out
+}
+
 export default {
   protected: {
     uri: '',
+    room: '', // 값이 있으면 이 대화방의 알림 전부를 시간 순서로
     arrival: '0',
   },
-  private: { isText: false, app: '', sender: '', parts: [], time: '', fs: 26, lh: 35, emo: '', ew: 0, eh: 0, sf: '', sw: 0, sh: 0, hf: '', hw: 0, hh: 0 },
+  private: { isText: false, app: '', sender: '', parts: [], time: '', fs: 26, lh: 35, emo: '', ew: 0, eh: 0, sf: '', sw: 0, sh: 0, hf: '', hw: 0, hh: 0, uris: [] },
   onInit() {
     const self = this
+    storage.get({ key: 'alert', success(v) { try { const a = JSON.parse(v); if (a.fs) { self.fs = a.fs; self.lh = Math.round(a.fs * 1.35) } } catch (e) {} } })
+    if (self.room) { self.loadRoom(); return }
     if (self.uri.indexOf('.json') < 0) return
     self.isText = true
-    storage.get({ key: 'alert', success(v) { try { const a = JSON.parse(v); if (a.fs) { self.fs = a.fs; self.lh = Math.round(a.fs * 1.35) } } catch (e) {} } })
     file.readText({
       uri: self.uri,
       success(r) {
@@ -62,39 +92,79 @@ export default {
           // 이모지가 든 보낸 사람·윗줄은 폰이 그린 그림으로
           if (m.sf) { self.sf = m.sf; self.sw = m.siw || 0; self.sh = m.sih || 0 }
           if (m.hf) { self.hf = m.hf; self.hw = m.hiw || 0; self.hh = m.hih || 0 }
-          if (m.ef) { self.emo = m.ef; self.ew = m.ew || 80; self.eh = m.eh || 80 }
-          else if (m.sg) {
-            const out = []
-            m.sg.forEach((g) => {
-              if (g.f) out.push({ t: '', img: g.f, w: g.w, h: g.h })
-              else split(g.t || '').forEach((t) => out.push({ t, img: '', w: 0, h: 0 }))
-            })
-            self.parts = out
-          } else self.parts = split(m.b || '').map((t) => ({ t, img: '', w: 0, h: 0 }))
-          const t = new Date(m.w)
-          self.time = `${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`
-        } catch (e) { self.parts = [{ t: `알림을 읽지 못했어요 (${e})`, img: '', w: 0, h: 0 }] }
+          if (m.ef) { self.emo = m.ef; self.ew = m.ew || 80; self.eh = m.eh || 80 } else self.parts = bodyParts(m)
+          self.time = stamp(m.w)
+        } catch (e) { self.parts = [{ k: 'para', t: `알림을 읽지 못했어요 (${e})`, img: '', w: 0, h: 0, tm: '' }] }
       },
-      fail() { self.parts = [{ t: '알림을 찾지 못했어요', img: '', w: 0, h: 0 }] },
+      fail() { self.parts = [{ k: 'para', t: '알림을 찾지 못했어요', img: '', w: 0, h: 0, tm: '' }] },
     })
   },
+
+  // 대화방 화면: 목록 모음에서 이 방 알림을 찾아 오래된 것부터 차례로 읽어 이어 붙임
+  loadRoom() {
+    const self = this
+    file.readText({
+      uri: INDEX,
+      success(r) {
+        let list = []
+        try { list = JSON.parse(r.text).filter((e) => e.rk === self.room) } catch (e) {}
+        list.sort((a, b) => a.name.localeCompare(b.name))
+        if (!list.length) { self.parts = [{ k: 'para', t: '알림을 찾지 못했어요', img: '', w: 0, h: 0, tm: '' }]; return }
+        const top = list[list.length - 1]
+        self.app = top.a || ''
+        if (top.hf) { self.hf = top.hf; self.hw = top.hw || 0; self.hh = top.hh || 0 }
+        self.uris = list.map((e) => e.uri)
+        self.time = `${list.length}개 · 마지막 ${stamp(top.w)}`
+        const chunks = new Array(list.length)
+        let left = list.length
+        const finish = () => {
+          let out = []
+          chunks.forEach((c) => { if (c) out = out.concat(c) })
+          self.parts = out
+        }
+        list.forEach((e, idx) => {
+          const head = (m) => {
+            const h = { k: 'mh', t: (m && m.s) || e.s || '', img: '', w: 0, h: 0, tm: stamp((m && m.w) || e.w) }
+            if (m && m.sf) { h.img = m.sf; h.w = Math.round((m.siw || 0) * 0.92); h.h = Math.round((m.sih || 0) * 0.92) }
+            return h
+          }
+          if (e.kind !== 'text') {
+            chunks[idx] = [head(null), { k: 'photo', t: '', img: e.uri, w: 0, h: 0, tm: '' }]
+            if (--left === 0) finish()
+            return
+          }
+          file.readText({
+            uri: e.uri,
+            success(rr) {
+              try { const m = JSON.parse(rr.text); chunks[idx] = [head(m)].concat(bodyParts(m)) } catch (x) { chunks[idx] = [head(null)] }
+              if (--left === 0) finish()
+            },
+            fail() { chunks[idx] = [head(null), { k: 'para', t: '(지워진 알림)', img: '', w: 0, h: 0, tm: '' }]; if (--left === 0) finish() },
+          })
+        })
+      },
+      fail() { self.parts = [{ k: 'para', t: '알림을 찾지 못했어요', img: '', w: 0, h: 0, tm: '' }] },
+    })
+  },
+
   remove() {
     const self = this
-    // 하나 지웠다고 폰에 알려줌 (워치 알림 목록의 'N건' 줄이기)
-    try { interconnect.instance().send({ data: { del: 1 } }) } catch (e) {}
+    const targets = self.room ? self.uris : [self.uri]
+    // 지운 개수를 폰에 알려줌 (워치 알림 목록의 'N건' 줄이기)
+    try { const c = interconnect.instance(); targets.forEach(() => c.send({ data: { del: 1 } })) } catch (e) {}
     const done = () => {
       // 알림으로 열린 경우엔 기본 알림의 '무시'처럼 앱을 닫고, 목록에서 연 경우엔 목록으로
       if (self.arrival === '1') app.terminate()
       else router.back()
     }
-    file.delete({ uri: self.uri, complete() {} })
+    const gone = {}
+    targets.forEach((u) => { gone[u] = true; file.delete({ uri: u, complete() {} }) })
     // 목록 미리보기 모음에서도 빼고 닫기
-    const INDEX = 'internal://mass/rw6noti_meta/index.json'
     file.readText({
       uri: INDEX,
       success(r) {
         let list = []
-        try { list = JSON.parse(r.text).filter((e) => e.uri !== self.uri) } catch (e) {}
+        try { list = JSON.parse(r.text).filter((e) => !gone[e.uri]) } catch (e) {}
         file.writeText({ uri: INDEX, text: JSON.stringify(list), complete: done })
       },
       fail: done,

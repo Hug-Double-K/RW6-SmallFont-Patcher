@@ -57,6 +57,20 @@ public final class Prefs {
     public boolean watchList() { return sp.getBoolean("watchList", false); }
     public void setWatchList(boolean v) { sp.edit().putBoolean("watchList", v).apply(); }
     /** 워치에 쌓인(아직 안 지운) 사진 알림 수 */
+    /** 워치 목록에서 같은 대화방 알림을 한 카드로 묶음 (기본 켜짐) */
+    public boolean group() { return sp.getBoolean("group", true); }
+    public void setGroup(boolean v) { sp.edit().putBoolean("group", v).apply(); }
+
+    /** 마지막으로 워치에 보내기 성공 / 실패한 시각 (자가 점검용) */
+    public long lastOkAt() { return sp.getLong("lastOkAt", 0); }
+    public void setLastOkAt(long v) { sp.edit().putLong("lastOkAt", v).apply(); }
+    public long lastFailAt() { return sp.getLong("lastFailAt", 0); }
+    public void setLastFailAt(long v) { sp.edit().putLong("lastFailAt", v).apply(); }
+    /** 자가 점검이 마지막으로 알린 내용과 시각 (같은 문제를 계속 알리지 않게) */
+    public String checkSig() { return sp.getString("checkSig", ""); }
+    public long checkAt() { return sp.getLong("checkAt", 0); }
+    public void setCheck(String sig, long at) { sp.edit().putString("checkSig", sig).putLong("checkAt", at).apply(); }
+
     public int unread() { return sp.getInt("unread", 0); }
     public void setUnread(int v) { sp.edit().putInt("unread", Math.max(0, v)).apply(); }
 
