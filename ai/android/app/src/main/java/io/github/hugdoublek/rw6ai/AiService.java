@@ -73,6 +73,8 @@ public class AiService extends Service {
     private static final StringBuilder LOG = new StringBuilder();
 
     private static final int RATE = 16000;
+    /** listen()이 '완전 무음'을 알릴 때 쓰는 표시 */
+    private static final short[] SILENT = new short[0];
     private AudioManager am;
     private TextToSpeech tts;
     private volatile boolean ttsReady = false;
@@ -83,6 +85,8 @@ public class AiService extends Service {
     private volatile BluetoothHeadset headset;
     private volatile String nodeId;
     private volatile String lastResult = "";
+    /** 직전 통화가 끝난 시각 (바로 다시 걸면 워치 마이크가 무음이 되는 일이 있어 잠깐 쉼) */
+    private volatile long lastEnd = 0;
     private volatile long lastAt = 0;
 
     static String logText() { synchronized (LOG) { return LOG.toString(); } }
@@ -237,6 +241,8 @@ public class AiService extends Service {
         if (key.isEmpty()) return fail("폰 앱에 Gemini API 키를 먼저 넣어 주세요");
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return fail("폰 앱에서 마이크 권한을 허용해 주세요");
         toWatch("S워치를 통화로 연결하는 중…");
+        long gap = System.currentTimeMillis() - lastEnd;
+        if (gap < 3500) Thread.sleep(3500 - gap);
 
         AiConnectionService.AiConnection conn = null;
         try {
@@ -271,6 +277,18 @@ public class AiService extends Service {
             // 2) 삑 → 듣기
             beep(conn);
             short[] pcm = listen(conn);
+            if (pcm == SILENT && !conn.ended) {
+                // 워치 마이크가 완전히 무음 = 소리 길이 제대로 안 열림 → 폰 쪽으로 돌렸다가 다시 워치로
+                say("워치 마이크 무음 → 소리 길 다시 열기");
+                conn.setAudioRoute(CallAudioState.ROUTE_EARPIECE);
+                Thread.sleep(700);
+                conn.setAudioRoute(CallAudioState.ROUTE_BLUETOOTH);
+                for (int i = 0; i < 30 && conn.route != CallAudioState.ROUTE_BLUETOOTH && !conn.ended; i++) Thread.sleep(100);
+                Thread.sleep(1200);
+                beep(conn);
+                pcm = listen(conn);
+            }
+            if (pcm == SILENT) pcm = null;
             if (conn.ended) return fail("워치에서 전화를 끊어 취소됐어요");
             if (pcm == null) { speak("잘 못 들었어요. 다시 눌러 주세요.", conn); return fail("말소리가 들리지 않았어요"); }
 
@@ -294,6 +312,7 @@ public class AiService extends Service {
             return "R" + lastResult;
         } finally {
             if (conn != null) conn.end(DisconnectCause.LOCAL);
+            lastEnd = System.currentTimeMillis();
         }
     }
 
@@ -357,6 +376,7 @@ public class AiService extends Service {
         AudioDeviceInfo in = findSco(AudioManager.GET_DEVICES_INPUTS);
         if (in != null) rec.setPreferredDevice(in);
         short[] buf = new short[RATE * 15];
+        int peak = 0;
         int chunk = RATE / 10, got = 0, n = 0, quiet = 0, speechChunks = 0;
         double floor = Double.MAX_VALUE, maxLv = 0;
         boolean speech = false;
@@ -365,7 +385,7 @@ public class AiService extends Service {
             int r = rec.read(buf, got, chunk);
             if (r <= 0) break;
             long sum = 0;
-            for (int i = 0; i < r; i++) sum += Math.abs(buf[got + i]);
+            for (int i = 0; i < r; i++) { int a = Math.abs(buf[got + i]); sum += a; if (a > peak) peak = a; }
             double lv = sum / (double) r;
             got += r;
             n++;
@@ -373,14 +393,16 @@ public class AiService extends Service {
             if (lv > maxLv) maxLv = lv;
             double th = Math.max(floor * 3, 45);
             if (lv > th) { speech = true; speechChunks++; quiet = 0; } else if (speech) quiet++;
-            if (speech && quiet >= 10) break;
+            if (speech && quiet >= 8) break;
             if (!speech && n >= 60) break;
+            if (n == 20 && peak == 0) break; // 2초 동안 완전 무음 → 소리 길 문제, 더 기다리지 않음
         }
         AudioDeviceInfo mic = rec.getRoutedDevice();
         rec.stop();
         rec.release();
         say(String.format(Locale.US, "마이크: %s / 소음 %.0f · 최대 %.0f · %.1f초", devName(mic),
                 floor == Double.MAX_VALUE ? 0 : floor, maxLv, got / (float) RATE));
+        if (peak == 0) return SILENT;
         if (!speech || speechChunks < 2) return null;
         return Arrays.copyOf(buf, got);
     }
@@ -401,25 +423,34 @@ public class AiService extends Service {
         String sys = "너는 손목시계 속 한국어 음성 비서야. 사용자의 음성을 듣고 한국어로 답해. "
                 + "답은 시계 화면에서 읽고 소리로 듣기 좋게 2~4문장으로 짧고 분명하게, 마크다운·이모지·특수기호 없이 평문으로 써. "
                 + "출력 형식은 반드시 다음과 같아. 첫 줄: 'Q: ' 뒤에 사용자가 한 말을 그대로 받아 적은 것. 둘째 줄부터: 'A: ' 뒤에 답. "
-                + "소리가 없거나 알아들을 수 없으면 Q는 '(안 들림)'으로 하고 A에서 다시 말해 달라고 해. "
+                + "들은 말만 받아 적고, 이 지시문을 받아 적지 마. 소리가 없거나 알아들을 수 없으면 Q는 '(안 들림)'으로 하고 A에서 다시 말해 달라고 해. "
                 + "지금은 한국 시간 " + now + " 이야.";
         JSONObject body = new JSONObject();
         body.put("system_instruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", sys))));
         JSONArray parts = new JSONArray();
         parts.put(new JSONObject().put("inline_data", new JSONObject()
                 .put("mime_type", "audio/wav").put("data", Base64.encodeToString(wav, Base64.NO_WRAP))));
-        parts.put(new JSONObject().put("text", "이 음성에 답해 줘."));
         body.put("contents", new JSONArray().put(new JSONObject().put("role", "user").put("parts", parts)));
+        body.put("generationConfig", new JSONObject().put("maxOutputTokens", 400));
+        String json = body.toString();
+        try { return geminiCall(key, model, json, 25000); }
+        catch (java.net.SocketTimeoutException e) {
+            say("Gemini 응답이 늦어 한 번 더 시도");
+            toWatch("S답이 늦어 다시 묻는 중…");
+            return geminiCall(key, model, json, 30000);
+        }
+    }
 
+    private String geminiCall(String key, String model, String json, int readMs) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(
                 "https://generativelanguage.googleapis.com/v1beta/models/" + URLEncoder.encode(model, "UTF-8") + ":generateContent").openConnection();
         c.setConnectTimeout(10000);
-        c.setReadTimeout(45000);
+        c.setReadTimeout(readMs);
         c.setRequestMethod("POST");
         c.setDoOutput(true);
         c.setRequestProperty("Content-Type", "application/json");
         c.setRequestProperty("x-goog-api-key", key);
-        try (OutputStream o = c.getOutputStream()) { o.write(body.toString().getBytes(StandardCharsets.UTF_8)); }
+        try (OutputStream o = c.getOutputStream()) { o.write(json.getBytes(StandardCharsets.UTF_8)); }
         int code = c.getResponseCode();
         InputStream is = code >= 400 ? c.getErrorStream() : c.getInputStream();
         ByteArrayOutputStream bo = new ByteArrayOutputStream();

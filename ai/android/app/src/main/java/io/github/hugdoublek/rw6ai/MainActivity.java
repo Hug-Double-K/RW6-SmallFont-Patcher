@@ -45,7 +45,7 @@ public class MainActivity extends Activity {
         root.setPadding(p, p, p, p);
 
         TextView title = new TextView(this);
-        title.setText("RW6 AI 0.5");
+        title.setText("RW6 AI 0.6");
         title.setTextSize(24);
         root.addView(title);
         status = label(root, "상태 확인 중…");

@@ -6,6 +6,7 @@
       <text class="q" if="{{ q }}">나: {{ q }}</text>
       <text class="a" if="{{ a }}">{{ a }}</text>
       <text class="st" if="{{ !a && !status }}">'말하기'를 누르면 전화처럼 연결됩니다. 삑 소리 뒤에 말하세요.</text>
+      <text class="opt" @click="toggleAuto">{{ auto ? '☑' : '☐' }} 앱을 열면 바로 말하기</text>
     </scroll>
   </div>
 </template>
@@ -23,7 +24,7 @@ let lastId = 0   // 지금 화면에 보이는 답의 번호
 let waitFrom = -1 // 질문을 보낸 시점의 답 번호 (같은 번호의 옛 답이 다시 와도 무시)
 
 export default {
-  private: { busy: false, status: '', q: '', a: '' },
+  private: { busy: false, status: '', q: '', a: '', auto: false },
 
   onInit() {
     const self = this
@@ -36,6 +37,13 @@ export default {
     conn = interconnect.instance()
     conn.onmessage = (msg) => { self.onMsg(msg.data) }
     self.send({ hello: 1 })
+    // '앱을 열면 바로 말하기'가 켜져 있으면 버튼 없이 바로 시작
+    storage.get({ key: 'auto', success(v) { self.auto = v === '1'; if (self.auto) setTimeout(() => self.ask(), 300) } })
+  },
+
+  toggleAuto() {
+    this.auto = !this.auto
+    storage.set({ key: 'auto', value: this.auto ? '1' : '0' })
   },
 
   onShow() { this.send({ hello: 1 }) },
@@ -101,6 +109,7 @@ export default {
   .main { flex-direction: column; align-items: center; width: 100%; height: 100%; padding: 14px 0px 24px; background-color: black; }
   .btn { width: 80%; margin-top: 44px; padding: 22px 10px; border-radius: 40px; background-color: #2f4a8a; text-align: center; font-size: 34px; color: #ffffff; }
   .busy { background-color: #444444; }
+  .opt { width: 86%; margin-top: 18px; font-size: 22px; color: #888888; text-align: center; }
   .st { width: 86%; margin-top: 14px; font-size: 22px; color: #aaaaaa; text-align: center; }
   .q { width: 86%; margin-top: 16px; font-size: 22px; color: #9fb7ff; }
   .a { width: 86%; margin-top: 10px; margin-bottom: 30px; font-size: 26px; color: #ffffff; }
