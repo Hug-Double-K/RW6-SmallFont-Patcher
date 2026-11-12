@@ -69,7 +69,7 @@ jobs:
           npm install --no-audit --no-fund 2>&1 | tail -20
           npx aiot release 2>&1 | tee ../../build-ai-watch.log
 
-      # ---------- RW6 허브 (Mi Fitness 대체) ----------
+      # ---------- Mi Manager (가칭, Mi Fitness 대체) ----------
       - name: Build hub apk
         if: always()
         working-directory: hub/android
@@ -97,7 +97,7 @@ jobs:
           tail -60 build-ai-android.log > ai/release/build-android.log 2>/dev/null || true
           tail -60 build-ai-watch.log > ai/release/build-watch.log 2>/dev/null || true
           mkdir -p hub/release
-          cp hub/android/app/build/outputs/apk/release/*.apk hub/release/RW6Hub.apk 2>/dev/null || true
+          cp hub/android/app/build/outputs/apk/release/*.apk hub/release/MiManager.apk 2>/dev/null || true
           tail -60 build-hub-android.log > hub/release/build-android.log 2>/dev/null || true
           git add noti/release memo/release ai/release hub/release
           git commit -m "Build outputs ${GITHUB_SHA::7} [skip ci]" || echo "nothing to commit"

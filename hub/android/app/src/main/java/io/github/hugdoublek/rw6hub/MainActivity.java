@@ -78,7 +78,7 @@ public class MainActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         TextView title = new TextView(this);
-        title.setText("RW6 허브 " + version());
+        title.setText("Mi Manager " + version());
         title.setTextSize(22);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(title);

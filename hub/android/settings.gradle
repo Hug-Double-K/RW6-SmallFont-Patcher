@@ -11,5 +11,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "RW6Hub"
+rootProject.name = "MiManager"
 include ':app'

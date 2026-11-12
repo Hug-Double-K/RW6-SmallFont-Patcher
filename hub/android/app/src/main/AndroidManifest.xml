@@ -14,7 +14,7 @@
     <application
         android:allowBackup="false"
         android:icon="@android:drawable/stat_sys_data_bluetooth"
-        android:label="RW6 허브"
+        android:label="Mi Manager"
         android:theme="@android:style/Theme.DeviceDefault">
 
         <activity

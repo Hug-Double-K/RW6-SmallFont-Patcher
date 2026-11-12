@@ -33,7 +33,7 @@ public final class MiCloud {
     public static final String LOGIN_PAGE =
             "https://account.xiaomi.com/pass/serviceLogin?sid=" + SID + "&_locale=ko_KR";
     private static final String SOURCE_LIST = "https://hlth.io.mi.com/app/v1/source/get_source_list";
-    private static final String UA = "Android-13-9.8.348i-RW6Hub";
+    private static final String UA = "Android-13-9.8.348i-MiManager";
 
     /** 로그인 결과 (저장해 두는 값). */
     public static final class Token {
