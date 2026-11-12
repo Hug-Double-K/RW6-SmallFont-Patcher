@@ -22,7 +22,8 @@
         </div>
         <text if="{{ p.k === 'para' }}" style="width: 100%; font-size: {{ fs }}px; color: #eeeeee; line-height: {{ lh }}px">{{ p.t }}</text>
         <image if="{{ p.k === 'pimg' }}" src="{{ p.img }}" style="width: {{ p.w }}px; height: {{ p.h }}px; margin-top: 4px" />
-        <image if="{{ p.k === 'photo' }}" src="{{ p.img }}" style="width: 100%; margin-top: 6px" />
+        <!-- 사진은 여기서 다 펼치지 않고(워치 메모리 보호) 누르면 한 장씩 -->
+        <text if="{{ p.k === 'photo' }}" class="btn" style="margin-top: 6px" @click="openPhoto(p.img)">사진 보기 ›</text>
       </list-item>
       <list-item type="end" class="tcard-end"><text class="t-app">{{ time }}</text></list-item>
     </list>
@@ -146,6 +147,8 @@ export default {
       fail() { self.parts = [{ k: 'para', t: '알림을 찾지 못했어요', img: '', w: 0, h: 0, tm: '' }] },
     })
   },
+
+  openPhoto(u) { router.push({ uri: '/pages/detail', params: { uri: u, arrival: '0' } }) },
 
   remove() {
     const self = this

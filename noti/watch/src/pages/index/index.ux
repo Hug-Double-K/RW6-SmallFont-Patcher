@@ -246,6 +246,9 @@ export default {
   // 폰이 그려 보낸 그림 조각(이모지만 있는 메시지 e, 이모지 든 줄 sg, 보낸 사람 si, 윗줄 hi)은 파일로 저장한 뒤 한 번에 표시
   gotText(name, json) {
     const self = this
+    // 같은 이름의 사진이 이미 들어와 있으면 늦게 온 '사진' 자리 글은 무시 (사진 카드를 덮지 않게)
+    if (done[`${name}.jpg`] || done[`${name}.png`]) return
+    if (IDX && IDX.some((e) => e.name === name && e.kind === 'img')) return
     let m
     try { m = JSON.parse(json) } catch (e) { self.status = `알림 읽기 실패: ${e}`; return }
     if (m.k && m.i) {
@@ -472,11 +475,14 @@ export default {
       const have = {}
       self.list.forEach((li) => { li.items.forEach((u) => { have[u] = true }) })
       if (self.list.length && IDX.every((e) => have[e.uri])) {
+        let full = false
         self.list.forEach((li) => {
           const left = li.items.filter((u) => now[u])
           if (!left.length) li.gone = true
+          else if (!now[li.uri]) full = true // 카드에 보이던 가장 최근 메시지가 지워짐 → 카드를 새로 그림
           else if (left.length !== li.cnt) { li.items = left; li.cnt = left.length; li.badge = li.cnt > 1 ? `${li.cnt}개` : '' }
         })
+        if (full) { self.applyList(); return }
         self.notis = IDX.length
         if (!self.notis) self.deleteOn = false
         self.report()
@@ -503,7 +509,7 @@ export default {
       out.push(li)
     })
     this.list = out
-    this.notis = this.list.length
+    this.notis = (IDX || []).length // 개수는 늘 '메시지 수' (카드 수가 아님)
     this.loaded = true
     this.report()
   },

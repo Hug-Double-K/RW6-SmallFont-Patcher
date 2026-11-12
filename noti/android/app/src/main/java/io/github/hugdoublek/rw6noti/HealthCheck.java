@@ -79,10 +79,9 @@ public class HealthCheck extends BroadcastReceiver {
                 bad.add("배터리 최적화가 켜져 있음 → 알림이 늦거나 빠질 수 있어요 ('배터리 최적화 제외')");
         } catch (Throwable ignored) { }
 
-        // 3) 최근에 워치로 못 보낸 채로 10분 넘게 회복되지 않음
+        // 3) 최근에 워치로 못 보낸 채로 10분 넘게 회복되지 않음 (워치가 연결돼 있는데도 그럴 때만 문제로 봄 — 아래 6에서)
         long ok = p.lastOkAt(), fail = p.lastFailAt(), now = System.currentTimeMillis();
-        if (fail > ok && now - fail > WatchSender.KEEP_MS && now - fail < 24 * 60 * 60 * 1000L)
-            bad.add("최근 알림을 워치로 못 보냈어요 (" + ago(now - fail) + " 전). 워치·Mi Fitness 연결을 확인해 주세요");
+        final boolean stuck = fail > ok && now - fail > WatchSender.KEEP_MS && now - fail < 24 * 60 * 60 * 1000L;
         int pend = WatchSender.pendingCount();
         if (pend > 0) good.add("다시 보낼 알림 " + pend + "개 대기 중");
 
@@ -119,6 +118,7 @@ public class HealthCheck extends BroadcastReceiver {
                 Wearable.getNodeApi(app).getConnectedNodes().addOnSuccessListener(nodes -> {
                     if (nodes == null || nodes.isEmpty()) { good.add("워치: 지금 연결 안 됨 (멀리 있으면 정상)"); main.post(finish); return; }
                     good.add("워치 연결됨: " + nodes.get(0).name);
+                    if (stuck) bad.add("워치가 연결돼 있는데 최근 알림을 워치로 못 보냈어요 → 워치 앱·워치 권한을 확인해 주세요");
                     Wearable.getNodeApi(app).isWearAppInstalled(nodes.get(0).id)
                             .addOnSuccessListener(inst -> { if (!inst) bad.add("워치에 메신저 알림 앱이 없어요 → .rpk 설치"); main.post(finish); })
                             .addOnFailureListener(e -> main.post(finish));

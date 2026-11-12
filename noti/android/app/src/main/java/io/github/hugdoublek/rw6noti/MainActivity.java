@@ -137,8 +137,12 @@ public class MainActivity extends Activity {
         refreshStatus();
         HealthCheck.schedule(this);
         // 안드로이드 13 이상은 점검 알림을 띄우려면 허락이 필요
-        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED)
+        // (한 번만 물음: 거절한 뒤 계속 물으면 화면이 깜빡이며 반복될 수 있음)
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !prefs.askedNotif()
+                && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            prefs.setAskedNotif();
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 3);
+        }
     }
 
     private void refreshStatus() {

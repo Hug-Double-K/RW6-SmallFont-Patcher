@@ -131,11 +131,13 @@ public class NotiListener extends NotificationListenerService {
                 CharSequence mtxt = m.getCharSequence("text");
                 boolean isImg = type != null && type.startsWith("image/");
                 if (!isImg && mtxt != null && mtxt.length() > 0) {
-                    String id = sbn.getKey() + "|" + mt + "|" + who + "|" + mtxt.toString().hashCode();
+                    // 알림 키는 바뀔 수 있어 쓰지 않음 (같은 메시지가 다른 키로 다시 와도 한 번만)
+                    String id = conv + "|" + mt + "|" + who + "|" + mtxt.toString().hashCode();
                     boolean fresh = sentMsgs.add(id);
                     long lastT = msgs[msgs.length - 1] instanceof Bundle ? ((Bundle) msgs[msgs.length - 1]).getLong("time", 0) : 0;
                     // 시각이 있고, 앱이 켜진 뒤의 것이며, 마지막 메시지와 10분 안에 온 것만 (오래된 대화를 다시 보내지 않게)
-                    if (fresh && i != msgs.length - 1 && mt > 0 && !stale && lastT > 0 && lastT - mt < 10 * 60 * 1000L)
+                    // 앱이 켜진 뒤에 온 것만 (켜지기 전 것은 이미 보냈을 수 있음)
+                    if (fresh && i != msgs.length - 1 && mt >= STARTED && lastT > 0 && lastT - mt < 10 * 60 * 1000L)
                         missed.add(0, new String[]{who, mtxt.toString(), String.valueOf(mt)});
                 }
                 if (isImg && uri instanceof Uri && !stale && !sentUris.contains(uri.toString())) {

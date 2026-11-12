@@ -71,6 +71,9 @@ public final class Prefs {
     public long checkAt() { return sp.getLong("checkAt", 0); }
     public void setCheck(String sig, long at) { sp.edit().putString("checkSig", sig).putLong("checkAt", at).apply(); }
 
+    public boolean askedNotif() { return sp.getBoolean("askedNotif", false); }
+    public void setAskedNotif() { sp.edit().putBoolean("askedNotif", true).apply(); }
+
     public int unread() { return sp.getInt("unread", 0); }
     public void setUnread(int v) { sp.edit().putInt("unread", Math.max(0, v)).apply(); }
 

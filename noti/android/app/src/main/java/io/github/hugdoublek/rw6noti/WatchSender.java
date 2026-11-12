@@ -221,7 +221,11 @@ public final class WatchSender {
             if (ok) {
                 p.setLastOkAt(System.currentTimeMillis());
                 if (cb != null) cb.done(true, msg);
-                new Handler(Looper.getMainLooper()).post(WatchSender::kick); // 연결이 살아났으니 밀린 것도 바로
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    // 사진이 갔으면 같은 자리의 '사진' 글 알림은 다시 보낼 필요 없음 (사진을 덮어 버림)
+                    if (!data.startsWith("{")) PENDING.removeIf(q -> q.stamp.equals(stamp));
+                    kick(); // 연결이 살아났으니 밀린 것도 바로
+                });
             } else {
                 p.setLastFailAt(System.currentTimeMillis());
                 boolean keep = System.currentTimeMillis() - at < KEEP_MS;
@@ -232,6 +236,9 @@ public final class WatchSender {
     }
 
     private static void hold(Pending p) {
+        boolean img = !p.data.startsWith("{");
+        // 같은 이름: 사진이 오면 그 자리의 '사진' 글은 빼고 사진을 들고 있음. 같은 종류가 이미 있으면 그대로
+        if (img) PENDING.removeIf(q -> q.stamp.equals(p.stamp) && q.data.startsWith("{"));
         for (Pending q : PENDING) if (q.stamp.equals(p.stamp)) return;
         PENDING.add(p);
         arm(20_000);
