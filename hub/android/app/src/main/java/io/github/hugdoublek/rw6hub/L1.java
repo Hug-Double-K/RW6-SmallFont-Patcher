@@ -78,6 +78,8 @@ public final class L1 {
     // ---------------- 수신 버퍼에서 프레임 잘라내기 ----------------
     public static final class Parser {
         private byte[] buf = new byte[0];
+        /** 프레임으로 못 읽고 버린 바이트 수 (진단용) */
+        public long skipped = 0;
 
         private static boolean plausible(byte[] b, int i) {
             return (b[i] & 0xFF) == 0xA5 && (b[i + 1] & 0xFF) == 0xA5
@@ -103,7 +105,7 @@ public final class L1 {
             int i = 0;
             int end = buf.length;
             while (i + HEADER <= end) {
-                if (!plausible(buf, i)) { i++; continue; }
+                if (!plausible(buf, i)) { i++; skipped++; continue; }
                 int len = (buf[i + 4] & 0xFF) | ((buf[i + 5] & 0xFF) << 8);
                 if (i + HEADER + len > end) {
                     // 아직 덜 왔음. 뒤에 완성된 진짜 프레임이 있으면 이 머리는 쓰레기로 보고 건너뜀
@@ -112,11 +114,12 @@ public final class L1 {
                         if (frameLen(buf, k, end) > 0) { next = k; break; }
                     }
                     if (next < 0) break;
+                    skipped += next - i;
                     i = next;
                     continue;
                 }
                 int total = frameLen(buf, i, end);
-                if (total < 0) { i++; continue; }
+                if (total < 0) { i++; skipped++; continue; }
                 byte[] p = new byte[len];
                 System.arraycopy(buf, i + HEADER, p, 0, len);
                 frames.add(new L1(buf[i + 2] & 0x0F, (buf[i + 2] & 0x10) != 0, buf[i + 3] & 0xFF, p));

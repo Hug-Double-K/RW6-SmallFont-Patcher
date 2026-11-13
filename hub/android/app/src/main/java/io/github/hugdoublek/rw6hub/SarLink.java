@@ -53,6 +53,10 @@ public final class SarLink {
     private int startTries = 0;
     private long startSentAt = 0;
     private volatile boolean closed = false;
+    // 진단용
+    private volatile long lastRxAt = System.currentTimeMillis(), lastTxAt = System.currentTimeMillis();
+    private volatile int rxFrames, txFrames, naksSent, naksGot, retrans;
+    private L1.Parser parser;
 
     public SarLink(InputStream in, OutputStream out, Listener listener) {
         this.in = in;
@@ -81,6 +85,16 @@ public final class SarLink {
         }
     }
 
+    /** 끊길 때 원인 짐작용 요약 */
+    public String stats() {
+        long now = System.currentTimeMillis();
+        return "받음 " + rxFrames + " · 보냄 " + txFrames + " · 마지막 받음 " + (now - lastRxAt) / 1000 + "초 전"
+                + " · 마지막 보냄 " + (now - lastTxAt) / 1000 + "초 전"
+                + (naksSent + naksGot + retrans > 0 ? " · NAK " + naksSent + "/" + naksGot + " · 재전송 " + retrans : "")
+                + (parser != null && parser.skipped > 0 ? " · 버린 바이트 " + parser.skipped : "")
+                + " · 대기 " + inFlight.size() + "/" + waiting.size();
+    }
+
     public void close(String reason) {
         if (closed) return;
         closed = true;
@@ -100,6 +114,9 @@ public final class SarLink {
     }
 
     private void writeQuiet(L1 f) {
+        txFrames++;
+        lastTxAt = System.currentTimeMillis();
+        if (f.type == L1.NAK) naksSent++;
         try {
             write(f.toBytes());
         } catch (IOException e) {
@@ -154,6 +171,7 @@ public final class SarLink {
                     if (now - p.sentAt > SEND_TIMEOUT_MS) {
                         if (++p.retries > MAX_RETRIES) { fail.add("워치가 응답하지 않음(재전송 한도)"); break; }
                         p.sentAt = now;
+                        retrans++;
                         writeQuiet(p.frame);
                     }
                 }
@@ -163,7 +181,7 @@ public final class SarLink {
     }
 
     private void readLoop() {
-        L1.Parser parser = new L1.Parser();
+        parser = new L1.Parser();
         byte[] buf = new byte[4096];
         try {
             while (!closed) {
@@ -180,6 +198,9 @@ public final class SarLink {
     }
 
     private void onFrame(L1 f) {
+        rxFrames++;
+        lastRxAt = System.currentTimeMillis();
+        if (f.type == L1.NAK) naksGot++;
         boolean readyNow = false;
         byte[] deliver = null;
         synchronized (lock) {

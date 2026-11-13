@@ -56,6 +56,17 @@ public final class WatchLink {
     private volatile String state = "연결 안 됨";
     private volatile String watchModel = "", watchFirmware = "", watchSerial = "";
     private int failCount = 0;
+    private volatile long authedAt = 0;
+    private final java.util.Set<String> seenKinds = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+    /** 워치가 오래 조용하면 연결을 닫는 경우에 대비해 가끔 가벼운 요청(기기 상태)을 보낸다 */
+    private static final long KEEPALIVE_MS = 20_000;
+    private final Runnable keepalive = new Runnable() {
+        @Override public void run() {
+            if (!authed) return;
+            send(new Pb.W().varint(1, 2).varint(2, 1)); // SYSTEM / GET_DEVICE_STATUS
+            worker.postDelayed(this, KEEPALIVE_MS);
+        }
+    };
 
     private WatchLink(Context app) {
         this.app = app;
@@ -172,6 +183,10 @@ public final class WatchLink {
 
             @Override public void onAuthed() {
                 authed = true;
+                authedAt = System.currentTimeMillis();
+                seenKinds.clear();
+                worker.removeCallbacks(keepalive);
+                worker.postDelayed(keepalive, KEEPALIVE_MS);
                 failCount = 0;
                 setState("연결됨");
                 holder[0].requestDeviceInfo();
@@ -190,7 +205,7 @@ public final class WatchLink {
                 authed = false;
                 closeSocket();
                 if (session == holder[0]) session = null;
-                log("연결 끊김: " + reason);
+                log("연결 끊김: " + reason + " [" + holder[0].stats() + ", 연결 " + (System.currentTimeMillis() - authedAt) / 1000 + "초]");
                 if (wantConnected) {
                     setState("끊김 (다시 연결 예정)");
                     if (wasAuthed) failCount = 0;
@@ -201,6 +216,10 @@ public final class WatchLink {
             }
 
             @Override public void onPacket(int type, int id, List<Pb.Field> p) {
+                // 처음 보는 종류는 한 번씩 기록 (끊김 원인 찾기용). 기기 상태 응답(2/1)은 조용히
+                if (type != 20 && !(type == 2 && id == 1) && seenKinds.add(type + "/" + id)) {
+                    log("워치 메시지 type=" + type + " id=" + id);
+                }
                 for (PacketListener l : packetListeners) {
                     try { l.onPacket(type, id, p); } catch (RuntimeException e) { log("메시지 처리 오류: " + e); }
                 }
