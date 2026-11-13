@@ -126,6 +126,11 @@ public final class MiCloud {
         String pass = a.optString("passToken");
         if (pass.isEmpty()) pass = cookieValue(pr.setCookies, "passToken");
         if (pass != null && !pass.isEmpty()) t.passToken = pass;
+        if (a.optString("ssecurity").isEmpty() && pr.header("extension-pragma") == null && !t.passToken.isEmpty()) {
+            // 이 경로에서 ssecurity를 안 주면 passToken으로 한 번 더 서비스 로그인
+            serviceLogin(t);
+            return;
+        }
         finish(t, a, pr);
     }
 

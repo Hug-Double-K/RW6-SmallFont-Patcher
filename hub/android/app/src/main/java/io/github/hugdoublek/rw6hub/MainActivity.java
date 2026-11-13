@@ -382,7 +382,8 @@ public class MainActivity extends Activity {
         refresh();
         new Thread(() -> {
             try {
-                ad.cancelDiscovery();
+                // 검색 중이면 멈춤 (안드로이드 12+는 BLUETOOTH_SCAN 권한이 있어야 해서, 없으면 그냥 건너뜀)
+                try { ad.cancelDiscovery(); } catch (SecurityException ignored) {}
                 BluetoothSocket sock;
                 try {
                     sock = dev.createRfcommSocketToServiceRecord(SPP_UUID);
