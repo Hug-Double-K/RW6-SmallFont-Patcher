@@ -137,7 +137,9 @@ public class LoginActivity extends Activity {
             finish();
             return true;
         }
-        return url != null && url.contains("sts-hlth.io.mi.com");
+        // 로그인 끝의 콜백 서버로 넘어갈 때만 멈춤. (로그인 페이지 주소의 callback= 값에도
+        // 같은 이름이 들어 있으므로 문자열 포함이 아니라 호스트로 비교해야 함)
+        return "sts-hlth.io.mi.com".equals(host(url));
     }
 
     private void show(String msg) {
