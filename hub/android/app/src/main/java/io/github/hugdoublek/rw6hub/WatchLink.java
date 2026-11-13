@@ -206,6 +206,7 @@ public final class WatchLink {
                 closeSocket();
                 if (session == holder[0]) session = null;
                 log("연결 끊김: " + reason + " [" + holder[0].stats() + ", 연결 " + (System.currentTimeMillis() - authedAt) / 1000 + "초]");
+                log("  직전 프레임: " + holder[0].recentFrames());
                 if (wantConnected) {
                     setState("끊김 (다시 연결 예정)");
                     if (wasAuthed) failCount = 0;
@@ -219,6 +220,10 @@ public final class WatchLink {
                 // 처음 보는 종류는 한 번씩 기록 (끊김 원인 찾기용). 기기 상태 응답(2/1)은 조용히
                 if (type != 20 && !(type == 2 && id == 1) && seenKinds.add(type + "/" + id)) {
                     log("워치 메시지 type=" + type + " id=" + id);
+                }
+                // 워치가 '공유 기기 목록'(23/2)을 물으면 빈 목록으로 답함 (Mi Fitness가 하던 응답)
+                if (type == 23 && id == 2) {
+                    send(new Pb.W().varint(1, 23).varint(2, 3).msg(25, new Pb.W().msg(2, new Pb.W())));
                 }
                 for (PacketListener l : packetListeners) {
                     try { l.onPacket(type, id, p); } catch (RuntimeException e) { log("메시지 처리 오류: " + e); }

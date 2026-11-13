@@ -57,6 +57,23 @@ public final class SarLink {
     private volatile long lastRxAt = System.currentTimeMillis(), lastTxAt = System.currentTimeMillis();
     private volatile int rxFrames, txFrames, naksSent, naksGot, retrans;
     private L1.Parser parser;
+    private final java.util.ArrayDeque<String> trace = new java.util.ArrayDeque<>();
+
+    private void trace(String dir, L1 f) {
+        long t = System.currentTimeMillis() % 100000;
+        String kind = f.type == L1.DATA ? "D" : f.type == L1.ACK ? "A" : f.type == L1.NAK ? "N" : "C";
+        String extra = f.type == L1.CMD && f.payload.length > 0 ? ("cmd" + (f.payload[0] & 0xFF))
+                : f.type == L1.DATA && f.payload.length >= 2 ? ("ch" + (f.payload[0] & 0xFF) + "/" + (f.payload[1] & 0xFF) + " " + f.payload.length + "B") : "";
+        synchronized (trace) {
+            trace.add(String.format(java.util.Locale.US, "%05.1f%s%s%d%s%s", t / 1000.0, dir, kind, f.seq, f.frx ? "f" : "", extra.isEmpty() ? "" : " " + extra));
+            while (trace.size() > 14) trace.poll();
+        }
+    }
+
+    /** 끊기기 직전 주고받은 1계층 프레임들 (→보냄 ←받음) */
+    public String recentFrames() {
+        synchronized (trace) { return String.join(" | ", trace); }
+    }
 
     public SarLink(InputStream in, OutputStream out, Listener listener) {
         this.in = in;
@@ -114,6 +131,7 @@ public final class SarLink {
     }
 
     private void writeQuiet(L1 f) {
+        trace("→", f);
         txFrames++;
         lastTxAt = System.currentTimeMillis();
         if (f.type == L1.NAK) naksSent++;
@@ -198,6 +216,7 @@ public final class SarLink {
     }
 
     private void onFrame(L1 f) {
+        trace("←", f);
         rxFrames++;
         lastRxAt = System.currentTimeMillis();
         if (f.type == L1.NAK) naksGot++;
@@ -226,6 +245,9 @@ public final class SarLink {
                         if (win > 0) window = Math.min(32, win);
                         listener.onLog("세션 시작됨 (창 " + window + ")");
                         pump();
+                    } else if (cmd != L1.CMD_START_REQ) {
+                        listener.onLog("워치 1계층 명령 " + cmd + " 받음" + (cmd == 3 ? " (연결 끝내기 요청)" : ""));
+                        if (cmd == 3) writeQuiet(new L1(L1.CMD, false, 0, new byte[]{4})); // STOP_RSP
                     } else if (cmd == L1.CMD_START_REQ) {
                         // 워치가 세션을 새로 시작함 → 번호 초기화 후 응답
                         listener.onLog("워치가 세션을 다시 시작함");

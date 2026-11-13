@@ -57,6 +57,7 @@ public final class WatchSession implements SarLink.Listener {
     }
 
     public String stats() { return link == null ? "" : link.stats(); }
+    public String recentFrames() { return link == null ? "" : link.recentFrames(); }
 
     public void close() {
         if (link != null) link.close("연결 해제함");
