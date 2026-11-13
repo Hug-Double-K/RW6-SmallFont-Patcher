@@ -6,7 +6,6 @@ import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
-import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -23,51 +22,50 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
-import java.util.UUID;
 
-/** 1단계 화면: 샤오미 로그인 → 인증키 → SPP 연결·인증 → 워치 정보 확인. */
-public class MainActivity extends Activity {
+/** Mi Manager 첫 화면: 연결 상태 · 기능(알림·메모) · 계정·워치 설정 · 기록. */
+public class MainActivity extends Activity implements WatchLink.StateListener {
 
     private static final int REQ_LOGIN = 1, REQ_PERM = 2;
-    private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
-
-    // 화면이 다시 만들어져도 연결은 유지 (2단계에서 포그라운드 서비스로 옮길 예정)
-    private static WatchSession session;
-    private static BluetoothSocket socket;
-    private static String state = "연결 안 됨";
-    private static String watchInfo = "";
-    private static final StringBuilder LOG = new StringBuilder();
-    private static MainActivity current;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
+    private WatchLink link;
     private TextView accountView, keyView, addrView, stateView, infoView, logView;
     private Button connectBtn;
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
-        current = this;
         prefs = getSharedPreferences("hub", MODE_PRIVATE);
         if (prefs.getString("deviceId", "").isEmpty()) {
             prefs.edit().putString("deviceId", "an_" + Hex.of(MiCrypto.random(16))).apply();
         }
+        link = WatchLink.get(this);
         buildUi();
-        refresh();
         askPermissions();
     }
 
     @Override
-    protected void onDestroy() {
-        if (current == this) current = null;
-        super.onDestroy();
+    protected void onResume() {
+        super.onResume();
+        link.addStateListener(this);
+        refresh();
     }
+
+    @Override
+    protected void onPause() {
+        link.removeStateListener(this);
+        super.onPause();
+    }
+
+    @Override
+    public void onStateChanged() { ui.post(this::refresh); }
+
+    private void log(String msg) { link.log(msg); }
 
     // ---------------- 화면 ----------------
 
@@ -83,12 +81,29 @@ public class MainActivity extends Activity {
         title.setTypeface(Typeface.DEFAULT_BOLD);
         root.addView(title);
 
+        root.addView(header("연결"));
+        stateView = text();
+        stateView.setTextSize(17);
+        root.addView(stateView);
+        infoView = text();
+        root.addView(infoView);
+        connectBtn = button("연결 (계속 유지)", v -> { askPermissions(); LinkService.start(this); });
+        root.addView(connectBtn);
+        root.addView(button("연결 해제 · Mi Fitness에 양보", v -> yieldToMiFitness()));
+
+        root.addView(header("기능"));
+        root.addView(button("메신저 알림 (RW6 알림)", v ->
+                startActivity(new Intent(this, io.github.hugdoublek.rw6hub.noti.MainActivity.class))));
+        root.addView(button("메모 (RW6 메모)", v ->
+                startActivity(new Intent(this, io.github.hugdoublek.rw6hub.memo.MainActivity.class))));
+        root.addView(button("워치에 설치된 퀵앱 보기", v -> showInstalled()));
+
         root.addView(header("계정 (샤오미, 중국 지역)"));
         accountView = text();
         root.addView(accountView);
-        root.addView(button("샤오미 로그인 (아이디·비밀번호)", v -> passwordLogin()));
         root.addView(button("웹 화면으로 로그인", v -> startLogin(null)));
-        root.addView(button("인증키 가져오기", v -> fetchKey()));
+        root.addView(button("아이디·비밀번호로 로그인", v -> passwordLogin()));
+        root.addView(button("인증키 다시 가져오기", v -> fetchKey()));
 
         root.addView(header("워치"));
         addrView = text();
@@ -98,23 +113,13 @@ public class MainActivity extends Activity {
         root.addView(keyView);
         root.addView(button("인증키 직접 입력", v -> enterKey()));
 
-        root.addView(header("연결"));
-        stateView = text();
-        stateView.setTextSize(17);
-        root.addView(stateView);
-        infoView = text();
-        root.addView(infoView);
-        connectBtn = button("연결", v -> connect());
-        root.addView(connectBtn);
-        root.addView(button("연결 해제 · Mi Fitness에 양보", v -> yieldToMiFitness()));
-
         root.addView(header("기록"));
         logView = text();
         logView.setTypeface(Typeface.MONOSPACE);
         logView.setTextSize(12);
         logView.setTextIsSelectable(true);
         root.addView(logView);
-        root.addView(button("기록 지우기", v -> { synchronized (LOG) { LOG.setLength(0); } refresh(); }));
+        root.addView(button("기록 지우기", v -> link.clearLog()));
 
         ScrollView sv = new ScrollView(this);
         sv.addView(root);
@@ -128,25 +133,33 @@ public class MainActivity extends Activity {
         addrView.setText(addr.isEmpty() ? "워치 주소: 선택 안 됨" : "워치 주소: " + addr);
         String key = prefs.getString("authKey", "");
         keyView.setText(key.isEmpty() ? "인증키: 없음" : "인증키: " + key.substring(0, 4) + "…" + key.substring(28) + " (32자리)");
-        stateView.setText("상태: " + state);
-        infoView.setText(watchInfo);
-        boolean busy = session != null;
-        connectBtn.setEnabled(!busy);
-        synchronized (LOG) { logView.setText(LOG); }
+        stateView.setText("상태: " + link.state());
+        infoView.setText(link.isReady() && !link.watchModel().isEmpty()
+                ? "모델 " + link.watchModel() + " · 펌웨어 " + link.watchFirmware() : "");
+        connectBtn.setEnabled(!link.wantsConnection());
+        logView.setText(link.logText());
     }
 
-    private static void log(String msg) {
-        String line = new SimpleDateFormat("HH:mm:ss", Locale.KOREA).format(new Date()) + " " + msg + "\n";
-        synchronized (LOG) {
-            LOG.append(line);
-            if (LOG.length() > 20000) LOG.delete(0, LOG.length() - 15000);
+    private void showInstalled() {
+        if (!link.isReady()) { log("워치가 연결되어 있지 않음"); return; }
+        QuickApps.get(this).refreshInstalled(apps -> ui.post(() -> {
+            StringBuilder sb = new StringBuilder();
+            for (QuickApps.App a : apps) sb.append(a.name).append("\n  ").append(a.pkg).append(" (v").append(a.versionCode).append(")\n");
+            new AlertDialog.Builder(this)
+                    .setTitle("워치 퀵앱 " + apps.size() + "개")
+                    .setMessage(sb.length() == 0 ? "받지 못함" : sb.toString())
+                    .setPositiveButton("닫기", null)
+                    .show();
+        }));
+    }
+
+    private void yieldToMiFitness() {
+        LinkService.stop(this, "Mi Fitness에 양보");
+        log("연결을 놓음. Mi Fitness를 열면 다시 연결됩니다.");
+        for (String pkg : new String[]{"com.mi.health", "com.xiaomi.wearable"}) {
+            Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
+            if (i != null) { startActivity(i); break; }
         }
-        post();
-    }
-
-    private static void post() {
-        MainActivity a = current;
-        if (a != null) a.ui.post(a::refresh);
     }
 
     // ---------------- 계정 ----------------
@@ -296,6 +309,7 @@ public class MainActivity extends Activity {
                     if (k == null) { log("인증키 형식이 아님 (32자리 16진수)"); return; }
                     prefs.edit().putString("authKey", k).remove("authKeyAlt").apply();
                     log("인증키 저장 (직접 입력)");
+                    refresh();
                 })
                 .setNegativeButton("취소", null)
                 .show();
@@ -314,7 +328,12 @@ public class MainActivity extends Activity {
     }
 
     private void askPermissions() {
-        if (!hasBtPermission()) requestPermissions(new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQ_PERM);
+        List<String> need = new ArrayList<>();
+        if (!hasBtPermission()) need.add(Manifest.permission.BLUETOOTH_CONNECT);
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+            need.add("android.permission.POST_NOTIFICATIONS");
+        }
+        if (!need.isEmpty()) requestPermissions(need.toArray(new String[0]), REQ_PERM);
     }
 
     @SuppressWarnings("MissingPermission")
@@ -337,111 +356,6 @@ public class MainActivity extends Activity {
     }
 
     @SuppressWarnings("MissingPermission")
-    private void connect() {
-        if (session != null) return;
-        if (!hasBtPermission()) { askPermissions(); return; }
-        String mac = prefs.getString("mac", "");
-        String key = prefs.getString("authKey", "");
-        if (mac.isEmpty()) { log("먼저 워치를 선택해 주세요"); return; }
-        if (key.isEmpty()) { log("먼저 인증키를 가져오거나 입력해 주세요"); return; }
-        BluetoothAdapter ad = adapter();
-        if (ad == null || !ad.isEnabled()) { log("블루투스가 꺼져 있음"); return; }
-
-        final BluetoothDevice dev = ad.getRemoteDevice(mac);
-        final WatchSession[] holder = new WatchSession[1];
-        final WatchSession s =new WatchSession(Hex.parse(key), Build.MODEL, new WatchSession.Callback() {
-            @Override public void onLog(String msg) { log(msg); }
-
-            @Override public void onAuthed() {
-                state = "연결됨 · 인증 성공";
-                post();
-                holder[0].requestDeviceInfo();
-            }
-
-            @Override public void onDeviceInfo(String model, String fw, String serial) {
-                watchInfo = "모델 " + model + "\n펌웨어 " + fw + "\n시리얼 " + serial;
-                log("워치 정보 받음: " + model + " / " + fw);
-            }
-
-            @Override public void onClosed(String reason) {
-                state = "연결 안 됨 (" + reason + ")";
-                if (reason.startsWith("인증키가 맞지 않음")) rotateKey();
-                closeSocket();
-                session = null;
-                post();
-            }
-
-            @Override public void onPacket(int type, int id, List<Pb.Field> p) {
-                log("워치 메시지 type=" + type + " id=" + id);
-            }
-        });
-        holder[0] = s;
-        session = s;
-        state = "연결 중…";
-        watchInfo = "";
-        refresh();
-        new Thread(() -> {
-            try {
-                // 검색 중이면 멈춤 (안드로이드 12+는 BLUETOOTH_SCAN 권한이 있어야 해서, 없으면 그냥 건너뜀)
-                try { ad.cancelDiscovery(); } catch (SecurityException ignored) {}
-                BluetoothSocket sock;
-                try {
-                    sock = dev.createRfcommSocketToServiceRecord(SPP_UUID);
-                    sock.connect();
-                } catch (Exception first) {
-                    log("보안 연결 실패, 다른 방식 시도: " + first.getMessage());
-                    sock = dev.createInsecureRfcommSocketToServiceRecord(SPP_UUID);
-                    sock.connect();
-                }
-                socket = sock;
-                log("SPP 연결됨, 세션 시작");
-                state = "연결됨 · 인증 중…";
-                post();
-                s.start(sock.getInputStream(), sock.getOutputStream());
-            } catch (Exception e) {
-                log("SPP 연결 실패: " + e.getMessage()
-                        + " → Mi Fitness·MiFaceDown이 워치를 잡고 있으면 끊고 다시 시도");
-                state = "연결 안 됨";
-                closeSocket();
-                session = null;
-                post();
-            }
-        }).start();
-    }
-
-    /** 클라우드에서 키 후보가 여러 개 왔으면 다음 후보로 바꿔 둔다. */
-    private void rotateKey() {
-        String alt = prefs.getString("authKeyAlt", "");
-        String cur = prefs.getString("authKey", "");
-        if (alt.isEmpty()) return;
-        String[] keys = alt.split(",");
-        if (keys.length < 2) return;
-        int i = 0;
-        while (i < keys.length && !keys[i].equals(cur)) i++;
-        String next = keys[(i + 1) % keys.length];
-        prefs.edit().putString("authKey", next).apply();
-        log("다른 인증키 후보로 바꿈. '연결'을 다시 눌러 보세요.");
-    }
-
-    private static void closeSocket() {
-        BluetoothSocket s = socket;
-        socket = null;
-        if (s != null) try { s.close(); } catch (Exception ignored) {}
-    }
-
-    private void yieldToMiFitness() {
-        WatchSession s = session;
-        if (s != null) s.close();
-        closeSocket();
-        session = null;
-        state = "연결 안 됨 (Mi Fitness에 양보)";
-        log("연결을 놓음. Mi Fitness를 열면 다시 연결됩니다.");
-        for (String pkg : new String[]{"com.mi.health", "com.xiaomi.wearable"}) {
-            Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
-            if (i != null) { startActivity(i); break; }
-        }
-        refresh();
-    }
 
     // ---------------- 도우미 ----------------
 
