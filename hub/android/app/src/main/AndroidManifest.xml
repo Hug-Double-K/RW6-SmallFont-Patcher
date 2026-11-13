@@ -24,7 +24,8 @@
     <application
         android:name=".HubApp"
         android:allowBackup="false"
-        android:icon="@android:drawable/stat_sys_data_bluetooth"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:label="Mi Manager"
         android:theme="@android:style/Theme.DeviceDefault">
 
