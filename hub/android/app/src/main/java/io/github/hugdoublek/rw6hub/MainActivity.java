@@ -86,7 +86,8 @@ public class MainActivity extends Activity {
         root.addView(header("계정 (샤오미, 중국 지역)"));
         accountView = text();
         root.addView(accountView);
-        root.addView(button("샤오미 로그인", v -> startLogin()));
+        root.addView(button("샤오미 로그인 (아이디·비밀번호)", v -> passwordLogin()));
+        root.addView(button("웹 화면으로 로그인", v -> startLogin(null)));
         root.addView(button("인증키 가져오기", v -> fetchKey()));
 
         root.addView(header("워치"));
@@ -150,9 +151,10 @@ public class MainActivity extends Activity {
 
     // ---------------- 계정 ----------------
 
-    private void startLogin() {
+    private void startLogin(String url) {
         Intent i = new Intent(this, LoginActivity.class);
         i.putExtra(LoginActivity.EXTRA_DEVICE_ID, prefs.getString("deviceId", ""));
+        if (url != null) i.putExtra(LoginActivity.EXTRA_URL, url);
         startActivityForResult(i, REQ_LOGIN);
     }
 
@@ -167,6 +169,62 @@ public class MainActivity extends Activity {
                     .apply();
             log("로그인 완료");
             fetchKey();
+        }
+    }
+
+    private void passwordLogin() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(8), dp(20), 0);
+        EditText id = new EditText(this);
+        id.setHint("샤오미 계정 (이메일·전화번호·ID)");
+        id.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        id.setText(prefs.getString("account", ""));
+        EditText pw = new EditText(this);
+        pw.setHint("비밀번호");
+        pw.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        box.addView(id);
+        box.addView(pw);
+        new AlertDialog.Builder(this)
+                .setTitle("샤오미 로그인 (지역: 중국)")
+                .setMessage("비밀번호는 저장하지 않고 로그인에만 씁니다.")
+                .setView(box)
+                .setPositiveButton("로그인", (d, w) -> {
+                    String user = id.getText().toString().trim();
+                    String pass = pw.getText().toString();
+                    if (user.isEmpty() || pass.isEmpty()) { log("계정과 비밀번호를 넣어 주세요"); return; }
+                    prefs.edit().putString("account", user).apply();
+                    log("로그인 중…");
+                    new Thread(() -> {
+                        MiCloud.Token t = new MiCloud.Token();
+                        t.deviceId = prefs.getString("deviceId", "");
+                        try {
+                            MiCloud.passwordLogin(t, user, pass);
+                            prefs.edit().putString("userId", t.userId).putString("cUserId", t.cUserId)
+                                    .putString("passToken", t.passToken).apply();
+                            log("로그인 완료");
+                            fetchDevices(t);
+                        } catch (MiCloud.NeedVerification v) {
+                            log("추가 인증이 필요함 → 웹 화면에서 확인해 주세요");
+                            ui.post(() -> startLogin(v.url));
+                        } catch (Exception e) {
+                            log("로그인 실패: " + e.getMessage());
+                        }
+                    }).start();
+                })
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    /** 서비스 토큰이 준비된 상태에서 기기 목록을 받아 인증키를 고른다. (작업 스레드에서 호출) */
+    private void fetchDevices(MiCloud.Token t) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            List<MiCloud.Device> list = MiCloud.devices(t, sb);
+            log(sb.toString().trim());
+            ui.post(() -> chooseCloudDevice(list));
+        } catch (Exception e) {
+            log("인증키 가져오기 실패: " + e.getMessage());
         }
     }
 
@@ -185,10 +243,7 @@ public class MainActivity extends Activity {
             try {
                 MiCloud.serviceLogin(t);
                 prefs.edit().putString("cUserId", t.cUserId).putString("passToken", t.passToken).apply();
-                StringBuilder sb = new StringBuilder();
-                List<MiCloud.Device> list = MiCloud.devices(t, sb);
-                log(sb.toString().trim());
-                ui.post(() -> chooseCloudDevice(list));
+                fetchDevices(t);
             } catch (Exception e) {
                 log("인증키 가져오기 실패: " + e.getMessage());
             }

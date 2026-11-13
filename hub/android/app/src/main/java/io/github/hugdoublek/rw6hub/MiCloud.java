@@ -54,6 +54,15 @@ public final class MiCloud {
 
     // ------------------------------------------------------------------
 
+    /** 2단계 인증이 필요할 때: 이 주소를 웹 화면으로 열어 확인받아야 함. */
+    public static final class NeedVerification extends Exception {
+        public final String url;
+        public NeedVerification(String url) { super("추가 인증 필요"); this.url = url; }
+    }
+
+    private static final String WEB_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A.230901.001; wv) "
+            + "AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/131.0.6778.200 Mobile Safari/537.36";
+
     /** passToken으로 서비스 로그인 → ssecurity, serviceToken을 채운다. */
     public static void serviceLogin(Token t) throws IOException, CloudException {
         String cookie = "sdkVersion=" + SDK_VERSION + "; deviceId=" + t.deviceId
@@ -63,43 +72,130 @@ public final class MiCloud {
         c.setRequestProperty("Cookie", cookie);
         Resp r = read(c);
         if (r.code != 200) throw new CloudException("serviceLogin HTTP " + r.code);
-        String body = r.body.startsWith("&&&START&&&") ? r.body.substring(11) : r.body;
-        JSONObject j;
-        try { j = new JSONObject(body); } catch (JSONException e) { throw new CloudException("serviceLogin 응답 해석 실패"); }
+        JSONObject j = json(r.body, "serviceLogin");
         if (!j.optString("_sign").isEmpty() && j.optString("location").isEmpty()) {
             throw new CloudException("로그인이 만료됨. 다시 로그인해 주세요.");
         }
         int code = j.optInt("code", -1);
         if (code != 0) throw new CloudException("serviceLogin 실패 code=" + code + " " + j.optString("description"));
+        if (!j.optString("passToken").isEmpty()) t.passToken = j.optString("passToken");
+        finish(t, j, r);
+    }
 
+    /**
+     * 아이디·비밀번호 로그인 (MiFaceDown과 같은 방식). 비밀번호는 MD5로만 보내고 저장하지 않는다.
+     * 2단계 인증이 걸리면 NeedVerification.
+     */
+    public static void passwordLogin(Token t, String user, String password)
+            throws IOException, CloudException, NeedVerification {
+        HttpURLConnection c = open("https://account.xiaomi.com/pass/serviceLogin?sid=" + SID + "&_json=true&_locale=zh_CN");
+        c.setRequestProperty("User-Agent", WEB_UA);
+        c.setRequestProperty("Cookie", "sdkVersion=" + SDK_VERSION + "; deviceId=" + t.deviceId + "; userId=" + user);
+        Resp r = read(c);
+        if (r.code != 200) throw new CloudException("로그인 시작 실패 HTTP " + r.code);
+        JSONObject j = json(r.body, "로그인 시작");
+        String sign = j.optString("_sign"), qs = j.optString("qs"), callback = j.optString("callback");
+        if (sign.isEmpty() || qs.isEmpty() || callback.isEmpty()) {
+            throw new CloudException("로그인 시작 응답이 예상과 다름");
+        }
+
+        Map<String, String> form = new java.util.LinkedHashMap<>();
+        form.put("qs", qs);
+        form.put("callback", callback);
+        form.put("_json", "true");
+        form.put("_sign", sign);
+        form.put("user", user);
+        form.put("hash", Hex.of(MiCrypto.digest("MD5", password.getBytes(StandardCharsets.UTF_8))).toUpperCase(Locale.ROOT));
+        form.put("sid", SID);
+        form.put("_locale", "zh_CN");
+        HttpURLConnection p = open("https://account.xiaomi.com/pass/serviceLoginAuth2");
+        p.setRequestProperty("User-Agent", WEB_UA);
+        p.setRequestProperty("Cookie", "sdkVersion=" + SDK_VERSION + "; deviceId=" + t.deviceId);
+        Resp pr = post(p, form);
+        if (pr.code != 200) throw new CloudException("로그인 실패 HTTP " + pr.code);
+        JSONObject a = json(pr.body, "로그인");
+        int code = a.optInt("code", -1);
+        if (code != 0) {
+            String note = a.optString("notificationUrl");
+            if (!note.isEmpty()) throw new NeedVerification(note.startsWith("http") ? note : "https://account.xiaomi.com" + note);
+            if (code == 70016) throw new CloudException("아이디 또는 비밀번호가 틀림");
+            if (code == 87001 || code == 70002) throw new CloudException("보안 문자 확인이 필요함 → '웹 화면으로 로그인'을 써 주세요");
+            throw new CloudException("로그인 실패 code=" + code + " " + a.optString("description") + a.optString("desc"));
+        }
+        if (a.optLong("userId", 0) != 0) t.userId = String.valueOf(a.optLong("userId"));
+        String pass = a.optString("passToken");
+        if (pass.isEmpty()) pass = cookieValue(pr.setCookies, "passToken");
+        if (pass != null && !pass.isEmpty()) t.passToken = pass;
+        finish(t, a, pr);
+    }
+
+    /** 로그인 응답의 ssecurity·nonce·location으로 serviceToken을 받는다. */
+    private static void finish(Token t, JSONObject j, Resp r) throws IOException, CloudException {
         String ssecurity = j.optString("ssecurity");
+        String nonce = j.has("nonce") ? String.valueOf(j.optLong("nonce")) : "";
         String pragma = r.header("extension-pragma");
-        if (ssecurity.isEmpty() && pragma != null) {
-            try { ssecurity = new JSONObject(pragma).optString("ssecurity"); } catch (JSONException ignored) {}
+        if (pragma != null) {
+            try {
+                JSONObject pj = new JSONObject(pragma);
+                if (ssecurity.isEmpty()) ssecurity = pj.optString("ssecurity");
+                if (nonce.isEmpty() || nonce.equals("0")) nonce = String.valueOf(pj.optLong("nonce"));
+            } catch (JSONException ignored) {}
         }
         if (ssecurity.isEmpty()) throw new CloudException("ssecurity 없음");
         String location = j.optString("location");
         if (location.isEmpty()) throw new CloudException("location 없음");
         if (!j.optString("cUserId").isEmpty()) t.cUserId = j.optString("cUserId");
         if (j.optLong("userId", 0) != 0) t.userId = String.valueOf(j.optLong("userId"));
-        if (!j.optString("passToken").isEmpty()) t.passToken = j.optString("passToken");
         t.ssecurity = ssecurity;
 
-        // location(sts-hlth) → serviceToken 쿠키
+        // location(sts-hlth) + clientSign → serviceToken 쿠키
+        if (!location.contains("clientSign=") && !nonce.isEmpty() && !nonce.equals("0")) {
+            String cs = java.util.Base64.getEncoder().encodeToString(
+                    MiCrypto.digest("SHA-1", ("nonce=" + nonce + "&" + ssecurity).getBytes(StandardCharsets.UTF_8)));
+            location += (location.contains("?") ? "&" : "?") + "clientSign=" + URLEncoder.encode(cs, "UTF-8");
+        }
         HttpURLConnection s = open(location);
         s.setInstanceFollowRedirects(false);
+        s.setRequestProperty("Cookie", "sdkVersion=" + SDK_VERSION + "; deviceId=" + t.deviceId);
         Resp sr = read(s);
-        String token = null;
-        for (String setCookie : sr.setCookies) {
+        String token = cookieValue(sr.setCookies, "serviceToken");
+        String cu = cookieValue(sr.setCookies, "cUserId");
+        if (cu != null && !cu.isEmpty()) t.cUserId = cu;
+        if (token == null || token.isEmpty()) throw new CloudException("serviceToken을 받지 못함 (HTTP " + sr.code + ")");
+        t.serviceToken = token;
+    }
+
+    private static String cookieValue(List<String> setCookies, String want) {
+        String found = null;
+        for (String setCookie : setCookies) {
             String kv = setCookie.split(";", 2)[0].trim();
             int eq = kv.indexOf('=');
             if (eq <= 0) continue;
             String name = kv.substring(0, eq), val = kv.substring(eq + 1);
-            if ((name.equals("serviceToken") || name.endsWith("_serviceToken")) && !val.isEmpty()) token = val;
-            if (name.equals("cUserId") && !val.isEmpty()) t.cUserId = val;
+            if ((name.equals(want) || name.endsWith("_" + want)) && !val.isEmpty() && !val.equals("EXPIRED")) found = val;
         }
-        if (token == null) throw new CloudException("serviceToken을 받지 못함 (HTTP " + sr.code + ")");
-        t.serviceToken = token;
+        return found;
+    }
+
+    private static JSONObject json(String body, String what) throws CloudException {
+        String b = body.trim();
+        if (b.startsWith("&&&START&&&")) b = b.substring(11);
+        try { return new JSONObject(b); } catch (JSONException e) { throw new CloudException(what + " 응답 해석 실패"); }
+    }
+
+    private static Resp post(HttpURLConnection c, Map<String, String> form) throws IOException {
+        c.setRequestMethod("POST");
+        c.setDoOutput(true);
+        c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> e : form.entrySet()) {
+            if (sb.length() > 0) sb.append('&');
+            sb.append(URLEncoder.encode(e.getKey(), "UTF-8")).append('=').append(URLEncoder.encode(e.getValue(), "UTF-8"));
+        }
+        try (OutputStream os = c.getOutputStream()) {
+            os.write(sb.toString().getBytes(StandardCharsets.UTF_8));
+        }
+        return read(c);
     }
 
     /** 계정에 묶인 기기 목록 (인증키 후보 포함). */
@@ -134,22 +230,11 @@ public final class MiCloud {
         Map<String, String> form = MiSign.encryptParams("POST", signPath, plain, t.ssecurity, nonce);
 
         HttpURLConnection c = open(url);
-        c.setRequestMethod("POST");
-        c.setDoOutput(true);
-        c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
         c.setRequestProperty("region_tag", "cn");
         c.setRequestProperty("HandleParams", "true");
         c.setRequestProperty("Cookie", "sdkVersion=" + SDK_VERSION + "; locale=zh_CN; deviceId=" + t.deviceId
                 + "; userId=" + t.userId + "; cUserId=" + t.cUserId + "; serviceToken=" + t.serviceToken);
-        StringBuilder sb = new StringBuilder();
-        for (Map.Entry<String, String> e : form.entrySet()) {
-            if (sb.length() > 0) sb.append('&');
-            sb.append(URLEncoder.encode(e.getKey(), "UTF-8")).append('=').append(URLEncoder.encode(e.getValue(), "UTF-8"));
-        }
-        try (OutputStream os = c.getOutputStream()) {
-            os.write(sb.toString().getBytes(StandardCharsets.UTF_8));
-        }
-        Resp r = read(c);
+        Resp r = post(c, form);
         if (r.code == 401) throw new CloudException("로그인이 만료됨 (401). 다시 로그인해 주세요.");
         if (r.code != 200) throw new CloudException("HTTP " + r.code);
         try {

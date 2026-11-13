@@ -20,6 +20,10 @@ public class LoginActivity extends Activity {
     public static final String EXTRA_USER_ID = "userId";
     public static final String EXTRA_CUSER_ID = "cUserId";
     public static final String EXTRA_PASS_TOKEN = "passToken";
+    /** 처음 열 주소 (2단계 인증 주소 등). 없으면 기본 로그인 페이지. */
+    public static final String EXTRA_URL = "url";
+
+    private android.widget.TextView status;
 
     private WebView web;
     private boolean finished = false;
@@ -40,9 +44,24 @@ public class LoginActivity extends Activity {
         cm.flush();
 
         web = new WebView(this);
+        web.setBackgroundColor(android.graphics.Color.WHITE);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
+        s.setDatabaseEnabled(true);
+        s.setLoadWithOverviewMode(true);
+        s.setUseWideViewPort(true);
+        s.setJavaScriptCanOpenWindowsAutomatically(true);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        // 일부 로그인 페이지가 WebView 표시(wv)를 싫어해서 일반 크롬처럼 보이게 함
+        s.setUserAgentString(s.getUserAgentString().replace("; wv)", ")"));
+        web.setWebChromeClient(new android.webkit.WebChromeClient() {
+            @Override
+            public void onProgressChanged(WebView view, int p) {
+                if (p < 100) show("불러오는 중 " + p + "% · " + host(view.getUrl()));
+                else show("열림 · " + host(view.getUrl()) + "  (빈 화면이면 ↻)");
+            }
+        });
         cm.setAcceptThirdPartyCookies(web, true);
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -59,9 +78,43 @@ public class LoginActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 check(url);
             }
+
+            @Override
+            public void onReceivedError(WebView view, android.webkit.WebResourceRequest req,
+                                        android.webkit.WebResourceError err) {
+                if (req.isForMainFrame()) show("오류: " + err.getDescription() + " · " + host(req.getUrl().toString()));
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, android.webkit.WebResourceRequest req,
+                                            android.webkit.WebResourceResponse resp) {
+                if (req.isForMainFrame()) show("HTTP " + resp.getStatusCode() + " · " + host(req.getUrl().toString()));
+            }
+
+            @Override
+            public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler h, android.net.http.SslError e) {
+                show("보안 연결 오류 (" + e.getPrimaryError() + ")");
+                h.cancel();
+            }
         });
-        setContentView(web);
-        web.loadUrl(MiCloud.LOGIN_PAGE);
+
+        status = new android.widget.TextView(this);
+        status.setTextSize(13);
+        status.setPadding(24, 12, 24, 12);
+        android.widget.Button reload = new android.widget.Button(this);
+        reload.setText("↻");
+        reload.setOnClickListener(v -> web.reload());
+        android.widget.LinearLayout bar = new android.widget.LinearLayout(this);
+        bar.addView(status, new android.widget.LinearLayout.LayoutParams(0, -2, 1f));
+        bar.addView(reload);
+        android.widget.LinearLayout root = new android.widget.LinearLayout(this);
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
+        root.addView(bar);
+        root.addView(web, new android.widget.LinearLayout.LayoutParams(-1, 0, 1f));
+        setContentView(root);
+
+        String url = getIntent().getStringExtra(EXTRA_URL);
+        web.loadUrl(url != null && !url.isEmpty() ? url : MiCloud.LOGIN_PAGE);
     }
 
     /** passToken 쿠키가 생겼으면 끝낸다. 콜백(sts-hlth) 주소로 넘어가면 더 진행하지 않음. */
@@ -85,6 +138,15 @@ public class LoginActivity extends Activity {
             return true;
         }
         return url != null && url.contains("sts-hlth.io.mi.com");
+    }
+
+    private void show(String msg) {
+        if (status != null) status.setText(msg);
+    }
+
+    private static String host(String url) {
+        if (url == null) return "";
+        try { return android.net.Uri.parse(url).getHost(); } catch (Exception e) { return ""; }
     }
 
     private static String join(String... parts) {
