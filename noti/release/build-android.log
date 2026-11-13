@@ -17,11 +17,11 @@
 > Task :app:stripReleaseDebugSymbols NO-SOURCE
 > Task :app:extractReleaseNativeSymbolTables NO-SOURCE
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:mergeReleaseStartupProfile
-> Task :app:processReleaseManifestForPackage
 > Task :app:checkReleaseDuplicateClasses
-> Task :app:mergeReleaseShaders
+> Task :app:processReleaseManifestForPackage
+> Task :app:mergeReleaseStartupProfile
 > Task :app:mergeReleaseArtProfile
+> Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
 > Task :app:mergeReleaseAssets
@@ -54,7 +54,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:lintVitalReportRelease
 > Task :app:lintVitalRelease
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1794606956839.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1794608007577.json
 
-BUILD SUCCESSFUL in 17s
+BUILD SUCCESSFUL in 16s
 43 actionable tasks: 43 executed

@@ -26,10 +26,10 @@ Daemon will be stopped at the end of the build
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
 > Task :app:mergeReleaseAssets
-> Task :app:processReleaseManifestForPackage
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:processReleaseJavaRes NO-SOURCE
+> Task :app:processReleaseManifestForPackage
 > Task :app:collectReleaseDependencies
 > Task :app:processReleaseResources
 > Task :app:sdkReleaseDependencyData
@@ -52,7 +52,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:packageRelease
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_5-1794607018839.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_5-1794608068325.json
 
-BUILD SUCCESSFUL in 10s
+BUILD SUCCESSFUL in 9s
 38 actionable tasks: 38 executed
