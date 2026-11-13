@@ -42,6 +42,8 @@ public final class WatchSession implements SarLink.Listener {
     private byte[] phoneRandom;
     private byte[] encKey, decKey;
     private volatile boolean authed = false;
+    /** 처리하지 않고 버린 네트워크 채널 패킷 수 (진단용) */
+    public volatile int networkIgnored = 0;
 
     public WatchSession(byte[] authKey, String phoneName, Callback cb) {
         this.authKey = authKey;
@@ -56,7 +58,7 @@ public final class WatchSession implements SarLink.Listener {
         link.start();
     }
 
-    public String stats() { return link == null ? "" : link.stats(); }
+    public String stats() { return link == null ? "" : link.stats() + (networkIgnored > 0 ? " · 네트워크 요청 " + networkIgnored + "개 버림" : ""); }
     public String recentFrames() { return link == null ? "" : link.recentFrames(); }
 
     public void close() {
@@ -91,6 +93,8 @@ public final class WatchSession implements SarLink.Listener {
     @Override
     public void onL2(int channel, int opcode, byte[] body) {
         if (channel != CH_PB) {
+            // 7 = 네트워크(워치가 폰을 통해 인터넷을 쓰려는 요청, 4단계에서 처리). 지금은 조용히 버림
+            if (channel == 7) { networkIgnored++; return; }
             cb.onLog("다른 채널 데이터 " + channel + " (" + body.length + "B) 무시");
             return;
         }

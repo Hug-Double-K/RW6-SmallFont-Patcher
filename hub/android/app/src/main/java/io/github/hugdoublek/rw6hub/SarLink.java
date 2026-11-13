@@ -261,7 +261,10 @@ public final class SarLink {
                     break;
                 }
                 case L1.DATA: {
-                    if (!ready || f.frx) { deliver = f.payload; break; }
+                    // 네트워크(7)·멀티모달(10) 채널은 순서 번호를 쓰지 않고 ACK도 하지 않는다 (공식 앱 방식).
+                    // 예전엔 여기에 ACK를 보내서 워치 쪽 순서가 꼬였고, 워치가 연결을 끊었다.
+                    int ch = f.payload.length > 0 ? f.payload[0] & 0xFF : -1;
+                    if (!ready || f.frx || ch == 7 || ch == 10) { deliver = f.payload; break; }
                     if (f.seq != rxExpect) {
                         boolean ahead = ((f.seq - rxExpect) & 0xFF) < 128;
                         if (ahead) writeQuiet(new L1(L1.NAK, false, rxExpect, null));
