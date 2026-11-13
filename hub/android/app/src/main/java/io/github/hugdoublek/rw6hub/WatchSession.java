@@ -44,6 +44,7 @@ public final class WatchSession implements SarLink.Listener {
     private volatile boolean authed = false;
     /** 처리하지 않고 버린 네트워크 채널 패킷 수 (진단용) */
     public volatile int networkIgnored = 0;
+    private volatile boolean dhcpAcked = false;
 
     public WatchSession(byte[] authKey, String phoneName, Callback cb) {
         this.authKey = authKey;
@@ -94,7 +95,17 @@ public final class WatchSession implements SarLink.Listener {
     public void onL2(int channel, int opcode, byte[] body) {
         if (channel != CH_PB) {
             // 7 = 네트워크(워치가 폰을 통해 인터넷을 쓰려는 요청, 4단계에서 처리). 지금은 조용히 버림
-            if (channel == 7) { networkIgnored++; return; }
+            if (channel == 7) {
+                int[] kind = new int[1];
+                byte[] rep = Dhcp.reply(body, kind);
+                if (rep != null) {
+                    sendL2Ch(7, OP_WRITE, rep);
+                    if (kind[0] == 3 && !dhcpAcked) { dhcpAcked = true; cb.onLog("워치에 IP 주소를 줌 (10.1.10.2)"); }
+                } else {
+                    networkIgnored++;
+                }
+                return;
+            }
             cb.onLog("다른 채널 데이터 " + channel + " (" + body.length + "B) 무시");
             return;
         }
@@ -205,8 +216,12 @@ public final class WatchSession implements SarLink.Listener {
     }
 
     private void sendL2(int opcode, byte[] payload) {
+        sendL2Ch(CH_PB, opcode, payload);
+    }
+
+    private void sendL2Ch(int channel, int opcode, byte[] payload) {
         byte[] l2 = new byte[payload.length + 2];
-        l2[0] = CH_PB;
+        l2[0] = (byte) channel;
         l2[1] = (byte) opcode;
         System.arraycopy(payload, 0, l2, 2, payload.length);
         link.send(l2);
