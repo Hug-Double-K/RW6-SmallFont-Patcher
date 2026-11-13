@@ -9,8 +9,8 @@ Daemon will be stopped at the end of the build
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:checkReleaseDuplicateClasses
 > Task :app:javaPreCompileRelease
-> Task :app:generateReleaseResValues
 > Task :app:checkReleaseAarMetadata
+> Task :app:generateReleaseResValues
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
 > Task :app:mergeReleaseResources
@@ -21,12 +21,12 @@ Daemon will be stopped at the end of the build
 > Task :app:processReleaseMainManifest
 > Task :app:processReleaseManifest
 > Task :app:mergeReleaseStartupProfile
-> Task :app:processReleaseManifestForPackage
 > Task :app:mergeReleaseArtProfile
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
 > Task :app:mergeReleaseAssets
+> Task :app:processReleaseManifestForPackage
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:processReleaseJavaRes NO-SOURCE
@@ -42,9 +42,9 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:dexBuilderRelease
 > Task :app:mergeReleaseGlobalSynthetics
 > Task :app:sdkReleaseDependencyData
-> Task :app:optimizeReleaseResources
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
+> Task :app:optimizeReleaseResources
 > Task :app:writeReleaseSigningConfigVersions
 > Task :app:mergeExtDexRelease
 > Task :app:mergeDexRelease
@@ -52,7 +52,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:packageRelease
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_5-1794590465592.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_5-1794591481706.json
 
-BUILD SUCCESSFUL in 12s
+BUILD SUCCESSFUL in 11s
 38 actionable tasks: 38 executed
