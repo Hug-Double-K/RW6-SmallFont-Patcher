@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 상태 표시줄·알림용 아이콘: 앱 아이콘(워치 + 07:14)과 같은 모양의 흰색 단색판. 앞으로 알림 아이콘은 모두 이것을 씀 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="78"
+    android:viewportHeight="78">
+    <group android:translateX="-15" android:translateY="-15">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M50.5,19 H57.5 A6,6 0 0 1 63.5,25 V28 A6,6 0 0 1 57.5,34 H50.5 A6,6 0 0 1 44.5,28 V25 A6,6 0 0 1 50.5,19 Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M50.5,74 H57.5 A6,6 0 0 1 63.5,80 V83 A6,6 0 0 1 57.5,89 H50.5 A6,6 0 0 1 44.5,83 V80 A6,6 0 0 1 50.5,74 Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M76.6,48 H76.60000000000001 A1.6,1.6 0 0 1 78.2,49.6 V57.4 A1.6,1.6 0 0 1 76.60000000000001,59 H76.6 A1.6,1.6 0 0 1 75,57.4 V49.6 A1.6,1.6 0 0 1 76.6,48 Z" />
+        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M47,30 H61 A15,15 0 0 1 76,45 V63 A15,15 0 0 1 61,78 H47 A15,15 0 0 1 32,63 V45 A15,15 0 0 1 47,30 Z M47,34 H61 A11,11 0 0 1 72,45 V63 A11,11 0 0 1 61,74 H47 A11,11 0 0 1 36,63 V45 A11,11 0 0 1 47,34 Z" />
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M41.0,45.5 H40.99999999999999 A3.2,3.2 0 0 1 44.199999999999996,48.7 V53.3 A3.2,3.2 0 0 1 40.99999999999999,56.5 H41.0 A3.2,3.2 0 0 1 37.8,53.3 V48.7 A3.2,3.2 0 0 1 41.0,45.5 Z" />
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M46.4,45.5 L52.8,45.5 L48.8,56.5" />
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M58.2,47.5 L59.6,45.5 L59.6,56.5" />
+        <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M66.6,56.5 L66.6,45.5 L62.0,52.9 L68.6,52.9" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M55.3,48.9 m-0.95,0 a0.95,0.95 0 1 0 1.9,0 a0.95,0.95 0 1 0 -1.9,0 M55.3,53.1 m-0.95,0 a0.95,0.95 0 1 0 1.9,0 a0.95,0.95 0 1 0 -1.9,0" />
+    </group>
+</vector>

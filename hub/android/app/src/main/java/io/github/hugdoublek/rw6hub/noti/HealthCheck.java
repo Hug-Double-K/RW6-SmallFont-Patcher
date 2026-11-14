@@ -150,7 +150,8 @@ public class HealthCheck extends BroadcastReceiver {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         String body = String.join("\n", bad);
         Notification n = new Notification.Builder(app, "check")
-                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setSmallIcon(io.github.hugdoublek.rw6hub.R.drawable.ic_stat_watch)
+                .setColor(0xFFFF6FA8)
                 .setContentTitle("RW6 알림: 확인이 필요해요 (" + bad.size() + ")")
                 .setContentText(bad.get(0))
                 .setStyle(new Notification.BigTextStyle().bigText(body))

@@ -86,7 +86,8 @@ public class LinkService extends Service implements WatchLink.StateListener {
                 new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+                .setSmallIcon(io.github.hugdoublek.rw6hub.R.drawable.ic_stat_watch)
+                .setColor(0xFFFF6FA8)
                 .setContentTitle("Mi Manager · " + l.state())
                 .setContentIntent(open)
                 .setOngoing(true)
