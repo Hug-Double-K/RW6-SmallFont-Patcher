@@ -129,7 +129,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         root.addView(mifitWarn);
         mifitBtn = button("Mi Fitness 블루투스 권한 끄러 가기", v -> openMiFitnessSettings());
         root.addView(mifitBtn);
-        connectBtn = button("연결 (계속 유지)", v -> { askPermissions(); askBatteryExemption(); LinkService.start(this); });
+        connectBtn = button("연결 (계속 유지)", v -> { askPermissions(); LinkService.start(this); });
         root.addView(connectBtn);
         root.addView(button("연결 해제 · Mi Fitness에 양보", v -> yieldToMiFitness()));
         notiBtn = button("", v -> toggleStatusNotification());
@@ -257,7 +257,8 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
     /** 배터리 최적화에서 빼 달라고 요청 (백그라운드에서 연결이 끊기지 않게) */
     private void askBatteryExemption() {
         android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
-        if (pm == null || pm.isIgnoringBatteryOptimizations(getPackageName())) return;
+        if (pm == null) return;
+        if (pm.isIgnoringBatteryOptimizations(getPackageName())) { log("배터리 최적화 제외: 이미 허용됨"); return; }
         try {
             startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                     android.net.Uri.parse("package:" + getPackageName())));

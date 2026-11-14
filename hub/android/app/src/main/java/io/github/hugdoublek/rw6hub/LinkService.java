@@ -27,7 +27,12 @@ public class LinkService extends Service implements WatchLink.StateListener {
         Context app = c.getApplicationContext();
         app.getSharedPreferences("hub", MODE_PRIVATE).edit().putBoolean("keep", true).putBoolean("yielded", false).apply();
         try {
-            app.startForegroundService(new Intent(app, LinkService.class));
+            if (statusNotification(app)) {
+                app.startForegroundService(new Intent(app, LinkService.class));
+            } else {
+                // 상단 알림 끔: 알림 없는 일반 서비스로 돌림. 배터리 최적화에서 빠져 있으면 백그라운드에서도 계속 돎
+                app.startService(new Intent(app, LinkService.class));
+            }
         } catch (Exception e) {
             WatchLink.get(app).log("상태 알림 서비스를 못 띄움: " + e.getMessage());
             WatchLink.get(app).start();
@@ -80,6 +85,13 @@ public class LinkService extends Service implements WatchLink.StateListener {
     }
 
     private void goForeground() {
+        if (!statusNotification(this)) {
+            // 알림을 없애고 서비스는 계속 (포그라운드 해제)
+            if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE);
+            else stopForeground(true);
+            getSystemService(NotificationManager.class).cancel(ID);
+            return;
+        }
         Notification n = build();
         if (Build.VERSION.SDK_INT >= 29) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE);
         else startForeground(ID, n);
@@ -106,7 +118,7 @@ public class LinkService extends Service implements WatchLink.StateListener {
         PendingIntent open = PendingIntent.getActivity(this, 0,
                 new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this, statusNotification(this) ? CHANNEL : CHANNEL_HIDDEN)
+        return new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(io.github.hugdoublek.rw6hub.R.drawable.ic_stat_watch)
                 .setColor(0xFFFF6FA8)
                 .setContentTitle("Mi Manager · " + l.state())
