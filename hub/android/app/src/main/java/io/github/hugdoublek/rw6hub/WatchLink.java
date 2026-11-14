@@ -75,6 +75,7 @@ public final class WatchLink {
         HandlerThread t = new HandlerThread("watch-link");
         t.start();
         worker = new Handler(t.getLooper());
+        watchAclEvents();
     }
 
     // ---------------- 상태 ----------------
@@ -146,6 +147,32 @@ public final class WatchLink {
     }
 
     @SuppressWarnings("MissingPermission")
+    /**
+     * 진단: 블루투스 링크 자체(ACL)가 끊기는지, 우리 소켓만 닫히는지 기록.
+     * 소켓만 닫히면(ACL 유지) 같은 폰의 다른 앱(Mi Fitness 등)이 워치를 가져갔을 가능성이 큼.
+     */
+    private void watchAclEvents() {
+        android.content.IntentFilter f = new android.content.IntentFilter();
+        f.addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED);
+        f.addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        f.addAction("android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED");
+        android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
+            @Override public void onReceive(Context c, android.content.Intent i) {
+                BluetoothDevice d = i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                if (d == null || !d.getAddress().equalsIgnoreCase(prefs.getString("mac", ""))) return;
+                String a = i.getAction();
+                if (BluetoothDevice.ACTION_ACL_CONNECTED.equals(a)) log("  [블루투스 링크 연결됨]");
+                else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(a)) log("  [블루투스 링크 자체가 끊김]");
+                else {
+                    int st = i.getIntExtra("android.bluetooth.profile.extra.STATE", -1);
+                    log("  [워치 통화(HFP) " + (st == 2 ? "연결됨" : st == 0 ? "끊김" : "상태 " + st) + "]");
+                }
+            }
+        };
+        if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(r, f, Context.RECEIVER_EXPORTED);
+        else app.registerReceiver(r, f);
+    }
+
     /** 통화 중인지 (권한 없이 오디오 모드로 판단) */
     private boolean inCall() {
         android.media.AudioManager am = (android.media.AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
@@ -157,14 +184,6 @@ public final class WatchLink {
 
     private void connectNow() {
         if (!wantConnected || session != null || connecting) return;
-        // 통화 중에 워치 블루투스를 다시 붙이면 폰이 통화 소리 경로(스피커·이어폰·워치)를 바꿔 버림 → 통화 끝날 때까지 미룸
-        if (inCall()) {
-            if (!callWait) { callWait = true; log("통화 중이라 워치 재연결을 미룸"); setState("통화 끝나면 다시 연결"); }
-            worker.removeCallbacks(reconnect);
-            worker.postDelayed(reconnect, 5_000);
-            return;
-        }
-        callWait = false;
         String mac = prefs.getString("mac", "");
         String key = prefs.getString("authKey", "");
         if (mac.isEmpty() || key.isEmpty()) { setState("설정 필요 (워치·인증키)"); log("연결 못 함: " + "설정 필요 (워치·인증키)"); return; }
