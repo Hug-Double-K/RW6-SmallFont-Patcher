@@ -257,13 +257,14 @@ public final class WatchLink {
             }
 
             @Override public void onRaw(int channel, int opcode, byte[] body) {
-                AivsCapture.addRaw(channel, body);
+                AivsCapture.addRaw(channel, opcode, body);
                 if (seenKinds.add("raw" + channel)) log("워치 채널 " + channel + " 데이터 받기 시작 (" + body.length + "B, op " + opcode + ")");
             }
 
             @Override public void onPlainPacket(byte[] plain) {
-                // 샤오아이(AIVS = type 14) 패킷만 캡처
-                if (plain.length >= 2 && (plain[0] & 0xFF) == 0x08 && (plain[1] & 0xFF) == 14) AivsCapture.addPb(plain);
+                // 분석용: 연결 유지 응답(2/1)만 빼고 워치가 보낸 PB를 모두 캡처
+                boolean keepalive = plain.length >= 4 && plain[0] == 0x08 && plain[1] == 2 && plain[2] == 0x10 && plain[3] == 1;
+                if (!keepalive) AivsCapture.addPb(plain);
             }
 
             @Override public void onPacket(int type, int id, List<Pb.Field> p) {

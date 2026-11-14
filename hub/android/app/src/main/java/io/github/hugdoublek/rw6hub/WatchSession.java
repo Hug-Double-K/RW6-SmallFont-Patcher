@@ -118,7 +118,9 @@ public final class WatchSession implements SarLink.Listener {
                 }
                 return;
             }
-            cb.onRaw(channel, opcode, body);
+            // 다른 채널도 opcode 2면 같은 키로 암호화돼 있음 (예: 3 = 음성)
+            byte[] data = opcode == OP_WRITE_ENC && decKey != null ? MiCrypto.aesCtr(decKey, body) : body;
+            cb.onRaw(channel, opcode, data);
             return;
         }
         byte[] plain = body;

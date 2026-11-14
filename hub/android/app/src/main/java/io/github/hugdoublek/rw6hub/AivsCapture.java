@@ -15,7 +15,7 @@ import java.util.Locale;
 /**
  * 진단용: 크라운(샤오아이)을 눌렀을 때 워치가 보내는 것(AIVS type 14 패킷, 채널 10 음성 데이터)을 모아
  * 다운로드 폴더에 파일로 저장한다. 우리 AI가 샤오아이를 가로채게 만들 때 형식 분석에 씀.
- * 파일 형식: 반복 [시각ms(8, BE)][종류(1): 1=PB, 2=채널데이터][채널(1)][길이(4, BE)][내용]
+ * 파일 형식: 반복 [시각ms(8, BE)][종류(1): 1=PB(복호화됨), 2=채널데이터 평문, 3=채널데이터(복호화됨)][채널(1)][길이(4, BE)][내용]
  */
 public final class AivsCapture {
     private static final ByteArrayOutputStream BUF = new ByteArrayOutputStream();
@@ -24,7 +24,7 @@ public final class AivsCapture {
 
     static synchronized void addPb(byte[] plain) { add(1, 1, plain); aivsPackets++; }
 
-    static synchronized void addRaw(int channel, byte[] body) { add(2, channel, body); rawFrames++; rawBytes += body.length; }
+    static synchronized void addRaw(int channel, int opcode, byte[] body) { add(opcode == 2 ? 3 : 2, channel, body); rawFrames++; rawBytes += body.length; }
 
     private static void add(int kind, int ch, byte[] d) {
         if (BUF.size() > 8 * 1024 * 1024) return;
