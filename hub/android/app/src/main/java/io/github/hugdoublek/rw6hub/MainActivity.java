@@ -129,7 +129,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         root.addView(mifitWarn);
         mifitBtn = button("Mi Fitness 블루투스 권한 끄러 가기", v -> openMiFitnessSettings());
         root.addView(mifitBtn);
-        connectBtn = button("연결 (계속 유지)", v -> { askPermissions(); LinkService.start(this); });
+        connectBtn = button("연결 (계속 유지)", v -> { askPermissions(); askBatteryExemption(); LinkService.start(this); });
         root.addView(connectBtn);
         root.addView(button("연결 해제 · Mi Fitness에 양보", v -> yieldToMiFitness()));
         notiBtn = button("", v -> toggleStatusNotification());
@@ -248,23 +248,22 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
 
     private void toggleStatusNotification() {
         boolean on = !LinkService.statusNotification(this);
-        if (on) {
-            LinkService.setStatusNotification(this, true);
-            log("상단 연결 알림을 켬");
-            refresh();
-            return;
+        LinkService.setStatusNotification(this, on);
+        log(on ? "상단 연결 알림을 켬" : "상단 연결 알림을 끔 (연결 유지는 그대로)");
+        if (!on) askBatteryExemption();
+        refresh();
+    }
+
+    /** 배터리 최적화에서 빼 달라고 요청 (백그라운드에서 연결이 끊기지 않게) */
+    private void askBatteryExemption() {
+        android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+        if (pm == null || pm.isIgnoringBatteryOptimizations(getPackageName())) return;
+        try {
+            startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    android.net.Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) {
+            startActivity(new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
         }
-        new AlertDialog.Builder(this)
-                .setTitle("상단 연결 알림 끄기")
-                .setMessage("알림을 끄면 안드로이드가 배터리 절약을 위해 워치 연결을 끊을 수 있어요. "
-                        + "메신저 알림의 '알림 접근'이 켜져 있으면 대부분 계속 연결돼요. 끊기면 다시 켜 주세요.")
-                .setPositiveButton("끄기", (d, w) -> {
-                    LinkService.setStatusNotification(this, false);
-                    log("상단 연결 알림을 끔");
-                    refresh();
-                })
-                .setNegativeButton("취소", null)
-                .show();
     }
 
     private void yieldToMiFitness() {

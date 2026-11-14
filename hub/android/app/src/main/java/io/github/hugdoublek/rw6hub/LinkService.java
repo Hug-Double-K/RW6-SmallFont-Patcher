@@ -18,18 +18,14 @@ import android.os.IBinder;
 public class LinkService extends Service implements WatchLink.StateListener {
 
     private static final String CHANNEL = "link";
+    /** 상단 알림 '끔'일 때 쓰는 채널: 중요도 없음 → 알림은 안 보이고 서비스(연결 유지)는 그대로 돎 */
+    private static final String CHANNEL_HIDDEN = "link_hidden";
     private static final int ID = 1;
 
     /** 연결 유지를 켠다. 서비스를 못 띄우는 상황이면 연결만 시작한다. */
     public static void start(Context c) {
         Context app = c.getApplicationContext();
         app.getSharedPreferences("hub", MODE_PRIVATE).edit().putBoolean("keep", true).putBoolean("yielded", false).apply();
-        if (!statusNotification(app)) {
-            // 상단 알림 끔: 서비스 없이 연결만 유지 (알림 접근 권한이 있으면 앱이 계속 살아 있음)
-            app.stopService(new Intent(app, LinkService.class));
-            WatchLink.get(app).start();
-            return;
-        }
         try {
             app.startForegroundService(new Intent(app, LinkService.class));
         } catch (Exception e) {
@@ -76,14 +72,22 @@ public class LinkService extends Service implements WatchLink.StateListener {
         NotificationChannel ch = new NotificationChannel(CHANNEL, "워치 연결 상태", NotificationManager.IMPORTANCE_MIN);
         ch.setShowBadge(false);
         nm.createNotificationChannel(ch);
+        NotificationChannel hidden = new NotificationChannel(CHANNEL_HIDDEN, "워치 연결 유지 (숨김)", NotificationManager.IMPORTANCE_NONE);
+        hidden.setShowBadge(false);
+        nm.createNotificationChannel(hidden);
+        goForeground();
+        WatchLink.get(this).addStateListener(this);
+    }
+
+    private void goForeground() {
         Notification n = build();
         if (Build.VERSION.SDK_INT >= 29) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE);
         else startForeground(ID, n);
-        WatchLink.get(this).addStateListener(this);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        goForeground(); // 상단 알림 설정이 바뀌었으면 채널을 바꿔 다시 올림
         WatchLink.get(this).start();
         return START_STICKY;
     }
@@ -102,7 +106,7 @@ public class LinkService extends Service implements WatchLink.StateListener {
         PendingIntent open = PendingIntent.getActivity(this, 0,
                 new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this, CHANNEL)
+        return new Notification.Builder(this, statusNotification(this) ? CHANNEL : CHANNEL_HIDDEN)
                 .setSmallIcon(io.github.hugdoublek.rw6hub.R.drawable.ic_stat_watch)
                 .setColor(0xFFFF6FA8)
                 .setContentTitle("Mi Manager · " + l.state())
@@ -117,7 +121,7 @@ public class LinkService extends Service implements WatchLink.StateListener {
     @Override
     public void onStateChanged() {
         String s = WatchLink.get(this).state();
-        if (s.equals(last)) return;
+        if (s.equals(last) || !statusNotification(this)) return;
         last = s;
         getSystemService(NotificationManager.class).notify(ID, build());
     }
