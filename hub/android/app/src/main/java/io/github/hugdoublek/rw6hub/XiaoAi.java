@@ -125,6 +125,7 @@ public final class XiaoAi {
         session = value > 0 ? value : session + 1;
         log("크라운 질문 시작 (세션 " + session + ")");
         openDecoder();
+        voice.prepare();
         final int myGen = gen;
         // 시험: 듣는 동안 화면에 글자가 뜨는지 세션 번호별로 확인
         h.postDelayed(() -> { if (myGen == gen && !stopped) send(partial("듣는 중…"), "듣는 중 글자"); }, 800);
@@ -308,11 +309,11 @@ public final class XiaoAi {
             iso.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Seoul"));
             if (w[0].equalsIgnoreCase("TIMER") && w.length >= 2) {
                 long sec = Long.parseLong(w[1]);
-                String dt = iso.format(new Date(System.currentTimeMillis() + sec * 1000));
-                String off = "PT" + (sec / 3600 > 0 ? sec / 3600 + "H" : "") + (sec % 3600 / 60 > 0 ? sec % 3600 / 60 + "M" : "") + (sec % 60 > 0 ? sec % 60 + "S" : "");
-                send(instr(ALERTS_SETALERT).msg(10, alert(2, dt, off, "타이머")), "타이머 " + sec + "초");
+                // 샤오아이 문서: 타이머는 datetime 비움, offset = +HH:mm:ss
+                String off = String.format(Locale.US, "+%02d:%02d:%02d", sec / 3600, sec % 3600 / 60, sec % 60);
+                send(instr(ALERTS_SETALERT).msg(10, alert(2, "", off, "")), "타이머 " + off);
             } else if (w[0].equalsIgnoreCase("ALARM") && w.length >= 2) {
-                send(instr(ALERTS_SETALERT).msg(10, alert(0, w[1] + (w[1].length() == 16 ? ":00" : ""), "", w.length > 2 ? c.substring(c.indexOf(w[2])) : "알람")), "알람 " + w[1]);
+                send(instr(ALERTS_SETALERT).msg(10, alert(0, w[1] + (w[1].length() == 16 ? ":00" : "") + "+09:00", "", w.length > 2 ? c.substring(c.indexOf(w[2])) : "알람")), "알람 " + w[1]);
             } else log("모르는 명령");
         } catch (Exception e) { log("명령 오류: " + e.getMessage()); }
     }

@@ -34,13 +34,38 @@ final class WatchVoice {
 
     void speak(String text) { main.post(() -> speakMain(text)); }
 
+    /** 질문이 시작될 때(워치가 HFP를 여는 순간) 미리 워치 소리 통로를 열어 둠 */
+    void prepare() {
+        main.post(() -> {
+            AudioManager am = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return;
+            int m = am.getMode();
+            if (m == AudioManager.MODE_IN_CALL || m == AudioManager.MODE_RINGTONE) return;
+            if (tts == null) speakMain(null);   // TTS 미리 준비
+            main.postDelayed(() -> { if (!routed) route(am); }, 600);   // HFP가 붙을 시간
+            main.removeCallbacks(giveUp);
+            main.postDelayed(giveUp, 40_000);
+        });
+    }
+
+    private final Runnable giveUp = this::unroute;
+
+    /** 워치 통로가 지금 살아 있는지 */
+    private boolean onWatch(AudioManager am) {
+        if (!routed) return false;
+        if (Build.VERSION.SDK_INT < 31) return am.isBluetoothScoOn();
+        AudioDeviceInfo d = am.getCommunicationDevice();
+        String mac = app.getSharedPreferences("hub", Context.MODE_PRIVATE).getString("mac", "");
+        return d != null && d.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO && mac.equalsIgnoreCase(d.getAddress());
+    }
+
     private void speakMain(String text) {
         AudioManager am = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
         if (am == null) return;
         int m = am.getMode();
         if (m == AudioManager.MODE_IN_CALL || m == AudioManager.MODE_RINGTONE) { log("통화 중이라 소리 생략"); return; }
         if (tts == null) {
-            pending = text;
+            pending = text;   // null이면 준비만
             tts = new TextToSpeech(app, st -> main.post(() -> {
                 ttsReady = st == TextToSpeech.SUCCESS;
                 if (!ttsReady) { log("폰 TTS를 쓸 수 없음"); return; }
@@ -55,6 +80,7 @@ final class WatchVoice {
             }));
             return;
         }
+        if (text == null) return;
         if (!ttsReady) { pending = text; return; }
         // TTS 엔진이 오디오 설정을 무시하고 폰 스피커로 내는 경우가 있어, 파일로 만든 뒤 직접 '통화 음성'으로 재생
         java.io.File f = new java.io.File(app.getCacheDir(), "answer.wav");
@@ -66,9 +92,10 @@ final class WatchVoice {
     private void play(java.io.File f) {
         AudioManager am = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
         if (am == null) return;
-        boolean ok = route(am);
-        if (!ok) { log("워치 소리 통로(SCO)를 못 찾음 → 소리 생략"); return; }
+        if (!routed) route(am);
+        if (!onWatch(am)) { log("워치 소리 통로(SCO)가 없음 → 소리 생략 (폰에서 안 냄)"); unroute(); return; }
         main.postDelayed(() -> {
+            if (!onWatch(am)) { log("워치 소리 통로가 끊김 → 소리 생략"); unroute(); return; }
             try {
                 android.media.MediaPlayer mp = new android.media.MediaPlayer();
                 mp.setAudioAttributes(new AudioAttributes.Builder()
@@ -76,6 +103,13 @@ final class WatchVoice {
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
                 mp.setDataSource(f.getAbsolutePath());
                 mp.setOnCompletionListener(m -> { m.release(); main.postDelayed(this::unroute, 300); });
+                // 재생 중 통로가 끊기면 폰 스피커로 넘어가지 않게 바로 멈춤
+                Runnable watch = new Runnable() { public void run() {
+                    try { if (!mp.isPlaying()) return; } catch (Exception e) { return; }
+                    if (!onWatch(am)) { log("재생 중 워치 통로 끊김 → 멈춤"); try { mp.stop(); mp.release(); } catch (Exception ignored) {} unroute(); return; }
+                    main.postDelayed(this, 150);
+                }};
+                main.postDelayed(watch, 150);
                 mp.setOnErrorListener((m, w, x) -> { m.release(); unroute(); return true; });
                 mp.prepare();
                 mp.start();
