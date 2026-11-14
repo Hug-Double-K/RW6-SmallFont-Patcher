@@ -97,7 +97,8 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                 startActivity(new Intent(this, io.github.hugdoublek.rw6hub.noti.MainActivity.class))));
         root.addView(button("메모 (RW6 메모)", v ->
                 startActivity(new Intent(this, io.github.hugdoublek.rw6hub.memo.MainActivity.class))));
-        root.addView(button("워치에 설치된 퀵앱 보기", v -> showInstalled()));
+        root.addView(button("퀵앱 · 워치페이스 · 펌웨어 설치", v -> startActivity(new Intent(this, InstallActivity.class))));
+        root.addView(button("워치에 설치된 퀵앱 (실행 · 삭제)", v -> showInstalled()));
 
         root.addView(header("계정 (샤오미, 중국 지역)"));
         accountView = text();
@@ -144,14 +145,36 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
     private void showInstalled() {
         if (!link.isReady()) { log("워치가 연결되어 있지 않음"); return; }
         QuickApps.get(this).refreshInstalled(apps -> ui.post(() -> {
-            StringBuilder sb = new StringBuilder();
-            for (QuickApps.App a : apps) sb.append(a.name).append("\n  ").append(a.pkg).append(" (v").append(a.versionCode).append(")\n");
+            if (apps.isEmpty()) { log("퀵앱 목록을 받지 못함"); return; }
+            String[] names = new String[apps.size()];
+            for (int i = 0; i < names.length; i++) {
+                QuickApps.App a = apps.get(i);
+                names[i] = a.name + "\n" + a.pkg + " (v" + a.versionCode + ")";
+            }
             new AlertDialog.Builder(this)
                     .setTitle("워치 퀵앱 " + apps.size() + "개")
-                    .setMessage(sb.length() == 0 ? "받지 못함" : sb.toString())
+                    .setItems(names, (d, w) -> appMenu(apps.get(w)))
                     .setPositiveButton("닫기", null)
                     .show();
         }));
+    }
+
+    private void appMenu(QuickApps.App a) {
+        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle(a.name)
+                .setMessage(a.pkg + " (v" + a.versionCode + ")")
+                .setPositiveButton("워치에서 실행", (d, w) -> QuickApps.get(this).launch(a.pkg, "/index",
+                        err -> log(err == null ? "실행 요청: " + a.name : "실행 실패: " + err)))
+                .setNeutralButton("닫기", null);
+        if (a.canRemove) {
+            b.setNegativeButton("삭제", (d, w) -> new AlertDialog.Builder(this)
+                    .setTitle("삭제할까요?")
+                    .setMessage(a.name + "을(를) 워치에서 지워요.")
+                    .setPositiveButton("삭제", (d2, w2) -> QuickApps.get(this).remove(a.pkg,
+                            err -> log(err == null ? "삭제함: " + a.name : "삭제 실패: " + err)))
+                    .setNegativeButton("취소", null)
+                    .show());
+        }
+        b.show();
     }
 
     private void yieldToMiFitness() {

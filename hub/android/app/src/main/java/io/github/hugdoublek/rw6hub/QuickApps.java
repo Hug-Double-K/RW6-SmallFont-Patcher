@@ -142,6 +142,18 @@ public final class QuickApps implements WatchLink.PacketListener {
         });
     }
 
+    /** 워치에서 퀵앱 지우기 */
+    public void remove(String pkg, Done cb) {
+        if (!link().isReady()) { cb.done("워치가 연결되어 있지 않음"); return; }
+        withFingerprint(pkg, cb, fp -> {
+            boolean ok = link().send(thirdparty(3, P_BASIC_INFO, basicInfo(pkg, fp)), d -> {
+                cb.done(d ? null : "전송 중 연결이 끊김");
+                refreshInstalled(null);
+            });
+            if (!ok) cb.done("워치가 연결되어 있지 않음");
+        });
+    }
+
     private void syncStatus(String pkg, byte[] fp, int status) {
         Pb.W st = new Pb.W().msg(1, basicInfo(pkg, fp)).varint(2, status);
         link().send(thirdparty(SYNC_PHONE_APP_STATUS, P_APP_STATUS, st));

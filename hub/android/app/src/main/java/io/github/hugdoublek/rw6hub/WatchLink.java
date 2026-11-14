@@ -190,6 +190,7 @@ public final class WatchLink {
                 failCount = 0;
                 setState("연결됨");
                 holder[0].requestDeviceInfo();
+                send(new Pb.W().varint(1, 2).varint(2, 1)); // 배터리 등 기기 상태
                 QuickApps.get(app).onConnected();
             }
 
@@ -217,6 +218,13 @@ public final class WatchLink {
             }
 
             @Override public void onPacket(int type, int id, List<Pb.Field> p) {
+                if (type == 2 && id == 1) {
+                    List<Pb.Field> sys = Pb.sub(p, 4);
+                    List<Pb.Field> st = sys == null ? null : Pb.sub(sys, 2);
+                    List<Pb.Field> bat = st == null ? null : Pb.sub(st, 1);
+                    Pb.Field cap = bat == null ? null : Pb.find(bat, 1);
+                    if (cap != null && cap.varint != battery) { battery = (int) cap.varint; changed(); }
+                }
                 // 처음 보는 종류는 한 번씩 기록 (끊김 원인 찾기용). 기기 상태 응답(2/1)은 조용히
                 if (type != 20 && !(type == 2 && id == 1) && seenKinds.add(type + "/" + id)) {
                     log("워치 메시지 type=" + type + " id=" + id);
@@ -255,6 +263,17 @@ public final class WatchLink {
         socket = null;
         if (s != null) try { s.close(); } catch (Exception ignored) {}
     }
+
+    /** 대용량 전송(채널 2 등)용. 연결이 없으면 false. */
+    public boolean sendRaw(int channel, byte[] payload, SarLink.Delivery cb) {
+        WatchSession s = session;
+        if (s == null || !authed) return false;
+        s.sendRaw(channel, 1, payload, cb);
+        return true;
+    }
+
+    /** 워치 배터리(%) — 연결 유지 신호의 응답에서 읽음. 모르면 -1 */
+    public volatile int battery = -1;
 
     /** 인증된 연결로 메시지를 보낸다. 연결이 없으면 false. */
     public boolean send(Pb.W packet) { return send(packet, null); }

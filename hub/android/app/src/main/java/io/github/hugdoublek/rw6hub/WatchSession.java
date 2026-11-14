@@ -76,6 +76,11 @@ public final class WatchSession implements SarLink.Listener {
         else sendL2Ch(CH_PB, OP_WRITE, plain, cb);
     }
 
+    /** 다른 채널(예: 2 = 대용량 전송)로 그대로 보낸다. 인증 뒤에만. */
+    public void sendRaw(int channel, int opcode, byte[] payload, SarLink.Delivery cb) {
+        sendL2Ch(channel, opcode, payload, cb);
+    }
+
     public void requestDeviceInfo() {
         sendPacket(new Pb.W().varint(F_TYPE, TYPE_SYSTEM).varint(F_ID, ID_GET_DEVICE_INFO));
     }

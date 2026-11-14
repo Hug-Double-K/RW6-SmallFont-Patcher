@@ -43,6 +43,11 @@
             android:name=".LoginActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".InstallActivity"
+            android:exported="false"
+            android:label="설치" />
+
         <service
             android:name=".LinkService"
             android:exported="false"
