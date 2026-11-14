@@ -99,6 +99,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                 startActivity(new Intent(this, io.github.hugdoublek.rw6hub.memo.MainActivity.class))));
         root.addView(button("퀵앱 · 워치페이스 · 펌웨어 설치", v -> startActivity(new Intent(this, InstallActivity.class))));
         root.addView(button("워치에 설치된 퀵앱 (실행 · 삭제)", v -> showInstalled()));
+        root.addView(button("워치 언어", v -> pickLanguage()));
 
         root.addView(header("계정 (샤오미, 중국 지역)"));
         accountView = text();
@@ -157,6 +158,23 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                     .setPositiveButton("닫기", null)
                     .show();
         }));
+    }
+
+    private void pickLanguage() {
+        String[] names = {"한국어", "中文 (중국어)", "English (영어)"};
+        String[] codes = {"ko_KR", "zh_CN", "en_US"};
+        String cur = prefs.getString("locale", "ko_KR");
+        int sel = 0;
+        for (int i = 0; i < codes.length; i++) if (codes[i].equals(cur)) sel = i;
+        new AlertDialog.Builder(this)
+                .setTitle("워치 언어 (연결할 때마다 맞춤)")
+                .setSingleChoiceItems(names, sel, (d, w) -> {
+                    prefs.edit().putString("locale", codes[w]).apply();
+                    if (link.isReady()) link.sendLanguage(codes[w]);
+                    else log("워치가 연결되면 " + names[w] + "로 맞출게요");
+                    d.dismiss();
+                })
+                .show();
     }
 
     private void appMenu(QuickApps.App a) {

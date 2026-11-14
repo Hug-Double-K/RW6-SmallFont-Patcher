@@ -191,6 +191,8 @@ public final class WatchLink {
                 setState("연결됨");
                 holder[0].requestDeviceInfo();
                 send(new Pb.W().varint(1, 2).varint(2, 1)); // 배터리 등 기기 상태
+                syncTime();
+                sendLanguage(prefs.getString("locale", "ko_KR"));
                 QuickApps.get(app).onConnected();
             }
 
@@ -270,6 +272,30 @@ public final class WatchLink {
         if (s == null || !authed) return false;
         s.sendRaw(channel, 1, payload, cb);
         return true;
+    }
+
+    /** 워치 표시 언어 설정 (Mi Fitness가 연결할 때마다 폰 언어로 맞추던 것). 예: ko_KR, zh_CN, en_US */
+    public void sendLanguage(String locale) {
+        if (send(new Pb.W().varint(1, 2).varint(2, 6).msg(4, new Pb.W().msg(20, new Pb.W().str(1, locale))))) {
+            log("워치 언어 설정: " + locale);
+        }
+    }
+
+    /** 폰 시각·시간대를 워치에 맞춘다 */
+    public void syncTime() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        java.util.TimeZone tz = c.getTimeZone();
+        int offsetQuarters = tz.getRawOffset() / (15 * 60 * 1000);
+        int dstQuarters = (tz.inDaylightTime(c.getTime()) ? tz.getDSTSavings() : 0) / (15 * 60 * 1000);
+        boolean h12 = !android.text.format.DateFormat.is24HourFormat(app);
+        Pb.W st = new Pb.W()
+                .msg(1, new Pb.W().varint(1, c.get(java.util.Calendar.YEAR)).varint(2, c.get(java.util.Calendar.MONTH) + 1)
+                        .varint(3, c.get(java.util.Calendar.DAY_OF_MONTH)))
+                .msg(2, new Pb.W().varint(1, c.get(java.util.Calendar.HOUR_OF_DAY)).varint(2, c.get(java.util.Calendar.MINUTE))
+                        .varint(3, c.get(java.util.Calendar.SECOND)).varint(4, c.get(java.util.Calendar.MILLISECOND)))
+                .msg(3, new Pb.W().varint(1, offsetQuarters).varint(2, dstQuarters).str(3, tz.getID()).str(4, ""))
+                .bool(4, h12);
+        send(new Pb.W().varint(1, 2).varint(2, 3).msg(4, new Pb.W().msg(4, st)));
     }
 
     /** 워치 배터리(%) — 연결 유지 신호의 응답에서 읽음. 모르면 -1 */
