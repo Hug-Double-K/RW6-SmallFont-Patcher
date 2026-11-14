@@ -60,7 +60,7 @@ public final class XiaoAi {
     private int dbCount = 0;
     private MediaCodec dec;
     private int gen = 0;
-    private int sendSession = 1;  // 보낼 때 쓰는 세션 번호 (시험용으로 바꿔 가며 보냄)
+    private final int sendSession = 0;  // 워치는 세션 0만 받아들임 (0.34 시험으로 확인)
     private final WatchVoice voice;
 
     private XiaoAi(Context app) {
@@ -127,8 +127,7 @@ public final class XiaoAi {
         openDecoder();
         final int myGen = gen;
         // 시험: 듣는 동안 화면에 글자가 뜨는지 세션 번호별로 확인
-        h.postDelayed(() -> { if (myGen == gen && !stopped) { sendSession = session; send(partial("듣는 중… (세션 " + session + ")"), "중간 글자 세션" + session); } }, 1200);
-        h.postDelayed(() -> { if (myGen == gen && !stopped) { sendSession = 0; send(partial("듣는 중… (세션 0)"), "중간 글자 세션0"); sendSession = session; } }, 2400);
+        h.postDelayed(() -> { if (myGen == gen && !stopped) send(partial("듣는 중…"), "듣는 중 글자"); }, 800);
         h.postDelayed(new Runnable() {   // 끝 감시: 무음·끊김·최대 길이
             @Override public void run() {
                 if (myGen != gen || !active || stopped) return;
@@ -281,21 +280,17 @@ public final class XiaoAi {
 
     /** 답(또는 오류)을 화면에 띄우고 대화를 끝낸다 */
     private void showText(String text, boolean isError) {
-        // 어떤 형식이 화면에 뜨는지 몰라 여러 형식을 보냄 (세션 번호도 두 가지)
-        int[] sessions = session == 0 ? new int[]{0} : new int[]{session, 0};
-        for (int sid : sessions) {
-            sendSession = sid;
-            String tag = " s" + sid;
-            send(instr(LLM_TOAST_STREAM).msg(33, new Pb.W().str(1, text)), "AI 글 스트림" + tag);
-            send(instr(LLM_FINISH_STREAM), "스트림 끝" + tag);
+        // 시험: ① AI 글(스트림) 먼저, ② 4초 뒤 카드 — 어느 쪽이 뜨는지 확인
+        final int myGen = gen;
+        send(instr(LLM_TOAST_STREAM).msg(33, new Pb.W().str(1, text)), "① AI 글");
+        send(instr(LLM_FINISH_STREAM), "① 글 끝");
+        h.postDelayed(() -> {
+            if (myGen != gen) return;
             send(instr(TEMPLATE_GENERAL).msg(4, new Pb.W()
-                    .msg(1, new Pb.W().str(1, "Gemini").str(2, ""))
-                    .str(2, text).str(4, "Gemini")), "일반 카드" + tag);
-            send(instr(TEMPLATE_TOAST).msg(3, new Pb.W().str(1, text)), "토스트" + tag);
-            send(instr(SPEECHSYNTHESIZER_SPEAK).msg(11, new Pb.W().str(1, text)), "읽기 지시" + tag);
-        }
-        sendSession = session;
-        h.postDelayed(() -> send(instr(DIALOG_FINISH), "대화 끝"), 8000);
+                    .msg(1, new Pb.W().str(1, "② 카드").str(2, ""))
+                    .str(2, text).str(4, "Gemini")), "② 카드");
+        }, 4000);
+        h.postDelayed(() -> { if (myGen == gen) send(instr(DIALOG_FINISH), "대화 끝"); }, 15000);
     }
 
     private Pb.W partial(String text) {
