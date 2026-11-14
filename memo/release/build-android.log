@@ -20,8 +20,8 @@ Daemon will be stopped at the end of the build
 > Task :app:stripReleaseDebugSymbols NO-SOURCE
 > Task :app:extractReleaseNativeSymbolTables NO-SOURCE
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:checkReleaseDuplicateClasses
 > Task :app:processReleaseManifestForPackage
+> Task :app:checkReleaseDuplicateClasses
 > Task :app:mergeReleaseStartupProfile
 > Task :app:mergeReleaseArtProfile
 > Task :app:mergeReleaseShaders
@@ -53,7 +53,7 @@ Daemon will be stopped at the end of the build
 > Task :app:lintVitalReportRelease
 > Task :app:lintVitalRelease
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1794654119585.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1794654273728.json
 
-BUILD SUCCESSFUL in 14s
+BUILD SUCCESSFUL in 17s
 43 actionable tasks: 43 executed
