@@ -286,6 +286,8 @@ public final class WatchLink {
         // 기본 시간대: 서울 (사용자 위치 광진구 구의1동). 설정 "tz"로 바꿀 수 있음
         java.util.TimeZone tz = java.util.TimeZone.getTimeZone(prefs.getString("tz", "Asia/Seoul"));
         java.util.Calendar c = java.util.Calendar.getInstance(tz);
+        // 시간대 오프셋은 15분 단위, sint32(지그재그)로 보내야 함. 예전엔 일반 정수로 보내서
+        // 워치가 +4.5시간으로 읽었음 (시간이 엉뚱하게 표시되던 원인)
         int offsetQuarters = tz.getRawOffset() / (15 * 60 * 1000);
         int dstQuarters = (tz.inDaylightTime(c.getTime()) ? tz.getDSTSavings() : 0) / (15 * 60 * 1000);
         boolean h12 = !android.text.format.DateFormat.is24HourFormat(app);
@@ -294,7 +296,7 @@ public final class WatchLink {
                         .varint(3, c.get(java.util.Calendar.DAY_OF_MONTH)))
                 .msg(2, new Pb.W().varint(1, c.get(java.util.Calendar.HOUR_OF_DAY)).varint(2, c.get(java.util.Calendar.MINUTE))
                         .varint(3, c.get(java.util.Calendar.SECOND)).varint(4, c.get(java.util.Calendar.MILLISECOND)))
-                .msg(3, new Pb.W().varint(1, offsetQuarters).varint(2, dstQuarters).str(3, tz.getID()).str(4, ""))
+                .msg(3, new Pb.W().sint(1, offsetQuarters).sint(2, dstQuarters).str(3, tz.getID()).str(4, ""))
                 .bool(4, h12);
         if (send(new Pb.W().varint(1, 2).varint(2, 3).msg(4, new Pb.W().msg(4, st)))) {
             log(String.format(java.util.Locale.US, "워치 시간 맞춤: %02d:%02d:%02d (%s, UTC%+d)",

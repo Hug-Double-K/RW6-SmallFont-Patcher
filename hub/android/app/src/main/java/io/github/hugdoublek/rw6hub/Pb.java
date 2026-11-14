@@ -33,6 +33,11 @@ public final class Pb {
             return this;
         }
 
+        /** sint32 (지그재그 인코딩, 음수도 짧게) */
+        public W sint(int field, int value) {
+            return varint(field, ((long) ((value << 1) ^ (value >> 31))) & 0xFFFFFFFFL);
+        }
+
         public W bool(int field, boolean value) {
             return varint(field, value ? 1 : 0);
         }
