@@ -199,9 +199,9 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         connectBtn.setEnabled(!link.wantsConnection());
         logView.setText(link.logText());
         boolean aiOn = prefs.getBoolean("aiOn", true);
-        String key = prefs.getString("aiKey", "");
+        String aiKey = prefs.getString("aiKey", "");
         aiView.setText((aiOn ? "켜짐: 크라운을 길게 눌러 말하면 샤오아이 대신 Gemini가 답해요" : "꺼짐")
-                + "\nAPI 키: " + (key.isEmpty() ? "없음 (설정 필요)" : "있음") + " · 모델: " + prefs.getString("aiModel", XiaoAi.DEFAULT_MODEL));
+                + "\nAPI 키: " + (aiKey.isEmpty() ? "없음 (설정 필요)" : "있음") + " · 모델: " + prefs.getString("aiModel", XiaoAi.DEFAULT_MODEL));
         notiBtn.setText("상단 연결 알림: " + (LinkService.statusNotification(this) ? "켜짐 (누르면 끔)" : "꺼짐 (누르면 켬)"));
         boolean yielded = prefs.getBoolean("yielded", false);
         boolean warn = !yielded && miFitnessWithBt() != null;
