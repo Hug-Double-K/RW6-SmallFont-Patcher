@@ -56,6 +56,7 @@ public final class WatchLink {
     private volatile String state = "연결 안 됨";
     private volatile String watchModel = "", watchFirmware = "", watchSerial = "";
     private int failCount = 0;
+    private boolean callWait = false;
     private volatile long authedAt = 0;
     private final java.util.Set<String> seenKinds = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
     /** 워치가 오래 조용하면 연결을 닫는 경우에 대비해 가끔 가벼운 요청(기기 상태)을 보낸다 */
@@ -145,8 +146,25 @@ public final class WatchLink {
     }
 
     @SuppressWarnings("MissingPermission")
+    /** 통화 중인지 (권한 없이 오디오 모드로 판단) */
+    private boolean inCall() {
+        android.media.AudioManager am = (android.media.AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) return false;
+        int m = am.getMode();
+        return m == android.media.AudioManager.MODE_IN_CALL || m == android.media.AudioManager.MODE_IN_COMMUNICATION
+                || m == android.media.AudioManager.MODE_RINGTONE;
+    }
+
     private void connectNow() {
         if (!wantConnected || session != null || connecting) return;
+        // 통화 중에 워치 블루투스를 다시 붙이면 폰이 통화 소리 경로(스피커·이어폰·워치)를 바꿔 버림 → 통화 끝날 때까지 미룸
+        if (inCall()) {
+            if (!callWait) { callWait = true; log("통화 중이라 워치 재연결을 미룸"); setState("통화 끝나면 다시 연결"); }
+            worker.removeCallbacks(reconnect);
+            worker.postDelayed(reconnect, 5_000);
+            return;
+        }
+        callWait = false;
         String mac = prefs.getString("mac", "");
         String key = prefs.getString("authKey", "");
         if (mac.isEmpty() || key.isEmpty()) { setState("설정 필요 (워치·인증키)"); log("연결 못 함: " + "설정 필요 (워치·인증키)"); return; }
