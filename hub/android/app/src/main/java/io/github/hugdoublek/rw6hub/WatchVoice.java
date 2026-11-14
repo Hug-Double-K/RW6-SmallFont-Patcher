@@ -47,8 +47,8 @@ final class WatchVoice {
                 tts.setLanguage(Locale.KOREAN);
                 tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                     @Override public void onStart(String id) {}
-                    @Override public void onDone(String id) { main.postDelayed(WatchVoice.this::unroute, 400); }
-                    @Override public void onError(String id) { main.post(WatchVoice.this::unroute); }
+                    @Override public void onDone(String id) { main.post(() -> play(new java.io.File(app.getCacheDir(), "answer.wav"))); }
+                    @Override public void onError(String id) { log("음성 만들기 오류"); }
                 });
                 String p = pending; pending = null;
                 if (p != null) speakMain(p);
@@ -56,21 +56,35 @@ final class WatchVoice {
             return;
         }
         if (!ttsReady) { pending = text; return; }
+        // TTS 엔진이 오디오 설정을 무시하고 폰 스피커로 내는 경우가 있어, 파일로 만든 뒤 직접 '통화 음성'으로 재생
+        java.io.File f = new java.io.File(app.getCacheDir(), "answer.wav");
+        String id = "ans" + System.currentTimeMillis();
+        int r = tts.synthesizeToFile(text, new Bundle(), f, id);
+        if (r != TextToSpeech.SUCCESS) log("음성 만들기 실패");
+    }
+
+    private void play(java.io.File f) {
+        AudioManager am = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) return;
         boolean ok = route(am);
-        log(ok ? "답을 워치 스피커로 읽는 중" : "워치 소리 통로 없음 → 폰에서 읽음");
-        Bundle b = new Bundle();
-        if (ok) {
-            tts.setAudioAttributes(new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
-            b.putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_VOICE_CALL);
-        } else {
-            tts.setAudioAttributes(new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
-        }
-        // SCO가 열리는 데 조금 걸림
-        main.postDelayed(() -> tts.speak(text, TextToSpeech.QUEUE_FLUSH, b, "ans" + System.currentTimeMillis()), ok ? 700 : 0);
+        if (!ok) { log("워치 소리 통로(SCO)를 못 찾음 → 소리 생략"); return; }
+        main.postDelayed(() -> {
+            try {
+                android.media.MediaPlayer mp = new android.media.MediaPlayer();
+                mp.setAudioAttributes(new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
+                mp.setDataSource(f.getAbsolutePath());
+                mp.setOnCompletionListener(m -> { m.release(); main.postDelayed(this::unroute, 300); });
+                mp.setOnErrorListener((m, w, x) -> { m.release(); unroute(); return true; });
+                mp.prepare();
+                mp.start();
+                log("답을 워치 스피커로 읽는 중");
+            } catch (Exception e) {
+                log("재생 오류: " + e.getMessage());
+                unroute();
+            }
+        }, 800);
     }
 
     private boolean route(AudioManager am) {
@@ -81,9 +95,11 @@ final class WatchVoice {
                 AudioDeviceInfo pick = null;
                 for (AudioDeviceInfo d : am.getAvailableCommunicationDevices()) {
                     if (d.getType() != AudioDeviceInfo.TYPE_BLUETOOTH_SCO) continue;
-                    if (pick == null || mac.equalsIgnoreCase(d.getAddress())) pick = d;
+                    if (mac.equalsIgnoreCase(d.getAddress())) pick = d;
+                    else log("다른 블루투스 소리 장치 무시: " + d.getProductName());
                 }
                 if (pick == null) return false;
+                log("소리 통로: " + pick.getProductName());
                 am.setMode(AudioManager.MODE_IN_COMMUNICATION);
                 routed = am.setCommunicationDevice(pick);
                 if (!routed) am.setMode(savedMode);

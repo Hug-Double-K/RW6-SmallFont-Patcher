@@ -38,7 +38,7 @@ public final class XiaoAi {
     // AIVS 결과 종류
     private static final int START_LISTENING = 0, END_LISTENING = 1, RECOGNIZE_RESULT = 2, STOP_CAPTURE = 3,
             DIALOG_FINISH = 4, ERROR_NETWORK = 80, ERROR_AUTH = 81, ERROR_AUDIO_EMPTY = 85, ERROR_UNKNOWN = 91,
-            TEMPLATE_TOAST = 256, TEMPLATE_GENERAL = 257, SPEECHSYNTHESIZER_SPEAK = 264, LLM_LOADING_CARD = 289, LLM_TOAST_STREAM = 292, LLM_FINISH_STREAM = 293;
+            TEMPLATE_TOAST = 256, TEMPLATE_GENERAL = 257, ALERTS_SETALERT = 263, SPEECHSYNTHESIZER_SPEAK = 264, LLM_LOADING_CARD = 289, LLM_TOAST_STREAM = 292, LLM_FINISH_STREAM = 293;
 
     private static XiaoAi INSTANCE;
 
@@ -252,11 +252,20 @@ public final class XiaoAi {
         send(partial("생각 중…"), "생각 중 글자");
         byte[] ogg = Ogg.opus(new ArrayList<>(frames), 16000);
         final int myGen = gen;
+        final String[] cmd = {null};
         new Thread(() -> {
             String q = "", a;
             try {
                 long t0 = System.currentTimeMillis();
                 String reply = gemini(key, prefs.getString("aiModel", DEFAULT_MODEL), ogg);
+                // 명령 줄(CMD:)은 따로 떼어 냄
+                StringBuilder rest = new StringBuilder();
+                for (String line : reply.split("\n")) {
+                    String t = line.trim();
+                    if (t.startsWith("CMD:")) cmd[0] = t.substring(4).trim();
+                    else rest.append(line).append('\n');
+                }
+                reply = rest.toString().trim();
                 int ai = reply.indexOf("A:");
                 if (reply.startsWith("Q:") && ai > 0) { q = reply.substring(2, ai).trim(); a = reply.substring(ai + 2).trim(); }
                 else a = reply;
@@ -272,6 +281,7 @@ public final class XiaoAi {
             h.post(() -> {
                 if (myGen != gen) return;
                 if (!fq.isEmpty()) send(partial(fq), "들은 말");   // 말풍선에는 사용자가 한 말
+                if (cmd[0] != null) runCommand(cmd[0]);
                 showText(fa, false);
                 voice.speak(fa);
                 active = false;
@@ -287,6 +297,30 @@ public final class XiaoAi {
         send(instr(TEMPLATE_TOAST).msg(3, new Pb.W().str(1, text)), "답 표시");
         h.postDelayed(() -> { if (myGen == gen) send(instr(STOP_CAPTURE), "녹음 멈춤"); }, 3000);
         h.postDelayed(() -> { if (myGen == gen) send(instr(DIALOG_FINISH), "대화 끝"); }, 15000);
+    }
+
+    /** Gemini가 낸 명령을 워치에서 실행 (샤오아이 알림 지시 ALERTS_SETALERT) */
+    private void runCommand(String c) {
+        log("명령: " + c);
+        try {
+            String[] w = c.split("\\s+");
+            SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
+            iso.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Seoul"));
+            if (w[0].equalsIgnoreCase("TIMER") && w.length >= 2) {
+                long sec = Long.parseLong(w[1]);
+                String dt = iso.format(new Date(System.currentTimeMillis() + sec * 1000));
+                String off = "PT" + (sec / 3600 > 0 ? sec / 3600 + "H" : "") + (sec % 3600 / 60 > 0 ? sec % 3600 / 60 + "M" : "") + (sec % 60 > 0 ? sec % 60 + "S" : "");
+                send(instr(ALERTS_SETALERT).msg(10, alert(2, dt, off, "타이머")), "타이머 " + sec + "초");
+            } else if (w[0].equalsIgnoreCase("ALARM") && w.length >= 2) {
+                send(instr(ALERTS_SETALERT).msg(10, alert(0, w[1] + (w[1].length() == 16 ? ":00" : ""), "", w.length > 2 ? c.substring(c.indexOf(w[2])) : "알람")), "알람 " + w[1]);
+            } else log("모르는 명령");
+        } catch (Exception e) { log("명령 오류: " + e.getMessage()); }
+    }
+
+    private static Pb.W alert(int type, String datetime, String offset, String event) {
+        // AlertsSetAlert: id·type·datetime·circle(ONCE)·circle_extra·offset·event (모두 필수 문자열은 빈 값이라도 넣음)
+        return new Pb.W().str(1, String.valueOf(System.currentTimeMillis() / 1000)).varint(2, type).str(3, datetime)
+                .varint(4, 0).str(5, "").str(6, offset).str(7, event);
     }
 
     private Pb.W partial(String text) {
@@ -319,6 +353,8 @@ public final class XiaoAi {
                 + "답은 작은 시계 화면에서 읽기 좋게 2~4문장으로 짧고 분명하게, 이모지 없이 써. "
                 + "출력 형식은 반드시 다음과 같아. 첫 줄: 'Q: ' 뒤에 사용자가 한 말을 그대로 받아 적은 것. 둘째 줄부터: 'A: ' 뒤에 답. "
                 + "소리가 없거나 알아들을 수 없으면 Q는 '(안 들림)'으로 하고 A에서 다시 말해 달라고 해. "
+                + "사용자가 타이머를 맞춰 달라고 하면 마지막 줄에 'CMD: TIMER <전체 초>'를 써(예: 1분 45초 → CMD: TIMER 105). "
+                + "알람을 맞춰 달라고 하면 마지막 줄에 'CMD: ALARM <yyyy-MM-ddTHH:mm> <이름>'을 써(지금 이후 가장 가까운 그 시각). 그때 A는 맞췄다고 짧게 말해. 그 밖에는 CMD 줄을 쓰지 마. "
                 + "사용자는 서울 광진구 구의1동에 있어. 지금은 한국 시간 " + now + " 이야.";
         JSONObject body = new JSONObject();
         body.put("system_instruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", sys))));
