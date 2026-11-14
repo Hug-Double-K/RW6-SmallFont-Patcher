@@ -143,7 +143,11 @@ public final class XiaoAi {
     }
 
     private void audio(byte[] d, int off, int len) {
-        if (!active) begin(0); // 시작 신호를 놓쳤어도 받음
+        if (!active) {
+            // 질문이 끝난 뒤에도 워치가 남은 음성을 몇 초 더 보냄 → 새 질문으로 착각하지 않게 무시
+            if (System.currentTimeMillis() - lastEndAt < 10_000) return;
+            begin(0); // 시작 신호를 놓쳤어도 받음
+        }
         if (stopped) return;
         lastFrameAt = System.currentTimeMillis();
         for (int j = off; j + 80 <= off + len; j += 80) {
