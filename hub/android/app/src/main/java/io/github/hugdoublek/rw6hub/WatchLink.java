@@ -283,8 +283,9 @@ public final class WatchLink {
 
     /** 폰 시각·시간대를 워치에 맞춘다 */
     public void syncTime() {
-        java.util.Calendar c = java.util.Calendar.getInstance();
-        java.util.TimeZone tz = c.getTimeZone();
+        // 기본 시간대: 서울 (사용자 위치 광진구 구의1동). 설정 "tz"로 바꿀 수 있음
+        java.util.TimeZone tz = java.util.TimeZone.getTimeZone(prefs.getString("tz", "Asia/Seoul"));
+        java.util.Calendar c = java.util.Calendar.getInstance(tz);
         int offsetQuarters = tz.getRawOffset() / (15 * 60 * 1000);
         int dstQuarters = (tz.inDaylightTime(c.getTime()) ? tz.getDSTSavings() : 0) / (15 * 60 * 1000);
         boolean h12 = !android.text.format.DateFormat.is24HourFormat(app);

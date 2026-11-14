@@ -41,6 +41,11 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = getSharedPreferences("hub", MODE_PRIVATE);
+        // 기본 위치(시간대·나중에 날씨용): 서울 광진구 구의1동 (좌표는 동 중심 근처 대략값)
+        if (prefs.getString("place", "").isEmpty()) {
+            prefs.edit().putString("place", "서울 광진구 구의1동").putString("tz", "Asia/Seoul")
+                    .putString("lat", "37.5428").putString("lon", "127.0868").apply();
+        }
         if (prefs.getString("deviceId", "").isEmpty()) {
             prefs.edit().putString("deviceId", "an_" + Hex.of(MiCrypto.random(16))).apply();
         }

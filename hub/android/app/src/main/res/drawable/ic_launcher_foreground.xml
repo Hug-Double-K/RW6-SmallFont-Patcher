@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Mi Manager 아이콘: 얇은 테두리 워치 + 바늘(10시 10분) (직접 그림). 모양(둥근 네모 등)은 폰 런처가 정함 -->
+<!-- Mi Manager 아이콘: 얇은 테두리 워치 + 노을 풍경 워치페이스 (직접 그림). 모양은 폰 런처가 정함 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
@@ -10,9 +11,25 @@
         <path android:fillColor="#FFFFFF" android:fillAlpha="0.55" android:pathData="M50.5,74 H57.5 A6,6 0 0 1 63.5,80 V83 A6,6 0 0 1 57.5,89 H50.5 A6,6 0 0 1 44.5,83 V80 A6,6 0 0 1 50.5,74 Z" />
         <path android:fillColor="#FFFFFF" android:pathData="M76.6,48 H76.60000000000001 A1.6,1.6 0 0 1 78.2,49.6 V57.4 A1.6,1.6 0 0 1 76.60000000000001,59 H76.6 A1.6,1.6 0 0 1 75,57.4 V49.6 A1.6,1.6 0 0 1 76.6,48 Z" />
         <path android:fillColor="#FFFFFF" android:pathData="M47,30 H61 A15,15 0 0 1 76,45 V63 A15,15 0 0 1 61,78 H47 A15,15 0 0 1 32,63 V45 A15,15 0 0 1 47,30 Z" />
-        <path android:fillColor="#121A33" android:pathData="M47.199999999999996,32.8 H60.79999999999999 A12.4,12.4 0 0 1 73.19999999999999,45.199999999999996 V62.79999999999999 A12.4,12.4 0 0 1 60.79999999999999,75.19999999999999 H47.199999999999996 A12.4,12.4 0 0 1 34.8,62.79999999999999 V45.199999999999996 A12.4,12.4 0 0 1 47.199999999999996,32.8 Z" />
-        <path android:strokeColor="#FFFFFF" android:strokeWidth="2.8" android:strokeLineCap="round" android:pathData="M54,54 L47.07,50.00" />
-        <path android:strokeColor="#FFFFFF" android:strokeWidth="2.1" android:strokeLineCap="round" android:pathData="M54,54 L64.83,47.75" />
-        <path android:fillColor="#FFFFFF" android:pathData="M54,54 m-2.3,0 a2.3,2.3 0 1 0 4.6,0 a2.3,2.3 0 1 0 -4.6,0" />
+        <group>
+            <clip-path android:pathData="M47.199999999999996,32.8 H60.79999999999999 A12.4,12.4 0 0 1 73.19999999999999,45.199999999999996 V62.79999999999999 A12.4,12.4 0 0 1 60.79999999999999,75.19999999999999 H47.199999999999996 A12.4,12.4 0 0 1 34.8,62.79999999999999 V45.199999999999996 A12.4,12.4 0 0 1 47.199999999999996,32.8 Z" />
+            <path android:pathData="M47.199999999999996,32.8 H60.79999999999999 A12.4,12.4 0 0 1 73.19999999999999,45.199999999999996 V62.79999999999999 A12.4,12.4 0 0 1 60.79999999999999,75.19999999999999 H47.199999999999996 A12.4,12.4 0 0 1 34.8,62.79999999999999 V45.199999999999996 A12.4,12.4 0 0 1 47.199999999999996,32.8 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="54" android:startY="32.8" android:endX="54" android:endY="75.2"
+                    android:startColor="#FF2B2A6B" android:endColor="#FFE86B8C" />
+            </aapt:attr>
+            </path>
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.8" android:pathData="M44,41 m-0.9,0 a0.9,0.9 0 1 0 1.8,0 a0.9,0.9 0 1 0 -1.8,0" />
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.7" android:pathData="M65,44 m-0.7,0 a0.7,0.7 0 1 0 1.4,0 a0.7,0.7 0 1 0 -1.4,0" />
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.6" android:pathData="M60,38.5 m-0.6,0 a0.6,0.6 0 1 0 1.2,0 a0.6,0.6 0 1 0 -1.2,0" />
+            <path android:pathData="M54,50 m-6,0 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="54" android:startY="44" android:endX="54" android:endY="56"
+                    android:startColor="#FFFFE29A" android:endColor="#FFFF9F68" />
+            </aapt:attr>
+            </path>
+            <path android:fillColor="#5B3F8F" android:pathData="M34.8,62 C42,55 48,56 54,60 C60,64 66,57 73.2,58 V75.2 H34.8 Z" />
+            <path android:fillColor="#2C2357" android:pathData="M34.8,67 C42,62 50,63 56,67 C62,71 68,66 73.2,66 V75.2 H34.8 Z" />
+        </group>
     </group>
 </vector>
