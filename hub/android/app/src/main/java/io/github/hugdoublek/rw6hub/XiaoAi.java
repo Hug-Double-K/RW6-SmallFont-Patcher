@@ -38,7 +38,7 @@ public final class XiaoAi {
     // AIVS 결과 종류
     private static final int START_LISTENING = 0, END_LISTENING = 1, RECOGNIZE_RESULT = 2, STOP_CAPTURE = 3,
             DIALOG_FINISH = 4, ERROR_NETWORK = 80, ERROR_AUTH = 81, ERROR_AUDIO_EMPTY = 85, ERROR_UNKNOWN = 91,
-            TEMPLATE_TOAST = 256, LLM_LOADING_CARD = 289, LLM_TOAST_STREAM = 292, LLM_FINISH_STREAM = 293;
+            TEMPLATE_TOAST = 256, TEMPLATE_GENERAL = 257, SPEECHSYNTHESIZER_SPEAK = 264, LLM_LOADING_CARD = 289, LLM_TOAST_STREAM = 292, LLM_FINISH_STREAM = 293;
 
     private static XiaoAi INSTANCE;
 
@@ -60,6 +60,8 @@ public final class XiaoAi {
     private int dbCount = 0;
     private MediaCodec dec;
     private int gen = 0;
+    private int sendSession = 1;  // 보낼 때 쓰는 세션 번호 (시험용으로 바꿔 가며 보냄)
+    private final WatchVoice voice;
 
     private XiaoAi(Context app) {
         this.app = app;
@@ -67,7 +69,20 @@ public final class XiaoAi {
         HandlerThread t = new HandlerThread("xiaoai");
         t.start();
         h = new Handler(t.getLooper());
+        voice = new WatchVoice(app);
     }
+
+    public boolean isActive() { return active; }
+
+    /** 질문 중 워치가 보낸 PB 메시지 기록 (응답 형식 찾기용) */
+    public void onPacket(int type, int id, List<Pb.Field> p) {
+        if (!active && System.currentTimeMillis() - lastEndAt > 15_000) return;
+        if (type == 2 && id == 1) return;
+        Pb.Field err = Pb.find(p, 100);
+        log("워치→ type=" + type + " id=" + id + (err != null ? " 오류=" + err.varint : ""));
+    }
+
+    private long lastEndAt = 0;
 
     public boolean enabled() { return prefs.getBoolean("aiOn", true); }
 
@@ -111,13 +126,16 @@ public final class XiaoAi {
         log("크라운 질문 시작 (세션 " + session + ")");
         openDecoder();
         final int myGen = gen;
+        // 시험: 듣는 동안 화면에 글자가 뜨는지 세션 번호별로 확인
+        h.postDelayed(() -> { if (myGen == gen && !stopped) { sendSession = session; send(partial("듣는 중… (세션 " + session + ")"), "중간 글자 세션" + session); } }, 1200);
+        h.postDelayed(() -> { if (myGen == gen && !stopped) { sendSession = 0; send(partial("듣는 중… (세션 0)"), "중간 글자 세션0"); sendSession = session; } }, 2400);
         h.postDelayed(new Runnable() {   // 끝 감시: 무음·끊김·최대 길이
             @Override public void run() {
                 if (myGen != gen || !active || stopped) return;
                 long now = System.currentTimeMillis();
                 boolean silentAfterSpeech = speechSeen && now - lastLoudAt > 1000;
                 boolean noFrames = now - lastFrameAt > 900;
-                boolean tooLong = now - startAt > 12_000;
+                boolean tooLong = now - startAt > 10_000;
                 boolean nothingSaid = !speechSeen && now - startAt > 6_000;
                 if (silentAfterSpeech || noFrames || tooLong || nothingSaid) finishListening();
                 else h.postDelayed(this, 100);
@@ -196,10 +214,14 @@ public final class XiaoAi {
     }
 
     private void onLevel(double db) {
+        if (db < -85) return;              // 디코더 준비 중의 완전 무음은 무시
         dbCount++;
-        if (dbCount <= 10) { noiseDb = dbCount == 1 ? db : Math.min(noiseDb, db) * 0.5 + noiseDb * 0.5; return; }
+        if (dbCount == 1) noiseDb = db;
+        else if (db < noiseDb) noiseDb = db;
+        else noiseDb += (db - noiseDb) * 0.01;   // 바닥 잡음을 천천히 따라감
+        if (dbCount <= 5) return;
         peakDb = Math.max(peakDb, db);
-        boolean loud = db > Math.max(noiseDb + 9, -42);
+        boolean loud = db > Math.max(noiseDb + 12, -50);
         if (loud) { speechSeen = true; lastLoudAt = System.currentTimeMillis(); }
     }
 
@@ -209,7 +231,8 @@ public final class XiaoAi {
         if (stopped) return;
         stopped = true;
         closeDecoder();
-        send(instr(STOP_CAPTURE));
+        lastEndAt = System.currentTimeMillis();
+        send(instr(STOP_CAPTURE), "녹음 멈춤");
         int n = frames.size();
         log(String.format(Locale.US, "녹음 끝: %.1f초 (최대 %.0fdB, 잡음 %.0fdB)", n * 0.02, peakDb, noiseDb));
         if (n < 10) {
@@ -223,8 +246,7 @@ public final class XiaoAi {
             active = false;
             return;
         }
-        send(instr(RECOGNIZE_RESULT).msg(2, new Pb.W().bool(1, false).msg(2, new Pb.W().msg(1, new Pb.W().str(1, "…")))));
-        send(instr(LLM_LOADING_CARD).msg(30, new Pb.W().varint(1, 20)));
+        send(instr(LLM_LOADING_CARD).msg(30, new Pb.W().varint(1, 20)), "생각 중 카드");
         byte[] ogg = Ogg.opus(new ArrayList<>(frames), 16000);
         final int myGen = gen;
         new Thread(() -> {
@@ -247,30 +269,47 @@ public final class XiaoAi {
             h.post(() -> {
                 if (myGen != gen) return;
                 if (!fq.isEmpty()) {
-                    send(instr(RECOGNIZE_RESULT).msg(2, new Pb.W().bool(1, true).msg(2, new Pb.W().msg(1, new Pb.W().str(1, fq)))));
+                    send(instr(RECOGNIZE_RESULT).msg(2, new Pb.W().bool(1, true).msg(2, new Pb.W().msg(1, new Pb.W().str(1, fq)))), "들은 말");
                 }
                 showText(fa, false);
+                voice.speak(fa);
                 active = false;
+                lastEndAt = System.currentTimeMillis();
             });
         }, "xiaoai-gemini").start();
     }
 
     /** 답(또는 오류)을 화면에 띄우고 대화를 끝낸다 */
     private void showText(String text, boolean isError) {
-        send(instr(LLM_TOAST_STREAM).msg(33, new Pb.W().str(1, text)));
-        send(instr(LLM_FINISH_STREAM));
-        send(instr(TEMPLATE_TOAST).msg(3, new Pb.W().str(1, text)));
-        send(instr(DIALOG_FINISH));
+        // 어떤 형식이 화면에 뜨는지 몰라 여러 형식을 보냄 (세션 번호도 두 가지)
+        int[] sessions = session == 0 ? new int[]{0} : new int[]{session, 0};
+        for (int sid : sessions) {
+            sendSession = sid;
+            String tag = " s" + sid;
+            send(instr(LLM_TOAST_STREAM).msg(33, new Pb.W().str(1, text)), "AI 글 스트림" + tag);
+            send(instr(LLM_FINISH_STREAM), "스트림 끝" + tag);
+            send(instr(TEMPLATE_GENERAL).msg(4, new Pb.W()
+                    .msg(1, new Pb.W().str(1, "Gemini").str(2, ""))
+                    .str(2, text).str(4, "Gemini")), "일반 카드" + tag);
+            send(instr(TEMPLATE_TOAST).msg(3, new Pb.W().str(1, text)), "토스트" + tag);
+            send(instr(SPEECHSYNTHESIZER_SPEAK).msg(11, new Pb.W().str(1, text)), "읽기 지시" + tag);
+        }
+        sendSession = session;
+        h.postDelayed(() -> send(instr(DIALOG_FINISH), "대화 끝"), 8000);
+    }
+
+    private Pb.W partial(String text) {
+        return instr(RECOGNIZE_RESULT).msg(2, new Pb.W().bool(1, false).msg(2, new Pb.W().msg(1, new Pb.W().str(1, text))));
     }
 
     private Pb.W instr(int resultType) {
-        return new Pb.W().varint(1, resultType).varint(13, session);
+        return new Pb.W().varint(1, resultType).varint(13, sendSession);
     }
 
-    private void send(Pb.W instruction) {
+    private void send(Pb.W instruction, String label) {
         Pb.W packet = new Pb.W().varint(1, 14).varint(2, 0)
                 .msg(16, new Pb.W().msg(1, new Pb.W().msg(1, instruction)));
-        if (!link().send(packet)) log("워치에 보내지 못함 (연결 없음)");
+        if (!link().send(packet, ok -> log("→ " + label + (ok ? " ✓" : " ✘")))) log("워치에 보내지 못함 (연결 없음)");
     }
 
     private static byte[] opusHead() {
