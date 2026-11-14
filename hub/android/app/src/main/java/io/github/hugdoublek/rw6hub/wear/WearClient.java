@@ -14,7 +14,7 @@ import io.github.hugdoublek.rw6hub.WatchLink;
  * getNodeApi / getMessageApi / getAuthApi / getNotifyApi 모양을 맞췄다.
  */
 public final class WearClient {
-    final Context app;
+    public final Context app;
     final String pkg;
     final String label;
 

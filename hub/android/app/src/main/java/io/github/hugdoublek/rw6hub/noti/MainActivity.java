@@ -48,7 +48,6 @@ public class MainActivity extends Activity {
         root.addView(section("1. 처음 한 번만"));
         root.addView(button("알림 접근 허용 (RW6 알림 켜기)", v ->
                 startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))));
-        root.addView(button("워치 권한 요청 (Mi Fitness 화면에서 허용)", v -> requestWatchPermission()));
         root.addView(button("배터리 최적화 제외", v -> askBattery()));
 
         root.addView(section("2. 글자 크기"));
@@ -157,7 +156,7 @@ public class MainActivity extends Activity {
         Wearable.getNodeApi(this).getConnectedNodes()
                 .addOnSuccessListener(nodes -> {
                     node = (nodes == null || nodes.isEmpty()) ? null : nodes.get(0);
-                    if (node == null) { setStatus(listener, "연결 안 됨 (Mi Fitness 연결 확인)"); return; }
+                    if (node == null) { setStatus(listener, "연결 안 됨 (Mi Manager 첫 화면에서 연결 확인)"); return; }
                     Wearable.getAuthApi(this).checkPermission(node.id, Permission.DEVICE_MANAGER)
                             .addOnSuccessListener(ok -> setStatus(listener, node.name + " / 워치 권한 " + (ok ? "허용됨" : "없음 ← 요청하세요")))
                             .addOnFailureListener(e -> setStatus(listener, node.name + " / 권한 확인 실패"));

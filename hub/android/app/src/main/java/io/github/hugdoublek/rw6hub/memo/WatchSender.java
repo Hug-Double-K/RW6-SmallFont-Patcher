@@ -117,7 +117,7 @@ public final class WatchSender {
         MessageApi api = Wearable.getMessageApi(app);
         nodeApi.getConnectedNodes()
                 .addOnSuccessListener(nodes -> {
-                    if (nodes == null || nodes.isEmpty()) { fail(plan, from, cb, "연결된 워치 없음 (Mi Fitness 연결 확인)"); return; }
+                    if (nodes == null || nodes.isEmpty()) { fail(plan, from, cb, "연결된 워치 없음 (Mi Manager 첫 화면에서 연결 확인)"); return; }
                     Node node = nodes.get(0);
                     // 워치 앱이 열려 있어야 받으므로 먼저 연다
                     nodeApi.launchWearApp(node.id, "/index")

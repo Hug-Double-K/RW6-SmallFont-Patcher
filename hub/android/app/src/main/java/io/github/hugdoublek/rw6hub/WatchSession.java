@@ -67,10 +67,13 @@ public final class WatchSession implements SarLink.Listener {
     }
 
     /** 인증 뒤 암호화해서 보낸다. */
-    public void sendPacket(Pb.W packet) {
+    public void sendPacket(Pb.W packet) { sendPacket(packet, null); }
+
+    /** cb: 워치가 받았다고 확인하면 true, 연결이 끊겨 못 보내면 false */
+    public void sendPacket(Pb.W packet, SarLink.Delivery cb) {
         byte[] plain = packet.toBytes();
-        if (authed) sendL2(OP_WRITE_ENC, MiCrypto.aesCtr(encKey, plain));
-        else sendL2(OP_WRITE, plain);
+        if (authed) sendL2Ch(CH_PB, OP_WRITE_ENC, MiCrypto.aesCtr(encKey, plain), cb);
+        else sendL2Ch(CH_PB, OP_WRITE, plain, cb);
     }
 
     public void requestDeviceInfo() {
@@ -220,11 +223,15 @@ public final class WatchSession implements SarLink.Listener {
     }
 
     private void sendL2Ch(int channel, int opcode, byte[] payload) {
+        sendL2Ch(channel, opcode, payload, null);
+    }
+
+    private void sendL2Ch(int channel, int opcode, byte[] payload, SarLink.Delivery cb) {
         byte[] l2 = new byte[payload.length + 2];
         l2[0] = (byte) channel;
         l2[1] = (byte) opcode;
         System.arraycopy(payload, 0, l2, 2, payload.length);
-        link.send(l2);
+        link.send(l2, cb);
     }
 
     private static String str(List<Pb.Field> f, int n) {

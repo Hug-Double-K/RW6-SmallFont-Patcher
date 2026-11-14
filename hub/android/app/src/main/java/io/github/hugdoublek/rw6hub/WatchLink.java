@@ -257,10 +257,13 @@ public final class WatchLink {
     }
 
     /** 인증된 연결로 메시지를 보낸다. 연결이 없으면 false. */
-    public boolean send(Pb.W packet) {
+    public boolean send(Pb.W packet) { return send(packet, null); }
+
+    /** cb는 워치가 받았다고 확인하면 true, 끊겨서 못 보내면 false (보내지 못하면 즉시 false 반환, cb는 안 부름). */
+    public boolean send(Pb.W packet, SarLink.Delivery cb) {
         WatchSession s = session;
         if (s == null || !authed) return false;
-        s.sendPacket(packet);
+        s.sendPacket(packet, cb);
         return true;
     }
 }

@@ -122,7 +122,7 @@ public final class WatchSender {
 
         nodeApi.getConnectedNodes()
                 .addOnSuccessListener(nodes -> {
-                    if (nodes == null || nodes.isEmpty()) { report(cb, false, "연결된 워치 없음 (Mi Fitness 연결 확인)"); return; }
+                    if (nodes == null || nodes.isEmpty()) { report(cb, false, "연결된 워치 없음 (Mi Manager 첫 화면에서 연결 확인)"); return; }
                     Node node = nodes.get(0);
                     java.util.concurrent.atomic.AtomicBoolean done = new java.util.concurrent.atomic.AtomicBoolean(false);
                     java.util.concurrent.atomic.AtomicBoolean acked = new java.util.concurrent.atomic.AtomicBoolean(false);

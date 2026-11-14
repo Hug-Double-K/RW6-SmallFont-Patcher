@@ -36,14 +36,32 @@ public final class SarLink {
     private final Object lock = new Object();
     private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor();
 
-    private static final class Pending {
-        final L1 frame;
-        long sentAt;
-        int retries;
-        Pending(L1 f) { frame = f; }
+    /** 워치가 받았다고 확인(ACK)했는지 알려 줌. ok=false면 연결이 끊겨 못 보냄. */
+    public interface Delivery { void done(boolean ok); }
+
+    private static final class Out {
+        final byte[] l2;
+        final Delivery cb;
+        Out(byte[] l2, Delivery cb) { this.l2 = l2; this.cb = cb; }
     }
 
-    private final ArrayDeque<byte[]> waiting = new ArrayDeque<>();
+    private static final class Pending {
+        final L1 frame;
+        final Delivery cb;
+        long sentAt;
+        int retries;
+        Pending(L1 f, Delivery cb) { frame = f; this.cb = cb; }
+    }
+
+    /** 확인 알림은 따로 돌려서, 받는 쪽이 다음 전송을 바로 해도 잠금이 꼬이지 않게 */
+    private final java.util.concurrent.ExecutorService callbacks = Executors.newSingleThreadExecutor();
+
+    private void notifyDelivery(Delivery cb, boolean ok) {
+        if (cb == null) return;
+        try { callbacks.execute(() -> cb.done(ok)); } catch (RuntimeException ignored) {}
+    }
+
+    private final ArrayDeque<Out> waiting = new ArrayDeque<>();
     private final ArrayDeque<Pending> inFlight = new ArrayDeque<>();
     private int txNextSeq = 0;
     private int rxExpect = 0;
@@ -95,9 +113,12 @@ public final class SarLink {
     }
 
     /** 2계층 바이트(channel, opcode, payload)를 보낸다. 세션 전이면 줄 세워 둔다. */
-    public void send(byte[] l2) {
+    public void send(byte[] l2) { send(l2, null); }
+
+    public void send(byte[] l2, Delivery cb) {
         synchronized (lock) {
-            waiting.add(l2);
+            if (closed) { notifyDelivery(cb, false); return; }
+            waiting.add(new Out(l2, cb));
             pump();
         }
     }
@@ -116,6 +137,13 @@ public final class SarLink {
         if (closed) return;
         closed = true;
         timer.shutdownNow();
+        synchronized (lock) {
+            for (Pending p : inFlight) notifyDelivery(p.cb, false);
+            for (Out o : waiting) notifyDelivery(o.cb, false);
+            inFlight.clear();
+            waiting.clear();
+        }
+        callbacks.shutdown();
         try { in.close(); } catch (IOException ignored) {}
         try { out.close(); } catch (IOException ignored) {}
         listener.onClosed(reason);
@@ -149,7 +177,14 @@ public final class SarLink {
     }
 
     private void resetSeq() {
+        // 보내던 것은 새 번호로 다시 보낸다 (워치가 세션을 새로 시작한 경우)
+        java.util.List<Pending> again = new ArrayList<>(inFlight);
         inFlight.clear();
+        for (int i = again.size() - 1; i >= 0; i--) {
+            Pending p = again.get(i);
+            byte[] l2 = p.frame.payload;
+            waiting.addFirst(new Out(l2, p.cb));
+        }
         txNextSeq = 0;
         rxExpect = 0;
         rxSeen = false;
@@ -159,7 +194,8 @@ public final class SarLink {
     private void pump() {
         if (!ready) return;
         while (!waiting.isEmpty() && inFlight.size() < window) {
-            Pending p = new Pending(new L1(L1.DATA, false, txNextSeq, waiting.poll()));
+            Out o = waiting.poll();
+            Pending p = new Pending(new L1(L1.DATA, false, txNextSeq, o.l2), o.cb);
             txNextSeq = (txNextSeq + 1) & 0xFF;
             p.sentAt = System.currentTimeMillis();
             inFlight.add(p);
@@ -172,7 +208,7 @@ public final class SarLink {
     }
 
     private void ackThrough(int seq) {
-        while (!inFlight.isEmpty() && seqLe(inFlight.peek().frame.seq, seq)) inFlight.poll();
+        while (!inFlight.isEmpty() && seqLe(inFlight.peek().frame.seq, seq)) notifyDelivery(inFlight.poll().cb, true);
     }
 
     private void tick() {

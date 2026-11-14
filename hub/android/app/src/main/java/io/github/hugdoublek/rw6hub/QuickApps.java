@@ -127,7 +127,10 @@ public final class QuickApps implements WatchLink.PacketListener {
         if (!link().isReady()) { cb.done("워치가 연결되어 있지 않음"); return; }
         withFingerprint(pkg, cb, fp -> {
             Pb.W msg = new Pb.W().msg(1, basicInfo(pkg, fp)).bytes(2, data);
-            cb.done(link().send(thirdparty(SEND_PHONE_MESSAGE, P_MESSAGE, msg)) ? null : "워치가 연결되어 있지 않음");
+            // 워치가 받았다고 확인할 때 성공으로 알림 (예전 Mi Fitness와 같음 → 진행률이 실제 전송을 따라감)
+            boolean queued = link().send(thirdparty(SEND_PHONE_MESSAGE, P_MESSAGE, msg),
+                    ok -> cb.done(ok ? null : "전송 중 연결이 끊김"));
+            if (!queued) cb.done("워치가 연결되어 있지 않음");
         });
     }
 

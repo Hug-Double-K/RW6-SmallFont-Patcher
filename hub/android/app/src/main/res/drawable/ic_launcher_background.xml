@@ -1,13 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 런처가 동그랗게 잘라도 둥근 네모로 보이도록, 잘리는 영역 안쪽에 둥근 네모를 직접 그림 (바깥은 투명) -->
-<inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:inset="24dp">
-    <shape android:shape="rectangle">
-        <corners android:radius="18dp" />
-        <gradient
-            android:angle="315"
-            android:startColor="#22D3B4"
-            android:endColor="#3563F0"
-            android:type="linear" />
-    </shape>
-</inset>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:angle="315"
+        android:startColor="#22D3B4"
+        android:endColor="#3563F0"
+        android:type="linear" />
+</shape>

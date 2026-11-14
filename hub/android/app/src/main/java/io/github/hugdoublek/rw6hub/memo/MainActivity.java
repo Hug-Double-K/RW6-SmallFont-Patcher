@@ -53,7 +53,6 @@ public class MainActivity extends Activity {
         root.addView(status);
 
         root.addView(section("1. 처음 한 번만"));
-        root.addView(button("워치 권한 요청 (Mi Fitness 화면에서 허용)", v -> requestWatchPermission()));
         root.addView(button("배터리 최적화 제외", v -> askBattery()));
 
         root.addView(section("2. 컬러노트 메모 한꺼번에 보내기"));
@@ -108,7 +107,7 @@ public class MainActivity extends Activity {
         Wearable.getNodeApi(this).getConnectedNodes()
                 .addOnSuccessListener(nodes -> {
                     node = (nodes == null || nodes.isEmpty()) ? null : nodes.get(0);
-                    if (node == null) { status.setText("워치: 연결 안 됨 (Mi Fitness 연결 확인)"); return; }
+                    if (node == null) { status.setText("워치: 연결 안 됨 (Mi Manager 첫 화면에서 연결 확인)"); return; }
                     Wearable.getAuthApi(this).checkPermission(node.id, Permission.DEVICE_MANAGER)
                             .addOnSuccessListener(ok -> status.setText("워치: " + node.name + " / 권한 " + (ok ? "허용됨" : "없음 ← 요청하세요")))
                             .addOnFailureListener(e -> status.setText("워치: " + node.name + " / 권한 확인 실패"));
@@ -257,9 +256,52 @@ public class MainActivity extends Activity {
         WatchSender.Plan plan = lastPlan;
         busy = true;
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // 진행 창: 진행바 + 퍼센트 + 남은 시간 (보낸 바이트 기준으로 계산)
+        final long[] sizes = new long[plan.msgs.size() + 1];
+        for (int i = 0; i < plan.msgs.size(); i++) sizes[i + 1] = sizes[i] + plan.msgs.get(i).length;
+        final long totalBytes = Math.max(1, sizes[plan.msgs.size()] - sizes[from]);
+        final long[] startAt = {0};
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = Math.round(20 * getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad / 2, pad, 0);
+        android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(1000);
+        TextView pct = new TextView(this);
+        pct.setTextSize(15);
+        pct.setText("워치 앱을 여는 중…");
+        TextView note = new TextView(this);
+        note.setTextSize(12);
+        note.setText("화면을 켜 두고 워치를 폰 가까이 두세요. 창을 닫아도 계속 보내요.");
+        box.addView(bar);
+        box.addView(pct);
+        box.addView(note);
+        AlertDialog progress = new AlertDialog.Builder(this)
+                .setTitle("메모 " + plan.memoCount + "개 보내는 중")
+                .setView(box)
+                .setCancelable(false)
+                .setNegativeButton("창 닫기", null)
+                .show();
         WatchSender.send(this, plan, from,
-                (done, total) -> say("보내는 중… " + done + " / " + total + " 묶음 (메모 " + plan.memoCount + "개)\n(화면을 켜 두고 워치를 폰 가까이 두세요)"),
+                (done, total) -> {
+                    long now = System.currentTimeMillis();
+                    if (startAt[0] == 0) startAt[0] = now;
+                    long sent = sizes[Math.min(done, plan.msgs.size())] - sizes[from];
+                    double frac = Math.min(1.0, Math.max(0.0, sent / (double) totalBytes));
+                    bar.setProgress((int) Math.round(frac * 1000));
+                    String eta = "";
+                    long elapsed = now - startAt[0];
+                    if (sent > 0 && elapsed > 1500) {
+                        long remain = (long) (elapsed * (totalBytes - sent) / (double) sent / 1000);
+                        eta = " · 남은 시간 약 " + (remain >= 60 ? (remain / 60) + "분 " : "") + (remain % 60) + "초";
+                    } else if (done > from) {
+                        eta = " · 남은 시간 계산 중…";
+                    }
+                    pct.setText(Math.round(frac * 100) + "% (" + done + " / " + total + " 묶음)" + eta);
+                    say("보내는 중… " + done + " / " + total + " 묶음 (메모 " + plan.memoCount + "개)");
+                },
                 (ok, res) -> {
+                    try { progress.dismiss(); } catch (RuntimeException ignored) {}
                     busy = false;
                     getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                     String line = ok ? "✔ 메모 " + plan.memoCount + "개를 워치로 보냈어요" : "✘ " + res;
