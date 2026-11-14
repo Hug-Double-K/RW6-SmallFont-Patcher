@@ -235,7 +235,7 @@ public final class XiaoAi {
         stopped = true;
         closeDecoder();
         lastEndAt = System.currentTimeMillis();
-        send(instr(STOP_CAPTURE), "녹음 멈춤");
+        // 시험: 녹음 멈춤(STOP_CAPTURE)이 대화 화면을 닫는지 몰라 답을 다 보낸 뒤에 보냄
         int n = frames.size();
         log(String.format(Locale.US, "녹음 끝: %.1f초 (최대 %.0fdB, 잡음 %.0fdB)", n * 0.02, peakDb, noiseDb));
         if (n < 10) {
@@ -249,7 +249,7 @@ public final class XiaoAi {
             active = false;
             return;
         }
-        send(instr(LLM_LOADING_CARD).msg(30, new Pb.W().varint(1, 20)), "생각 중 카드");
+        send(partial("생각 중…"), "생각 중 글자");
         byte[] ogg = Ogg.opus(new ArrayList<>(frames), 16000);
         final int myGen = gen;
         new Thread(() -> {
@@ -271,9 +271,6 @@ public final class XiaoAi {
             final String fq = q, fa = a;
             h.post(() -> {
                 if (myGen != gen) return;
-                if (!fq.isEmpty()) {
-                    send(instr(RECOGNIZE_RESULT).msg(2, new Pb.W().bool(1, true).msg(2, new Pb.W().msg(1, new Pb.W().str(1, fq)))), "들은 말");
-                }
                 showText(fa, false);
                 voice.speak(fa);
                 active = false;
@@ -284,16 +281,16 @@ public final class XiaoAi {
 
     /** 답(또는 오류)을 화면에 띄우고 대화를 끝낸다 */
     private void showText(String text, boolean isError) {
-        // 시험: ① AI 글(스트림) 먼저, ② 4초 뒤 카드 — 어느 쪽이 뜨는지 확인
+        // 시험: A(듣는 중 글자와 같은 형식) → 3초 뒤 B(토스트) → 3초 뒤 C(AI 글) → 3초 뒤 녹음 멈춤
         final int myGen = gen;
-        send(instr(LLM_TOAST_STREAM).msg(33, new Pb.W().str(1, text)), "① AI 글");
-        send(instr(LLM_FINISH_STREAM), "① 글 끝");
+        send(partial("A " + text), "A 글자");
+        h.postDelayed(() -> { if (myGen == gen) send(instr(TEMPLATE_TOAST).msg(3, new Pb.W().str(1, "B " + text)), "B 토스트"); }, 3000);
         h.postDelayed(() -> {
             if (myGen != gen) return;
-            send(instr(TEMPLATE_GENERAL).msg(4, new Pb.W()
-                    .msg(1, new Pb.W().str(1, "② 카드").str(2, ""))
-                    .str(2, text).str(4, "Gemini")), "② 카드");
-        }, 4000);
+            send(instr(LLM_TOAST_STREAM).msg(33, new Pb.W().str(1, "C " + text)), "C AI 글");
+            send(instr(LLM_FINISH_STREAM), "C 글 끝");
+        }, 6000);
+        h.postDelayed(() -> { if (myGen == gen) send(instr(STOP_CAPTURE), "녹음 멈춤"); }, 9000);
         h.postDelayed(() -> { if (myGen == gen) send(instr(DIALOG_FINISH), "대화 끝"); }, 15000);
     }
 
