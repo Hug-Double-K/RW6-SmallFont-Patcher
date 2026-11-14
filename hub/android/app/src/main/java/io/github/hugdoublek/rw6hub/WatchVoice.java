@@ -28,7 +28,22 @@ final class WatchVoice {
     private int savedMode = AudioManager.MODE_NORMAL;
     private boolean routed = false;
 
-    WatchVoice(Context app) { this.app = app; }
+    private volatile boolean scoUp = false;   // 실제 SCO 소리 연결 상태 (방송으로 받음)
+
+    WatchVoice(Context app) {
+        this.app = app;
+        android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
+            @Override public void onReceive(Context c, android.content.Intent i) {
+                int st = i.getIntExtra(AudioManager.EXTRA_SCO_AUDIO_STATE, -1);
+                boolean up = st == AudioManager.SCO_AUDIO_STATE_CONNECTED;
+                if (up != scoUp) log("워치 소리 연결(SCO) " + (up ? "열림" : st == AudioManager.SCO_AUDIO_STATE_CONNECTING ? "여는 중" : "닫힘"));
+                scoUp = up;
+            }
+        };
+        android.content.IntentFilter f = new android.content.IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED);
+        if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(r, f, Context.RECEIVER_EXPORTED);
+        else app.registerReceiver(r, f);
+    }
 
     private void log(String s) { WatchLink.get(app).log("[AI] " + s); }
 
@@ -53,10 +68,18 @@ final class WatchVoice {
     /** 워치 통로가 지금 살아 있는지 */
     private boolean onWatch(AudioManager am) {
         if (!routed) return false;
-        if (Build.VERSION.SDK_INT < 31) return am.isBluetoothScoOn();
+        if (Build.VERSION.SDK_INT < 31) return am.isBluetoothScoOn() || scoUp;
         AudioDeviceInfo d = am.getCommunicationDevice();
-        String mac = app.getSharedPreferences("hub", Context.MODE_PRIVATE).getString("mac", "");
-        return d != null && d.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO && mac.equalsIgnoreCase(d.getAddress());
+        return scoUp || (d != null && d.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO);
+    }
+
+    private String state(AudioManager am) {
+        String dev = "-";
+        if (Build.VERSION.SDK_INT >= 31) {
+            AudioDeviceInfo d = am.getCommunicationDevice();
+            if (d != null) dev = d.getType() + "/" + d.getProductName();
+        }
+        return "mode=" + am.getMode() + " 통로=" + dev + " SCO=" + (scoUp ? "열림" : "닫힘") + " routed=" + routed;
     }
 
     private void speakMain(String text) {
@@ -93,7 +116,22 @@ final class WatchVoice {
         AudioManager am = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
         if (am == null) return;
         if (!routed) route(am);
-        if (!onWatch(am)) { log("워치 소리 통로(SCO)가 없음 → 소리 생략 (폰에서 안 냄)"); unroute(); return; }
+        log("소리 직전 상태: " + state(am));
+        if (!onWatch(am)) {
+            // 한 번 더 요청하고 1.5초 기다려 봄
+            routed = false;
+            route(am);
+            main.postDelayed(() -> {
+                log("다시 확인: " + state(am));
+                if (!onWatch(am)) { log("워치 소리 통로(SCO)가 없음 → 소리 생략 (폰에서 안 냄)"); unroute(); return; }
+                start(am, f);
+            }, 1500);
+            return;
+        }
+        start(am, f);
+    }
+
+    private void start(AudioManager am, java.io.File f) {
         main.postDelayed(() -> {
             if (!onWatch(am)) { log("워치 소리 통로가 끊김 → 소리 생략"); unroute(); return; }
             try {
@@ -136,6 +174,7 @@ final class WatchVoice {
                 log("소리 통로: " + pick.getProductName());
                 am.setMode(AudioManager.MODE_IN_COMMUNICATION);
                 routed = am.setCommunicationDevice(pick);
+                log("워치 통로 요청: " + (routed ? "받아들여짐" : "거절됨"));
                 if (!routed) am.setMode(savedMode);
                 return routed;
             } else {

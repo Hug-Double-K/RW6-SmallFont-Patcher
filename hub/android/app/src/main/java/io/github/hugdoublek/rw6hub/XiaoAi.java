@@ -38,7 +38,7 @@ public final class XiaoAi {
     // AIVS 결과 종류
     private static final int START_LISTENING = 0, END_LISTENING = 1, RECOGNIZE_RESULT = 2, STOP_CAPTURE = 3,
             DIALOG_FINISH = 4, ERROR_NETWORK = 80, ERROR_AUTH = 81, ERROR_AUDIO_EMPTY = 85, ERROR_UNKNOWN = 91,
-            TEMPLATE_TOAST = 256, TEMPLATE_GENERAL = 257, ALERTS_SETALERT = 263, SPEECHSYNTHESIZER_SPEAK = 264, LLM_LOADING_CARD = 289, LLM_TOAST_STREAM = 292, LLM_FINISH_STREAM = 293;
+            TEMPLATE_TOAST = 256, TEMPLATE_GENERAL = 257, ALERTS_SETALERT = 263, APPLICATION_OPERATE = 270, SPEECHSYNTHESIZER_SPEAK = 264, LLM_LOADING_CARD = 289, LLM_TOAST_STREAM = 292, LLM_FINISH_STREAM = 293;
 
     private static XiaoAi INSTANCE;
 
@@ -282,8 +282,8 @@ public final class XiaoAi {
             h.post(() -> {
                 if (myGen != gen) return;
                 if (!fq.isEmpty()) send(partial(fq), "들은 말");   // 말풍선에는 사용자가 한 말
-                if (cmd[0] != null) runCommand(cmd[0]);
-                showText(fa, false);
+                boolean app = cmd[0] != null && runCommand(cmd[0]);
+                showText(fa, !app);
                 voice.speak(fa);
                 active = false;
                 lastEndAt = System.currentTimeMillis();
@@ -292,16 +292,24 @@ public final class XiaoAi {
     }
 
     /** 답(또는 오류)을 화면에 띄우고 대화를 끝낸다 */
-    private void showText(String text, boolean isError) {
+    private void showText(String text, boolean close) {
         // 0.37 시험 결과: 토스트(TEMPLATE_TOAST)가 화면에 바로 뜸. 녹음 멈춤은 답을 띄운 뒤에.
         final int myGen = gen;
         send(instr(TEMPLATE_TOAST).msg(3, new Pb.W().str(1, text)), "답 표시");
         h.postDelayed(() -> { if (myGen == gen) send(instr(STOP_CAPTURE), "녹음 멈춤"); }, 3000);
-        h.postDelayed(() -> { if (myGen == gen) send(instr(DIALOG_FINISH), "대화 끝"); }, 15000);
+        if (!close) return;   // 타이머 등 워치 앱을 연 경우엔 그 화면을 그대로 둠
+        long ms = prefs.getInt("aiCloseTenths", 100) * 100L;
+        h.postDelayed(() -> {
+            if (myGen != gen || active) return;
+            // 샤오아이 화면을 닫고 시계 화면으로
+            send(instr(END_LISTENING), "듣기 끝");
+            send(instr(DIALOG_FINISH), "대화 끝");
+            send(instr(APPLICATION_OPERATE).msg(18, new Pb.W().varint(1, 3).str(2, "小爱同学").str(3, "")), "샤오아이 닫기");
+        }, ms);
     }
 
     /** Gemini가 낸 명령을 워치에서 실행 (샤오아이 알림 지시 ALERTS_SETALERT) */
-    private void runCommand(String c) {
+    private boolean runCommand(String c) {
         log("명령: " + c);
         try {
             String[] w = c.split("\\s+");
@@ -314,8 +322,9 @@ public final class XiaoAi {
                 send(instr(ALERTS_SETALERT).msg(10, alert(2, "", off, "")), "타이머 " + off);
             } else if (w[0].equalsIgnoreCase("ALARM") && w.length >= 2) {
                 send(instr(ALERTS_SETALERT).msg(10, alert(0, w[1] + (w[1].length() == 16 ? ":00" : "") + "+09:00", "", w.length > 2 ? c.substring(c.indexOf(w[2])) : "알람")), "알람 " + w[1]);
-            } else log("모르는 명령");
-        } catch (Exception e) { log("명령 오류: " + e.getMessage()); }
+            } else { log("모르는 명령"); return false; }
+            return true;
+        } catch (Exception e) { log("명령 오류: " + e.getMessage()); return false; }
     }
 
     private static Pb.W alert(int type, String datetime, String offset, String event) {

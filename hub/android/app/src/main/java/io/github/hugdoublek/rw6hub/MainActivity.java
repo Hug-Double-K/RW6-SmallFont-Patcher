@@ -157,6 +157,24 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
             refresh();
         }));
         root.addView(button("Gemini API 키 · 모델 설정", v -> aiSettings()));
+        // 답한 뒤 샤오아이 화면을 닫기까지 시간 (0.5초 단위, 5~40초, 기본 10초)
+        TextView closeView = text();
+        root.addView(closeView);
+        android.widget.SeekBar closeBar = new android.widget.SeekBar(this);
+        closeBar.setMax(70);   // (40-5)/0.5
+        int tenths = prefs.getInt("aiCloseTenths", 100);
+        closeBar.setProgress((tenths - 50) / 5);
+        Runnable showClose = () -> closeView.setText(String.format(java.util.Locale.US,
+                "답한 뒤 화면 닫기: %.1f초 (앱 실행 명령일 땐 안 닫음)", prefs.getInt("aiCloseTenths", 100) / 10f));
+        showClose.run();
+        closeBar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(android.widget.SeekBar sb, int v, boolean u) {
+                prefs.edit().putInt("aiCloseTenths", 50 + v * 5).apply(); showClose.run();
+            }
+            @Override public void onStartTrackingTouch(android.widget.SeekBar sb) { }
+            @Override public void onStopTrackingTouch(android.widget.SeekBar sb) { }
+        });
+        root.addView(closeBar);
 
         root.addView(header("계정 (샤오미, 중국 지역)"));
         accountView = text();
