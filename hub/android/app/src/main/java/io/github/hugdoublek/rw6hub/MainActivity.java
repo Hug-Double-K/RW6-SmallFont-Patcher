@@ -143,6 +143,10 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         root.addView(button("퀵앱 · 워치페이스 · 펌웨어 설치", v -> startActivity(new Intent(this, InstallActivity.class))));
         root.addView(button("워치에 설치된 퀵앱 (실행 · 삭제)", v -> showInstalled()));
         root.addView(button("워치 언어", v -> pickLanguage()));
+        root.addView(button("샤오아이 분석용 기록 저장", v -> {
+            String r = AivsCapture.save(this);
+            log(r == null ? "아직 모인 샤오아이 기록이 없어요. 워치 크라운을 길게 눌러 말해 본 뒤 다시 누르세요" : "저장: " + r);
+        }));
         root.addView(button("워치 시간 다시 맞추기", v -> { if (link.isReady()) link.syncTime(); else log("워치가 연결되어 있지 않음"); }));
 
         root.addView(header("계정 (샤오미, 중국 지역)"));

@@ -256,7 +256,18 @@ public final class WatchLink {
                 }
             }
 
+            @Override public void onRaw(int channel, int opcode, byte[] body) {
+                AivsCapture.addRaw(channel, body);
+                if (seenKinds.add("raw" + channel)) log("워치 채널 " + channel + " 데이터 받기 시작 (" + body.length + "B, op " + opcode + ")");
+            }
+
+            @Override public void onPlainPacket(byte[] plain) {
+                // 샤오아이(AIVS = type 14) 패킷만 캡처
+                if (plain.length >= 2 && (plain[0] & 0xFF) == 0x08 && (plain[1] & 0xFF) == 14) AivsCapture.addPb(plain);
+            }
+
             @Override public void onPacket(int type, int id, List<Pb.Field> p) {
+                if (type == 14) log("샤오아이 메시지 id=" + id);
                 if (type == 2 && id == 1) {
                     List<Pb.Field> sys = Pb.sub(p, 4);
                     List<Pb.Field> st = sys == null ? null : Pb.sub(sys, 2);

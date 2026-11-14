@@ -19,6 +19,10 @@ public final class WatchSession implements SarLink.Listener {
         void onClosed(String reason);
         /** 인증 뒤 들어온 그 밖의 메시지 (다음 단계에서 사용). */
         void onPacket(int type, int id, List<Pb.Field> packet);
+        /** 프로토콜 버퍼가 아닌 채널(예: 10 = 음성 등 멀티모달) 데이터 */
+        default void onRaw(int channel, int opcode, byte[] body) {}
+        /** 디코딩한 PB 원본 (캡처용) */
+        default void onPlainPacket(byte[] plain) {}
     }
 
     // WearPacket
@@ -114,7 +118,7 @@ public final class WatchSession implements SarLink.Listener {
                 }
                 return;
             }
-            cb.onLog("다른 채널 데이터 " + channel + " (" + body.length + "B) 무시");
+            cb.onRaw(channel, opcode, body);
             return;
         }
         byte[] plain = body;
@@ -122,6 +126,7 @@ public final class WatchSession implements SarLink.Listener {
             if (decKey == null) { cb.onLog("인증 전 암호 패킷 무시"); return; }
             plain = MiCrypto.aesCtr(decKey, body);
         }
+        cb.onPlainPacket(plain);
         List<Pb.Field> pkt;
         try {
             pkt = Pb.parse(plain);
