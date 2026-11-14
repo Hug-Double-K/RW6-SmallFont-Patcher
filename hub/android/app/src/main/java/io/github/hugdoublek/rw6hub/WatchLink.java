@@ -258,6 +258,7 @@ public final class WatchLink {
 
             @Override public void onRaw(int channel, int opcode, byte[] body) {
                 AivsCapture.addRaw(channel, opcode, body);
+                if (channel == 3) XiaoAi.get(app).onVoice(body);
                 if (seenKinds.add("raw" + channel)) log("워치 채널 " + channel + " 데이터 받기 시작 (" + body.length + "B, op " + opcode + ")");
             }
 

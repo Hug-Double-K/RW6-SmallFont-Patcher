@@ -36,7 +36,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
     private WatchLink link;
     private TextView accountView, keyView, addrView, stateView, infoView, logView;
     private Button connectBtn, mifitBtn, notiBtn;
-    private TextView mifitWarn;
+    private TextView mifitWarn, aiView;
     private static final String[] MIFIT = {"com.mi.health", "com.xiaomi.wearable"};
 
     /** 설치돼 있고 '근처 기기'(블루투스) 권한이 켜진 Mi Fitness 패키지, 없으면 null */
@@ -149,6 +149,15 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         }));
         root.addView(button("워치 시간 다시 맞추기", v -> { if (link.isReady()) link.syncTime(); else log("워치가 연결되어 있지 않음"); }));
 
+        root.addView(header("AI 비서 (크라운 길게 누르기)"));
+        aiView = text();
+        root.addView(aiView);
+        root.addView(button("AI 켜기 / 끄기", v -> {
+            prefs.edit().putBoolean("aiOn", !prefs.getBoolean("aiOn", true)).apply();
+            refresh();
+        }));
+        root.addView(button("Gemini API 키 · 모델 설정", v -> aiSettings()));
+
         root.addView(header("계정 (샤오미, 중국 지역)"));
         accountView = text();
         root.addView(accountView);
@@ -189,6 +198,10 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                 ? "모델 " + link.watchModel() + " · 펌웨어 " + link.watchFirmware() : "");
         connectBtn.setEnabled(!link.wantsConnection());
         logView.setText(link.logText());
+        boolean aiOn = prefs.getBoolean("aiOn", true);
+        String key = prefs.getString("aiKey", "");
+        aiView.setText((aiOn ? "켜짐: 크라운을 길게 눌러 말하면 샤오아이 대신 Gemini가 답해요" : "꺼짐")
+                + "\nAPI 키: " + (key.isEmpty() ? "없음 (설정 필요)" : "있음") + " · 모델: " + prefs.getString("aiModel", XiaoAi.DEFAULT_MODEL));
         notiBtn.setText("상단 연결 알림: " + (LinkService.statusNotification(this) ? "켜짐 (누르면 끔)" : "꺼짐 (누르면 켬)"));
         boolean yielded = prefs.getBoolean("yielded", false);
         boolean warn = !yielded && miFitnessWithBt() != null;
@@ -248,6 +261,33 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                     .show());
         }
         b.show();
+    }
+
+    private void aiSettings() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(8), dp(20), 0);
+        EditText key = new EditText(this);
+        key.setHint("Gemini API 키 (aistudio.google.com에서 발급)");
+        key.setText(prefs.getString("aiKey", ""));
+        key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+        EditText model = new EditText(this);
+        model.setHint("모델 이름");
+        model.setText(prefs.getString("aiModel", XiaoAi.DEFAULT_MODEL));
+        box.addView(key);
+        box.addView(model);
+        new AlertDialog.Builder(this)
+                .setTitle("AI 설정")
+                .setMessage("RW6 AI 앱에 넣었던 것과 같은 키를 쓰면 돼요.")
+                .setView(box)
+                .setPositiveButton("저장", (d, w) -> {
+                    prefs.edit().putString("aiKey", key.getText().toString().trim())
+                            .putString("aiModel", model.getText().toString().trim().isEmpty() ? XiaoAi.DEFAULT_MODEL : model.getText().toString().trim())
+                            .apply();
+                    log("AI 설정 저장");
+                })
+                .setNegativeButton("취소", null)
+                .show();
     }
 
     private void toggleStatusNotification() {
