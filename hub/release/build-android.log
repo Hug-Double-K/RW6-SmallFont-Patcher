@@ -14,16 +14,16 @@ Daemon will be stopped at the end of the build
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
 > Task :app:packageReleaseResources
+> Task :app:mergeReleaseResources
 > Task :app:createReleaseCompatibleScreenManifests
 > Task :app:extractDeepLinksRelease
-> Task :app:mergeReleaseResources
 > Task :app:parseReleaseLocalResources
 > Task :app:processReleaseMainManifest
 > Task :app:processReleaseManifest
 > Task :app:desugarReleaseFileDependencies
 > Task :app:mergeReleaseStartupProfile
-> Task :app:mergeExtDexRelease
 > Task :app:mergeReleaseArtProfile
+> Task :app:mergeExtDexRelease
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
@@ -31,13 +31,13 @@ Daemon will be stopped at the end of the build
 > Task :app:compressReleaseAssets
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:processReleaseJavaRes NO-SOURCE
-> Task :app:processReleaseManifestForPackage
-> Task :app:mergeReleaseJavaResource
 > Task :app:collectReleaseDependencies
+> Task :app:mergeReleaseJavaResource
 > Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
 > Task :app:writeReleaseSigningConfigVersions
+> Task :app:processReleaseManifestForPackage
 > Task :app:processReleaseResources
 
 > Task :app:compileReleaseJavaWithJavac
@@ -52,7 +52,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :app:packageRelease
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_7-1794639405443.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_7-1794639621156.json
 
 BUILD SUCCESSFUL in 14s
 38 actionable tasks: 38 executed
