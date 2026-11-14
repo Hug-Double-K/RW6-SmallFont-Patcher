@@ -296,7 +296,11 @@ public final class WatchLink {
                         .varint(3, c.get(java.util.Calendar.SECOND)).varint(4, c.get(java.util.Calendar.MILLISECOND)))
                 .msg(3, new Pb.W().varint(1, offsetQuarters).varint(2, dstQuarters).str(3, tz.getID()).str(4, ""))
                 .bool(4, h12);
-        send(new Pb.W().varint(1, 2).varint(2, 3).msg(4, new Pb.W().msg(4, st)));
+        if (send(new Pb.W().varint(1, 2).varint(2, 3).msg(4, new Pb.W().msg(4, st)))) {
+            log(String.format(java.util.Locale.US, "워치 시간 맞춤: %02d:%02d:%02d (%s, UTC%+d)",
+                    c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE), c.get(java.util.Calendar.SECOND),
+                    tz.getID(), tz.getRawOffset() / 3600000));
+        }
     }
 
     /** 워치 배터리(%) — 연결 유지 신호의 응답에서 읽음. 모르면 -1 */

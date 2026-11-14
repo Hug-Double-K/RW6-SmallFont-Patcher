@@ -105,6 +105,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         root.addView(button("퀵앱 · 워치페이스 · 펌웨어 설치", v -> startActivity(new Intent(this, InstallActivity.class))));
         root.addView(button("워치에 설치된 퀵앱 (실행 · 삭제)", v -> showInstalled()));
         root.addView(button("워치 언어", v -> pickLanguage()));
+        root.addView(button("워치 시간 다시 맞추기", v -> { if (link.isReady()) link.syncTime(); else log("워치가 연결되어 있지 않음"); }));
 
         root.addView(header("계정 (샤오미, 중국 지역)"));
         accountView = text();

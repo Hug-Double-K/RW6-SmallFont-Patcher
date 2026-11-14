@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Mi Manager 아이콘: 얇은 테두리 워치 + 노을 풍경 워치페이스 (직접 그림). 모양은 폰 런처가 정함 -->
+<!-- Mi Manager 아이콘: 검정 테두리 워치 + 오로라 밤하늘 워치페이스 (직접 그림). 모양은 폰 런처가 정함 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
@@ -7,29 +7,35 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <group android:pivotX="54" android:pivotY="54" android:scaleX="0.9" android:scaleY="0.9">
-        <path android:fillColor="#FFFFFF" android:fillAlpha="0.55" android:pathData="M50.5,19 H57.5 A6,6 0 0 1 63.5,25 V28 A6,6 0 0 1 57.5,34 H50.5 A6,6 0 0 1 44.5,28 V25 A6,6 0 0 1 50.5,19 Z" />
-        <path android:fillColor="#FFFFFF" android:fillAlpha="0.55" android:pathData="M50.5,74 H57.5 A6,6 0 0 1 63.5,80 V83 A6,6 0 0 1 57.5,89 H50.5 A6,6 0 0 1 44.5,83 V80 A6,6 0 0 1 50.5,74 Z" />
-        <path android:fillColor="#FFFFFF" android:pathData="M76.6,48 H76.60000000000001 A1.6,1.6 0 0 1 78.2,49.6 V57.4 A1.6,1.6 0 0 1 76.60000000000001,59 H76.6 A1.6,1.6 0 0 1 75,57.4 V49.6 A1.6,1.6 0 0 1 76.6,48 Z" />
-        <path android:fillColor="#FFFFFF" android:pathData="M47,30 H61 A15,15 0 0 1 76,45 V63 A15,15 0 0 1 61,78 H47 A15,15 0 0 1 32,63 V45 A15,15 0 0 1 47,30 Z" />
+        <path android:fillColor="#1C2130" android:pathData="M50.5,19 H57.5 A6,6 0 0 1 63.5,25 V28 A6,6 0 0 1 57.5,34 H50.5 A6,6 0 0 1 44.5,28 V25 A6,6 0 0 1 50.5,19 Z" />
+        <path android:fillColor="#1C2130" android:pathData="M50.5,74 H57.5 A6,6 0 0 1 63.5,80 V83 A6,6 0 0 1 57.5,89 H50.5 A6,6 0 0 1 44.5,83 V80 A6,6 0 0 1 50.5,74 Z" />
+        <path android:fillColor="#0E1118" android:pathData="M76.6,48 H76.60000000000001 A1.6,1.6 0 0 1 78.2,49.6 V57.4 A1.6,1.6 0 0 1 76.60000000000001,59 H76.6 A1.6,1.6 0 0 1 75,57.4 V49.6 A1.6,1.6 0 0 1 76.6,48 Z" />
+        <path android:fillColor="#0E1118" android:pathData="M47,30 H61 A15,15 0 0 1 76,45 V63 A15,15 0 0 1 61,78 H47 A15,15 0 0 1 32,63 V45 A15,15 0 0 1 47,30 Z" />
         <group>
             <clip-path android:pathData="M47.199999999999996,32.8 H60.79999999999999 A12.4,12.4 0 0 1 73.19999999999999,45.199999999999996 V62.79999999999999 A12.4,12.4 0 0 1 60.79999999999999,75.19999999999999 H47.199999999999996 A12.4,12.4 0 0 1 34.8,62.79999999999999 V45.199999999999996 A12.4,12.4 0 0 1 47.199999999999996,32.8 Z" />
             <path android:pathData="M47.199999999999996,32.8 H60.79999999999999 A12.4,12.4 0 0 1 73.19999999999999,45.199999999999996 V62.79999999999999 A12.4,12.4 0 0 1 60.79999999999999,75.19999999999999 H47.199999999999996 A12.4,12.4 0 0 1 34.8,62.79999999999999 V45.199999999999996 A12.4,12.4 0 0 1 47.199999999999996,32.8 Z">
-            <aapt:attr name="android:fillColor">
-                <gradient android:type="linear" android:startX="54" android:startY="32.8" android:endX="54" android:endY="75.2"
-                    android:startColor="#FF2B2A6B" android:endColor="#FFE86B8C" />
-            </aapt:attr>
+                <aapt:attr name="android:fillColor">
+                    <gradient android:type="linear" android:startX="54" android:startY="32.8" android:endX="54" android:endY="75.2"
+                        android:startColor="#FF0A0F2C" android:endColor="#FF22306A" />
+                </aapt:attr>
             </path>
-            <path android:fillColor="#FFFFFF" android:fillAlpha="0.8" android:pathData="M44,41 m-0.9,0 a0.9,0.9 0 1 0 1.8,0 a0.9,0.9 0 1 0 -1.8,0" />
-            <path android:fillColor="#FFFFFF" android:fillAlpha="0.7" android:pathData="M65,44 m-0.7,0 a0.7,0.7 0 1 0 1.4,0 a0.7,0.7 0 1 0 -1.4,0" />
-            <path android:fillColor="#FFFFFF" android:fillAlpha="0.6" android:pathData="M60,38.5 m-0.6,0 a0.6,0.6 0 1 0 1.2,0 a0.6,0.6 0 1 0 -1.2,0" />
-            <path android:pathData="M54,50 m-6,0 a6,6 0 1 0 12,0 a6,6 0 1 0 -12,0">
-            <aapt:attr name="android:fillColor">
-                <gradient android:type="linear" android:startX="54" android:startY="44" android:endX="54" android:endY="56"
-                    android:startColor="#FFFFE29A" android:endColor="#FFFF9F68" />
-            </aapt:attr>
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.8" android:pathData="M65,50 m-0.7,0 a0.7,0.7 0 1 0 1.4,0 a0.7,0.7 0 1 0 -1.4,0" />
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.6" android:pathData="M68,42 m-0.5,0 a0.5,0.5 0 1 0 1,0 a0.5,0.5 0 1 0 -1,0" />
+            <path android:fillColor="#FFFFFF" android:fillAlpha="0.7" android:pathData="M58,36.5 m-0.6,0 a0.6,0.6 0 1 0 1.2,0 a0.6,0.6 0 1 0 -1.2,0" />
+            <path android:fillColor="#FFF3D1" android:pathData="M44,39 m-2.8,0 a2.8,2.8 0 1 0 5.6,0 a2.8,2.8 0 1 0 -5.6,0" />
+            <path android:fillAlpha="0.7" android:pathData="M33,52 C40,44 46,47 52,41 C58,35 64,37 76,29 L76,32 C65,40 59,38 53,44 C47,50 40,47 33,56 Z">
+                <aapt:attr name="android:fillColor">
+                    <gradient android:type="linear" android:startX="33" android:startY="56" android:endX="76" android:endY="29"
+                        android:startColor="#FFC08CFF" android:endColor="#FF2EF5B5" />
+                </aapt:attr>
             </path>
-            <path android:fillColor="#5B3F8F" android:pathData="M34.8,62 C42,55 48,56 54,60 C60,64 66,57 73.2,58 V75.2 H34.8 Z" />
-            <path android:fillColor="#2C2357" android:pathData="M34.8,67 C42,62 50,63 56,67 C62,71 68,66 73.2,66 V75.2 H34.8 Z" />
+            <path android:fillAlpha="0.9" android:pathData="M33,58 C41,46 47,52 54,45 C60,39 66,42 76,34 L76,39 C67,46 61,44 55,50 C48,57 41,52 33,63 Z">
+                <aapt:attr name="android:fillColor">
+                    <gradient android:type="linear" android:startX="33" android:startY="63" android:endX="76" android:endY="34"
+                        android:startColor="#FF2EF5B5" android:endColor="#FF4FB8FF" />
+                </aapt:attr>
+            </path>
+            <path android:fillColor="#080B1C" android:pathData="M34.8,75.2 L34.8,68 L41,63 L45,65.5 L51,59.5 L56.5,64.5 L60,62 L66,66.5 L73.2,63.5 L73.2,75.2 Z" />
         </group>
     </group>
 </vector>
