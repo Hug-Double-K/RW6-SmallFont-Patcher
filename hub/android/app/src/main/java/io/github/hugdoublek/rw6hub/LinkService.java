@@ -24,6 +24,12 @@ public class LinkService extends Service implements WatchLink.StateListener {
     public static void start(Context c) {
         Context app = c.getApplicationContext();
         app.getSharedPreferences("hub", MODE_PRIVATE).edit().putBoolean("keep", true).putBoolean("yielded", false).apply();
+        if (!statusNotification(app)) {
+            // 상단 알림 끔: 서비스 없이 연결만 유지 (알림 접근 권한이 있으면 앱이 계속 살아 있음)
+            app.stopService(new Intent(app, LinkService.class));
+            WatchLink.get(app).start();
+            return;
+        }
         try {
             app.startForegroundService(new Intent(app, LinkService.class));
         } catch (Exception e) {
@@ -46,6 +52,17 @@ public class LinkService extends Service implements WatchLink.StateListener {
         if (p.getBoolean("yielded", false)) return;
         if (p.getString("mac", "").isEmpty() || p.getString("authKey", "").isEmpty()) return;
         if (!WatchLink.get(c).wantsConnection()) start(c);
+    }
+
+    /** 상단 연결 상태 알림을 띄울지 (기본 켬) */
+    public static boolean statusNotification(Context c) {
+        return c.getApplicationContext().getSharedPreferences("hub", MODE_PRIVATE).getBoolean("statusNoti", true);
+    }
+
+    public static void setStatusNotification(Context c, boolean on) {
+        Context app = c.getApplicationContext();
+        app.getSharedPreferences("hub", MODE_PRIVATE).edit().putBoolean("statusNoti", on).apply();
+        if (keep(app)) start(app); // 바뀐 설정대로 다시 시작 (연결은 끊지 않음)
     }
 
     public static boolean keep(Context c) {

@@ -35,7 +35,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
     private SharedPreferences prefs;
     private WatchLink link;
     private TextView accountView, keyView, addrView, stateView, infoView, logView;
-    private Button connectBtn, mifitBtn;
+    private Button connectBtn, mifitBtn, notiBtn;
     private TextView mifitWarn;
     private static final String[] MIFIT = {"com.mi.health", "com.xiaomi.wearable"};
 
@@ -132,6 +132,8 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         connectBtn = button("연결 (계속 유지)", v -> { askPermissions(); LinkService.start(this); });
         root.addView(connectBtn);
         root.addView(button("연결 해제 · Mi Fitness에 양보", v -> yieldToMiFitness()));
+        notiBtn = button("", v -> toggleStatusNotification());
+        root.addView(notiBtn);
 
         root.addView(header("기능"));
         root.addView(button("메신저 알림 (RW6 알림)", v ->
@@ -183,6 +185,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                 ? "모델 " + link.watchModel() + " · 펌웨어 " + link.watchFirmware() : "");
         connectBtn.setEnabled(!link.wantsConnection());
         logView.setText(link.logText());
+        notiBtn.setText("상단 연결 알림: " + (LinkService.statusNotification(this) ? "켜짐 (누르면 끔)" : "꺼짐 (누르면 켬)"));
         boolean yielded = prefs.getBoolean("yielded", false);
         boolean warn = !yielded && miFitnessWithBt() != null;
         mifitWarn.setText(warn ? "⚠ Mi Fitness가 워치를 몇 분마다 가져가서 연결이 끊기고, 통화 소리가 스피커↔일반으로 바뀔 수 있어요. "
@@ -241,6 +244,27 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                     .show());
         }
         b.show();
+    }
+
+    private void toggleStatusNotification() {
+        boolean on = !LinkService.statusNotification(this);
+        if (on) {
+            LinkService.setStatusNotification(this, true);
+            log("상단 연결 알림을 켬");
+            refresh();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("상단 연결 알림 끄기")
+                .setMessage("알림을 끄면 안드로이드가 배터리 절약을 위해 워치 연결을 끊을 수 있어요. "
+                        + "메신저 알림의 '알림 접근'이 켜져 있으면 대부분 계속 연결돼요. 끊기면 다시 켜 주세요.")
+                .setPositiveButton("끄기", (d, w) -> {
+                    LinkService.setStatusNotification(this, false);
+                    log("상단 연결 알림을 끔");
+                    refresh();
+                })
+                .setNegativeButton("취소", null)
+                .show();
     }
 
     private void yieldToMiFitness() {
