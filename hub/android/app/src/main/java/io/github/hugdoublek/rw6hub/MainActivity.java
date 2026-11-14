@@ -35,7 +35,37 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
     private SharedPreferences prefs;
     private WatchLink link;
     private TextView accountView, keyView, addrView, stateView, infoView, logView;
-    private Button connectBtn;
+    private Button connectBtn, mifitBtn;
+    private TextView mifitWarn;
+    private static final String[] MIFIT = {"com.mi.health", "com.xiaomi.wearable"};
+
+    /** 설치돼 있고 '근처 기기'(블루투스) 권한이 켜진 Mi Fitness 패키지, 없으면 null */
+    private String miFitnessWithBt() {
+        PackageManager pm = getPackageManager();
+        for (String pkg : MIFIT) {
+            try {
+                pm.getPackageInfo(pkg, 0);
+                String perm = Build.VERSION.SDK_INT >= 31 ? Manifest.permission.BLUETOOTH_CONNECT : Manifest.permission.BLUETOOTH;
+                if (pm.checkPermission(perm, pkg) == PackageManager.PERMISSION_GRANTED) return pkg;
+            } catch (PackageManager.NameNotFoundException ignored) {}
+        }
+        return null;
+    }
+
+    private String installedMiFitness() {
+        for (String pkg : MIFIT) {
+            try { getPackageManager().getPackageInfo(pkg, 0); return pkg; } catch (PackageManager.NameNotFoundException ignored) {}
+        }
+        return null;
+    }
+
+    private void openMiFitnessSettings() {
+        String pkg = installedMiFitness();
+        if (pkg == null) return;
+        Intent i = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:" + pkg));
+        startActivity(i);
+    }
 
     @Override
     protected void onCreate(Bundle b) {
@@ -93,6 +123,12 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         root.addView(stateView);
         infoView = text();
         root.addView(infoView);
+        // Mi Fitness가 워치를 몇 분마다 가져가 연결이 끊기던 원인 → 블루투스 권한이 켜져 있으면 경고
+        mifitWarn = text();
+        mifitWarn.setTextColor(android.graphics.Color.rgb(255, 170, 120));
+        root.addView(mifitWarn);
+        mifitBtn = button("Mi Fitness 블루투스 권한 끄러 가기", v -> openMiFitnessSettings());
+        root.addView(mifitBtn);
         connectBtn = button("연결 (계속 유지)", v -> { askPermissions(); LinkService.start(this); });
         root.addView(connectBtn);
         root.addView(button("연결 해제 · Mi Fitness에 양보", v -> yieldToMiFitness()));
@@ -147,6 +183,12 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                 ? "모델 " + link.watchModel() + " · 펌웨어 " + link.watchFirmware() : "");
         connectBtn.setEnabled(!link.wantsConnection());
         logView.setText(link.logText());
+        boolean yielded = prefs.getBoolean("yielded", false);
+        boolean warn = !yielded && miFitnessWithBt() != null;
+        mifitWarn.setText(warn ? "⚠ Mi Fitness가 워치를 몇 분마다 가져가서 연결이 끊기고, 통화 소리가 스피커↔일반으로 바뀔 수 있어요. "
+                + "Mi Fitness → 권한 → '근처 기기'를 '허용 안 함'으로 바꿔 주세요." : "");
+        mifitWarn.setVisibility(warn ? View.VISIBLE : View.GONE);
+        mifitBtn.setVisibility(warn ? View.VISIBLE : View.GONE);
     }
 
     private void showInstalled() {
@@ -203,12 +245,25 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
 
     private void yieldToMiFitness() {
         LinkService.stop(this, "Mi Fitness에 양보");
-        log("연결을 놓음. Mi Fitness를 열면 다시 연결됩니다.");
-        for (String pkg : new String[]{"com.mi.health", "com.xiaomi.wearable"}) {
-            Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
-            if (i != null) { startActivity(i); break; }
+        log("연결을 놓음.");
+        if (installedMiFitness() == null) return;
+        if (miFitnessWithBt() != null) {
+            for (String pkg : MIFIT) {
+                Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
+                if (i != null) { startActivity(i); break; }
+            }
+            return;
         }
+        new AlertDialog.Builder(this)
+                .setTitle("Mi Fitness에 양보")
+                .setMessage("Mi Fitness의 '근처 기기' 권한이 꺼져 있어서 지금은 워치에 붙을 수 없어요.\n\n"
+                        + "Mi Fitness → 권한 → 근처 기기를 '허용'으로 바꾼 뒤 Mi Fitness를 여세요. "
+                        + "다 쓰고 Mi Manager로 돌아올 때는 다시 '허용 안 함'으로 바꾸고 '연결'을 누르면 돼요.")
+                .setPositiveButton("권한 설정 열기", (d, w) -> openMiFitnessSettings())
+                .setNegativeButton("닫기", null)
+                .show();
     }
+
 
     // ---------------- 계정 ----------------
 
