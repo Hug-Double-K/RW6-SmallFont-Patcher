@@ -271,6 +271,7 @@ public final class XiaoAi {
             final String fq = q, fa = a;
             h.post(() -> {
                 if (myGen != gen) return;
+                if (!fq.isEmpty()) send(partial(fq), "들은 말");   // 말풍선에는 사용자가 한 말
                 showText(fa, false);
                 voice.speak(fa);
                 active = false;
@@ -281,16 +282,10 @@ public final class XiaoAi {
 
     /** 답(또는 오류)을 화면에 띄우고 대화를 끝낸다 */
     private void showText(String text, boolean isError) {
-        // 시험: A(듣는 중 글자와 같은 형식) → 3초 뒤 B(토스트) → 3초 뒤 C(AI 글) → 3초 뒤 녹음 멈춤
+        // 0.37 시험 결과: 토스트(TEMPLATE_TOAST)가 화면에 바로 뜸. 녹음 멈춤은 답을 띄운 뒤에.
         final int myGen = gen;
-        send(partial("A " + text), "A 글자");
-        h.postDelayed(() -> { if (myGen == gen) send(instr(TEMPLATE_TOAST).msg(3, new Pb.W().str(1, "B " + text)), "B 토스트"); }, 3000);
-        h.postDelayed(() -> {
-            if (myGen != gen) return;
-            send(instr(LLM_TOAST_STREAM).msg(33, new Pb.W().str(1, "C " + text)), "C AI 글");
-            send(instr(LLM_FINISH_STREAM), "C 글 끝");
-        }, 6000);
-        h.postDelayed(() -> { if (myGen == gen) send(instr(STOP_CAPTURE), "녹음 멈춤"); }, 9000);
+        send(instr(TEMPLATE_TOAST).msg(3, new Pb.W().str(1, text)), "답 표시");
+        h.postDelayed(() -> { if (myGen == gen) send(instr(STOP_CAPTURE), "녹음 멈춤"); }, 3000);
         h.postDelayed(() -> { if (myGen == gen) send(instr(DIALOG_FINISH), "대화 끝"); }, 15000);
     }
 
