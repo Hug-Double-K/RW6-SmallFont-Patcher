@@ -239,6 +239,7 @@ public class InstallActivity extends Activity {
         b.setText(label);
         b.setAllCaps(false);
         b.setOnClickListener(l);
+        io.github.hugdoublek.rw6hub.Ui.spaced(b);
         return b;
     }
 

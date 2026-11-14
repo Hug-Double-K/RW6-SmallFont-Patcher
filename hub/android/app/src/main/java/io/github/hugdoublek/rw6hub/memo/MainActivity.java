@@ -372,6 +372,7 @@ public class MainActivity extends Activity {
         btn.setText(s);
         btn.setAllCaps(false);
         btn.setOnClickListener(l);
+        io.github.hugdoublek.rw6hub.Ui.spaced(btn);
         return btn;
     }
 
