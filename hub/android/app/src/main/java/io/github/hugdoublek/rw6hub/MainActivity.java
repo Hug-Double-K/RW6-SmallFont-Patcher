@@ -54,6 +54,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         super.onResume();
         link.addStateListener(this);
         refresh();
+        if (hasBtPermission()) LinkService.autoStart(this);
     }
 
     @Override
@@ -295,6 +296,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         e.apply();
         log("인증키 저장: " + d.name + " " + d.mac + (d.keys.size() > 1 ? " (후보 " + d.keys.size() + "개)" : ""));
         refresh();
+        if (hasBtPermission()) LinkService.autoStart(this); else askPermissions();
     }
 
     private void enterKey() {
@@ -309,6 +311,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                     if (k == null) { log("인증키 형식이 아님 (32자리 16진수)"); return; }
                     prefs.edit().putString("authKey", k).remove("authKeyAlt").apply();
                     log("인증키 저장 (직접 입력)");
+                    if (hasBtPermission()) LinkService.autoStart(this);
                     refresh();
                 })
                 .setNegativeButton("취소", null)
@@ -336,6 +339,13 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         if (!need.isEmpty()) requestPermissions(need.toArray(new String[0]), REQ_PERM);
     }
 
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (hasBtPermission()) LinkService.autoStart(this);
+        else log("블루투스(근처 기기) 권한이 없어 워치에 연결할 수 없어요");
+    }
+
     @SuppressWarnings("MissingPermission")
     private void pickDevice() {
         if (!hasBtPermission()) { askPermissions(); return; }
@@ -350,6 +360,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                 .setTitle("워치 선택")
                 .setItems(names, (d, w) -> {
                     prefs.edit().putString("mac", list.get(w).getAddress()).apply();
+                    LinkService.autoStart(this);
                     log("워치 선택: " + names[w].replace('\n', ' '));
                 })
                 .show();

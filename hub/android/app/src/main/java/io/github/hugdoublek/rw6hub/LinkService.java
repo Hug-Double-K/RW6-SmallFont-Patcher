@@ -23,7 +23,7 @@ public class LinkService extends Service implements WatchLink.StateListener {
     /** 연결 유지를 켠다. 서비스를 못 띄우는 상황이면 연결만 시작한다. */
     public static void start(Context c) {
         Context app = c.getApplicationContext();
-        app.getSharedPreferences("hub", MODE_PRIVATE).edit().putBoolean("keep", true).apply();
+        app.getSharedPreferences("hub", MODE_PRIVATE).edit().putBoolean("keep", true).putBoolean("yielded", false).apply();
         try {
             app.startForegroundService(new Intent(app, LinkService.class));
         } catch (Exception e) {
@@ -35,9 +35,17 @@ public class LinkService extends Service implements WatchLink.StateListener {
     /** 연결 유지를 끈다 (Mi Fitness에 양보). */
     public static void stop(Context c, String why) {
         Context app = c.getApplicationContext();
-        app.getSharedPreferences("hub", MODE_PRIVATE).edit().putBoolean("keep", false).apply();
+        app.getSharedPreferences("hub", MODE_PRIVATE).edit().putBoolean("keep", false).putBoolean("yielded", true).apply();
         WatchLink.get(app).stop(why);
         app.stopService(new Intent(app, LinkService.class));
+    }
+
+    /** 워치·인증키가 다 있고, 사용자가 Mi Fitness에 양보한 상태가 아니면 연결을 시작한다. */
+    public static void autoStart(Context c) {
+        android.content.SharedPreferences p = c.getApplicationContext().getSharedPreferences("hub", MODE_PRIVATE);
+        if (p.getBoolean("yielded", false)) return;
+        if (p.getString("mac", "").isEmpty() || p.getString("authKey", "").isEmpty()) return;
+        if (!WatchLink.get(c).wantsConnection()) start(c);
     }
 
     public static boolean keep(Context c) {

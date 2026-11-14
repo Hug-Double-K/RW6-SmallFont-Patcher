@@ -20,9 +20,9 @@ public final class NodeApi {
         if (l.isReady()) return Task.success(c.nodes());
         // 연결 중이거나 잠깐 끊긴 사이(다시 붙는 중)면 최대 12초 기다린다.
         // 연결 유지가 꺼져 있으면(앱이 막 켜진 경우 등) 켠다. 단, 사용자가 Mi Fitness에 양보했으면 그대로 둔다.
-        if (!l.wantsConnection() && LinkService.keep(c.app)) LinkService.start(c.app);
+        LinkService.autoStart(c.app);
         Task<List<Node>> t = new Task<>();
-        if (!l.wantsConnection() && !LinkService.keep(c.app)) { t.succeed(c.nodes()); return t; }
+        if (!l.wantsConnection()) { t.succeed(c.nodes()); return t; } // 양보 중이거나 설정이 없음
         Handler main = new Handler(Looper.getMainLooper());
         WatchLink.StateListener[] h = new WatchLink.StateListener[1];
         Runnable timeout = () -> { l.removeStateListener(h[0]); t.succeed(c.nodes()); };

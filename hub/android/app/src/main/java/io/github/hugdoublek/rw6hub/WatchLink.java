@@ -149,11 +149,11 @@ public final class WatchLink {
         if (!wantConnected || session != null || connecting) return;
         String mac = prefs.getString("mac", "");
         String key = prefs.getString("authKey", "");
-        if (mac.isEmpty() || key.isEmpty()) { setState("설정 필요 (워치·인증키)"); return; }
-        if (!hasBtPermission()) { setState("블루투스 권한 필요"); return; }
+        if (mac.isEmpty() || key.isEmpty()) { setState("설정 필요 (워치·인증키)"); log("연결 못 함: " + "설정 필요 (워치·인증키)"); return; }
+        if (!hasBtPermission()) { setState("블루투스 권한 필요"); log("연결 못 함: " + "블루투스 권한 필요"); return; }
         BluetoothManager bm = (BluetoothManager) app.getSystemService(Context.BLUETOOTH_SERVICE);
         BluetoothAdapter ad = bm == null ? null : bm.getAdapter();
-        if (ad == null || !ad.isEnabled()) { setState("블루투스 꺼짐"); scheduleRetry(); return; }
+        if (ad == null || !ad.isEnabled()) { setState("블루투스 꺼짐"); log("연결 못 함: " + "블루투스 꺼짐"); scheduleRetry(); return; }
 
         connecting = true;
         setState("연결 중…");
