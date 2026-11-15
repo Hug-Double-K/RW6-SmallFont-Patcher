@@ -176,6 +176,13 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
             @Override public void onStopTrackingTouch(android.widget.SeekBar sb) { }
         });
         root.addView(closeBar);
+        root.addView(button("시험: 화면 닫기 후보 보내기", v -> new AlertDialog.Builder(this)
+                .setTitle("워치에 답이 떠 있을 때 하나씩 누르세요")
+                .setItems(XiaoAi.CLOSE_TESTS, (d, w) -> {
+                    XiaoAi.get(this).closeTest(w);
+                    android.widget.Toast.makeText(this, XiaoAi.CLOSE_TESTS[w] + " 보냄", android.widget.Toast.LENGTH_SHORT).show();
+                }).setNegativeButton("닫기", null).show()));
+        root.addView(button("시험: 워치 무음 상태 조사", v -> link.probeQuiet()));
         TextView voiceInfo = text();
         voiceInfo.setText("음성 답변: 워치가 무음(방해 금지)이면 글자만, 아니면 워치 스피커로 읽어요");
         root.addView(voiceInfo);

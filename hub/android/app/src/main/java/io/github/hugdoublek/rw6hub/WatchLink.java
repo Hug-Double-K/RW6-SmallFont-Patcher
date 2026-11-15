@@ -85,6 +85,18 @@ public final class WatchLink {
     // ---- 워치 방해 금지(무음) 상태: 2/22 조회, 워치에서 바꾸면 2/23으로 알려 줌. system field 11 = TimingSetting ----
     private volatile int quietMode = 2;      // 0 항상 켬, 1 시간 지정, 2 끔, 3 스마트
     private volatile int quietFrom = -1, quietTo = -1;   // 분 단위
+    /** 진단: 워치 무음·방해 금지 상태를 알려 줄 만한 조회를 모두 보내 봄 (조회만, 설정은 안 바꿈) */
+    public void probeQuiet() {
+        if (!authed) { log("워치가 연결되어 있지 않음"); return; }
+        log("── 무음 상태 조사 시작 ──");
+        int[] sys = {22, 78, 90, 93, 10};
+        for (int id : sys) send(new Pb.W().varint(1, 2).varint(2, id));
+        for (int items : new int[]{1, 2, 4, 8, 16, 32, 64, 128, 256})
+            send(new Pb.W().varint(1, 2).varint(2, 14).msg(4, new Pb.W().msg(34, new Pb.W().varint(1, items))));
+        send(new Pb.W().varint(1, 14).varint(2, 1));   // 샤오아이 설정(음성 읽기 켬/끔)
+        send(new Pb.W().varint(1, 18).varint(2, 0));   // 미디어·음량
+    }
+
     public void refreshWatchQuiet() { if (authed) send(new Pb.W().varint(1, 2).varint(2, 22)); }
 
     /** 지금 워치가 방해 금지(무음) 중인지 */
@@ -299,6 +311,11 @@ public final class WatchLink {
                 // 분석용: 연결 유지 응답(2/1)만 빼고 워치가 보낸 PB를 모두 캡처
                 boolean keepalive = plain.length >= 4 && plain[0] == 0x08 && plain[1] == 2 && plain[2] == 0x10 && plain[3] == 1;
                 if (!keepalive) AivsCapture.addPb(plain);
+                // 진단: 워치가 보낸 것을 그대로 기록 (무음 상태를 어디로 알려 주는지 찾는 중). 퀵앱(20)·날씨(10)는 뺌
+                if (!keepalive && plain.length >= 2 && plain[0] == 0x08 && plain[1] != 20 && plain[1] != 10) {
+                    byte[] cut = plain.length > 48 ? java.util.Arrays.copyOf(plain, 48) : plain;
+                    log("[받음] " + Hex.of(cut) + (plain.length > 48 ? "… (" + plain.length + "B)" : ""));
+                }
             }
 
             @Override public void onPacket(int type, int id, List<Pb.Field> p) {

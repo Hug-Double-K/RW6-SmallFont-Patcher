@@ -100,6 +100,7 @@ public final class XiaoAi {
     }
 
     private void handle(byte[] d) {
+        if (d.length < 4) { log("음성 채널 짧은 신호: " + Hex.of(d)); return; }
         int i = 0;
         while (i + 4 <= d.length) {
             int type = ((d[i] & 0xFF) << 8) | (d[i + 1] & 0xFF);
@@ -344,6 +345,34 @@ public final class XiaoAi {
 
     private Pb.W instr(int resultType) {
         return new Pb.W().varint(1, resultType).varint(13, sendSession);
+    }
+
+    /** 시험: 샤오아이 화면을 닫게 하는 지시 후보들 (화면에 답이 떠 있을 때 하나씩 눌러 봄) */
+    public static final String[] CLOSE_TESTS = {
+            "1. 비서 상태 '쉬는 중' 알림", "2. 오류: 소리 없음", "3. 오류: 인식 시간 초과", "4. 오류: 알 수 없음",
+            "5. 대화 잘림 알림", "6. 앱 닫기(샤오아이)", "7. 앱 닫기(이름 없음)", "8. 듣기 끝", "9. 재생 멈춤", "10. 비서 오류 알림"};
+
+    public void closeTest(int n) {
+        h.post(() -> {
+            String label = "닫기 시험 " + (n + 1);
+            switch (n) {
+                case 0: raw(new Pb.W().varint(1, 14).varint(2, 5).msg(16, new Pb.W().msg(5, new Pb.W()
+                        .varint(1, 0).varint(2, 0).varint(3, 0).varint(4, 0).varint(5, 0).varint(6, 0))), label); break;
+                case 1: send(instr(85), label); break;
+                case 2: send(instr(112), label); break;
+                case 3: send(instr(91), label); break;
+                case 4: send(instr(5), label); break;
+                case 5: send(instr(APPLICATION_OPERATE).msg(18, new Pb.W().varint(1, 3).str(2, "小爱同学").str(3, "com.xiaomi.xiaoai")), label); break;
+                case 6: send(instr(APPLICATION_OPERATE).msg(18, new Pb.W().varint(1, 3).str(2, "").str(3, "")), label); break;
+                case 7: send(instr(END_LISTENING), label); break;
+                case 8: send(instr(274), label); break;
+                case 9: raw(new Pb.W().varint(1, 14).varint(2, 6).msg(16, new Pb.W().msg(6, new Pb.W().varint(1, 1).str(2, ""))), label); break;
+            }
+        });
+    }
+
+    private void raw(Pb.W packet, String label) {
+        if (!link().send(packet, ok -> log("→ " + label + (ok ? " ✓" : " ✘")))) log("워치에 보내지 못함 (연결 없음)");
     }
 
     private static String shortText(String t) { return t.length() > 40 ? t.substring(0, 40) + "…" : t; }
