@@ -289,7 +289,7 @@ public final class XiaoAi {
                 send(instr(RECOGNIZE_RESULT).msg(2, new Pb.W().bool(1, true).msg(2, new Pb.W().msg(1, new Pb.W().str(1, fq.isEmpty() ? "…" : fq)))), "최종 인식");
                 boolean app = cmd[0] != null && runCommand(cmd[0]);
                 showText(fa, !app);
-                voice.speak(fa);
+                voice.speak(fa, app ? 0 : System.currentTimeMillis() + prefs.getInt("aiCloseTenths", 100) * 100L);
                 active = false;
                 lastEndAt = System.currentTimeMillis();
             });
@@ -304,16 +304,13 @@ public final class XiaoAi {
         // 워치가 '읽는 중'으로 알게 하는 지시 (이게 있어야 SCO 소리를 받아들이는 듯)
         send(instr(SPEECHSYNTHESIZER_SPEAK).msg(11, new Pb.W().str(1, text)), "읽기 지시");
         if (!close) return;   // 타이머 등 워치 앱을 연 경우엔 그 화면을 그대로 둠
-        long ms = prefs.getInt("aiCloseTenths", 100) * 100L;
-        h.postDelayed(() -> {
-            if (myGen != gen || active) return;
-            // Mi Fitness는 [일반 카드 + DIALOG_FINISH]를 한 패킷에 묶어 보냄 → 그대로 따라 함
-            sendList("대화 끝 (화면 닫기)",
-                    instr(TEMPLATE_GENERAL).msg(4, new Pb.W()
-                            .msg(1, new Pb.W().str(1, "Gemini").str(2, shortText(text)))
-                            .str(2, "").str(4, "Gemini")),
-                    instr(DIALOG_FINISH));
-        }, ms);
+        // Mi Fitness 그대로: 읽기 지시 바로 뒤에 [일반 카드 + DIALOG_FINISH] 한 패킷.
+        // 워치는 소리 통로(SCO)가 닫힐 때 화면을 닫는 것으로 보여, 닫는 시각은 WatchVoice가 통로를 정한 시간까지 열어 두는 것으로 맞춤.
+        sendList("대화 끝 표시",
+                instr(TEMPLATE_GENERAL).msg(4, new Pb.W()
+                        .msg(1, new Pb.W().str(1, "Gemini").str(2, shortText(text)))
+                        .str(2, "").str(4, "Gemini")),
+                instr(DIALOG_FINISH));
     }
 
     /** Gemini가 낸 명령을 워치에서 실행 (샤오아이 알림 지시 ALERTS_SETALERT) */

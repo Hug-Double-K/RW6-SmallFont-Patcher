@@ -87,7 +87,11 @@ final class WatchVoice {
 
     private void log(String s) { WatchLink.get(app).log("[AI] " + s); }
 
-    void speak(String text) { main.post(() -> speakMain(text)); }
+    void speak(String text) { speak(text, 0); }
+
+    /** 워치는 '대화 끝'을 받은 뒤 소리 통로가 닫힐 때 화면을 닫는 듯 → 정한 시각까지 통로를 열어 둠 */
+    private volatile long holdUntil = 0;
+    void speak(String text, long holdUntilMs) { holdUntil = holdUntilMs; main.post(() -> speakMain(text)); }
 
     /** 질문이 시작될 때(워치가 HFP를 여는 순간) 미리 워치 소리 통로를 열어 둠 */
     void prepare() {
@@ -204,7 +208,12 @@ final class WatchVoice {
                 if (sco != null) mp.setPreferredDevice(sco);
                 else log("SCO 출력 장치가 목록에 없음 → 기본 경로로 재생 시도");
                 mp.setDataSource(f.getAbsolutePath());
-                mp.setOnCompletionListener(m -> { m.release(); main.postDelayed(this::unroute, 300); });
+                mp.setOnCompletionListener(m -> {
+                    m.release();
+                    long wait = Math.max(300, holdUntil - System.currentTimeMillis());
+                    if (wait > 300) log(String.format(java.util.Locale.US, "다 읽음 → %.1f초 뒤 닫기", wait / 1000f));
+                    main.postDelayed(this::unroute, wait);
+                });
                 Runnable watch = new Runnable() { public void run() {
                     try { if (!mp.isPlaying()) return; } catch (Exception e) { return; }
                     if (!vrAudio()) { log("재생 중 워치 통로 끊김 → 멈춤"); try { mp.stop(); mp.release(); } catch (Exception ignored) {} unroute(); return; }

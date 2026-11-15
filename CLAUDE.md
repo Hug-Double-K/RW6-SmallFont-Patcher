@@ -38,3 +38,4 @@
   - 날씨(Mi Fitness): 10/5 요청→워치 도시키 목록 응답, 10/6으로 키 갱신, 10/0·10/1·10/2(시간별). **KeyValue 값은 sint32(지그재그)**(15℃→30), 예보 RangeValue from=최고·to=최저, city_name 빈 값, aqi 키 'Good'/'Moderate', 기압 float Pa(101629.0). 연결 직후 Mi Fitness는 언어 'en_us', 2/3 시간, 4/0 워치페이스 목록 등 보냄.
   - 0.48: 위 순서대로 바꿈(DIALOG_FINISH는 슬라이더 시간 뒤), SPEAK(264) 추가, 날씨 sint32·from/to·10/6·영문 aqi.
   - 0.48 결과: **워치 스피커 소리 성공**(SPEAK 264 후 startVoiceRecognition → SCO 연결 → 재생). 날씨 10/6 응답 0(성공)·전송됨. 닫기는 아직 안 됨(DIALOG_FINISH 단독). 0.49: 닫기 = [TEMPLATE_GENERAL+DIALOG_FINISH] 한 패킷(Mi Fitness와 같게, 슬라이더 시간 뒤). 사용자 요청: 워치 무음(방해 금지)이면 소리 안 냄 → 2/22 조회(연결 때·질문마다), 2/23 워치 알림, system field 11 TimingSetting.timing_mode(0 켬·1 시간지정·2 끔·3 스마트, GB: 0 enabled/2 disabled).
+  - 0.49 결과: [카드+DIALOG_FINISH]를 소리 끝난 뒤(슬라이더 시간)에 보내도 안 닫힘. 가설: Mi Fitness는 FINISH를 소리 전에 보내고, 워치는 SCO(+BVRA:0)가 닫힐 때 화면을 닫음. 0.50: SPEAK 바로 뒤 [카드+FINISH] 즉시 전송, WatchVoice가 다 읽은 뒤에도 정한 시각까지 VR/SCO를 열어 두었다가 stopVoiceRecognition → 그때 닫히는지 시험.
