@@ -147,6 +147,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
             String r = AivsCapture.save(this);
             log(r == null ? "아직 모인 샤오아이 기록이 없어요. 워치 크라운을 길게 눌러 말해 본 뒤 다시 누르세요" : "저장: " + r);
         }));
+        root.addView(button("워치 날씨 지금 보내기", v -> { if (link.isReady()) WatchWeather.get(this).sendNow(); else log("워치가 연결되어 있지 않음"); }));
         root.addView(button("워치 시간 다시 맞추기", v -> { if (link.isReady()) link.syncTime(); else log("워치가 연결되어 있지 않음"); }));
 
         root.addView(header("AI 비서 (크라운 길게 누르기)"));

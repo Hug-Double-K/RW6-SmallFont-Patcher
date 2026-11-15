@@ -41,6 +41,11 @@ public final class WatchWeather {
     private WatchWeather(Context app) {
         this.app = app;
         this.prefs = app.getSharedPreferences("hub", Context.MODE_PRIVATE);
+        try {
+            String w = prefs.getString("wxCache", ""), a = prefs.getString("airCache", "");
+            if (!w.isEmpty()) lastWx = new JSONObject(w);
+            if (!a.isEmpty()) lastAir = new JSONObject(a);
+        } catch (Exception ignored) {}
         HandlerThread t = new HandlerThread("weather");
         t.start();
         h = new Handler(t.getLooper());
@@ -65,6 +70,8 @@ public final class WatchWeather {
         }
     };
 
+    public void sendNow() { log("날씨 받는 중…"); h.post(() -> update(true)); }
+
     /** 워치가 보낸 type 10 메시지 */
     public void onPacket(int id, List<Pb.Field> p) {
         if (id == 3) { log("워치가 날씨를 요청함"); h.post(() -> update(false)); }
@@ -79,12 +86,22 @@ public final class WatchWeather {
     }
 
     private void update(boolean force) {
+        boolean fresh = !force && lastWx != null && System.currentTimeMillis() - lastFetch < 15 * 60_000L;
+        if (!fresh) {
+            Exception err = null;
+            for (int i = 0; i < 3; i++) {
+                try { fetch(); err = null; break; }
+                catch (Exception e) { err = e; try { Thread.sleep(3000); } catch (InterruptedException ie) { return; } }
+            }
+            if (err != null) {
+                log("✘ 날씨 받기 실패: " + err.getMessage() + (lastWx != null ? " → 지난 날씨를 보냄" : " → 2분 뒤 다시"));
+                if (lastWx == null) { h.postDelayed(() -> update(true), 120_000); return; }
+            }
+        }
         try {
-            if (force || lastWx == null || System.currentTimeMillis() - lastFetch > 15 * 60_000L) fetch();
-            if (!link().isReady()) return;
-            sendAll();
+            if (link().isReady()) sendAll();
         } catch (Exception e) {
-            log("✘ " + e.getMessage());
+            log("✘ 보내기 오류: " + e.getMessage());
         }
     }
 
@@ -100,6 +117,7 @@ public final class WatchWeather {
                     + "&current=us_aqi&hourly=us_aqi&forecast_days=5&timezone=" + java.net.URLEncoder.encode(tz, "UTF-8"));
         } catch (Exception e) { lastAir = null; }
         lastFetch = System.currentTimeMillis();
+        prefs.edit().putString("wxCache", lastWx.toString()).putString("airCache", lastAir == null ? "" : lastAir.toString()).apply();
         JSONObject cur = lastWx.getJSONObject("current");
         JSONObject d = lastWx.getJSONObject("daily");
         summary = String.format(Locale.KOREA, "현재 %s, %.0f℃, 습도 %d%%, 바람 %.0fkm/h; 오늘 최저 %.0f℃ 최고 %.0f℃(%s); 내일 최저 %.0f℃ 최고 %.0f℃(%s)%s",
@@ -250,8 +268,9 @@ public final class WatchWeather {
 
     private static JSONObject getJson(String url) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-        c.setConnectTimeout(10000);
-        c.setReadTimeout(15000);
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(30000);
+        c.setRequestProperty("User-Agent", "MiManager/1.0");
         int code = c.getResponseCode();
         InputStream in = code < 400 ? c.getInputStream() : c.getErrorStream();
         ByteArrayOutputStream b = new ByteArrayOutputStream();
