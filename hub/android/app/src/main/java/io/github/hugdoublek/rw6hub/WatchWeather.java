@@ -115,6 +115,7 @@ public final class WatchWeather {
         lastWx = getJson("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon
                 + "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,uv_index"
                 + "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset"
+                + "&hourly=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m"
                 + "&timezone=" + java.net.URLEncoder.encode(tz, "UTF-8") + "&forecast_days=7");
         try {
             lastAir = getJson("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + lat + "&longitude=" + lon
@@ -198,8 +199,48 @@ public final class WatchWeather {
                                 new SimpleDateFormat("HH:mm", Locale.KOREA).format(new Date()));
                         log("워치에 보냄: " + sentText);
                         link().notifyChanged();
+                        sendHourly(id);
                     } else log("보내기 실패");
                 });
+    }
+
+    /** 시간별 예보 24시간 (10/2). Mi Fitness 기록 형식: {aqi, 날씨 {from 0, to 코드}, 기온 {from 0, to 기온}, 바람 {방향, 등급}} */
+    private void sendHourly(Pb.W id) {
+        try {
+            JSONObject hr = lastWx.optJSONObject("hourly");
+            if (hr == null) return;
+            JSONArray time = hr.getJSONArray("time"), temp = hr.getJSONArray("temperature_2m"), code = hr.getJSONArray("weather_code"),
+                    ws = hr.getJSONArray("wind_speed_10m"), wd = hr.getJSONArray("wind_direction_10m");
+            SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd'T'HH", Locale.US);
+            f.setTimeZone(TimeZone.getTimeZone(prefs.getString("tz", "Asia/Seoul")));
+            String nowHour = f.format(new Date());
+            int start = 0;
+            for (int i = 0; i < time.length(); i++) if (time.optString(i).startsWith(nowHour)) { start = i; break; }
+            JSONArray air = lastAir == null || lastAir.optJSONObject("hourly") == null ? null : lastAir.optJSONObject("hourly").optJSONArray("us_aqi");
+            Pb.W list = new Pb.W();
+            int n = 0;
+            for (int i = start; i < time.length() && n < 24; i++, n++) {
+                int a = air != null && i < air.length() && !air.isNull(i) ? air.optInt(i) : Math.max(aqiNow(), 0);
+                list.msg(1, new Pb.W()
+                        .msg(1, kv(aqiEn(a), a))
+                        .msg(2, range(0, cma(code.optInt(i))))
+                        .msg(3, range(0, (int) Math.round(temp.optDouble(i))))
+                        .msg(6, kv(String.valueOf(wd.optInt(i)), beaufort(ws.optDouble(i)))));
+            }
+            Pb.W forecast = new Pb.W().msg(1, id).msg(2, list);
+            link().send(new Pb.W().varint(1, 10).varint(2, 2).msg(12, new Pb.W().msg(2, forecast)),
+                    ok -> { if (!ok) log("시간별 예보 보내기 실패"); });
+        } catch (Exception e) {
+            log("✘ 시간별 예보: " + e.getMessage());
+        }
+    }
+
+    /** 폰의 현재 위치로 바꾸고 바로 날씨를 다시 받아 보냄 */
+    public void useLocation(double lat, double lon, String place) {
+        prefs.edit().putString("lat", String.format(Locale.US, "%.4f", lat)).putString("lon", String.format(Locale.US, "%.4f", lon))
+                .putString("place", place).apply();
+        log("위치를 바꿈: " + place);
+        sendNow();
     }
 
     private void sendCityKeys() {

@@ -381,7 +381,7 @@ public final class XiaoAi {
                 + "사용자가 조용히 해 달라거나 소리 내지 말라고(무음으로, 말하지 마 등) 하면 마지막 줄에 'CMD: VOICE OFF'를, 다시 소리로 말해 달라고 하면 'CMD: VOICE ON'을 써. 그때 A는 알겠다고 짧게 말해. "
                 + "그 밖에는 CMD 줄을 쓰지 마. "
                 + "날씨를 물으면 다음 실제 날씨 정보로만 답해(지어내지 마): " + (WatchWeather.get(app).summary().isEmpty() ? "(날씨 정보 없음)" : WatchWeather.get(app).summary()) + ". "
-                + "사용자는 서울 광진구 구의1동에 있어. 지금은 한국 시간 " + now + " 이야.";
+                + "사용자는 " + prefs.getString("place", "서울 광진구 구의1동") + "에 있어. 지금은 한국 시간 " + now + " 이야.";
         JSONObject body = new JSONObject();
         body.put("system_instruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", sys))));
         JSONArray parts = new JSONArray();

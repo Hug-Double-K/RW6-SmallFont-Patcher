@@ -29,7 +29,7 @@ import java.util.Set;
 /** Mi Manager 첫 화면: 연결 상태 · 기능(알림·메모) · 계정·워치 설정 · 기록. */
 public class MainActivity extends Activity implements WatchLink.StateListener {
 
-    private static final int REQ_LOGIN = 1, REQ_PERM = 2;
+    private static final int REQ_LOGIN = 1, REQ_PERM = 2, REQ_LOC = 3;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
@@ -109,6 +109,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
             ACCENT = 0xFFFF6FA8, OK = 0xFF3DDC97, WARN = 0xFFFFB067, BAD = 0xFFFF6B6B;
 
     private View stateDot;
+    private TextView placeSub;
     private TextView weatherView, langSub, aiKeySub, setupTitle, logToggle;
     private android.widget.Switch aiSwitch, voiceSwitch, notiSwitch, diagSwitch;
     private LinearLayout setupBox;
@@ -196,7 +197,9 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         c = card(root, "워치");
         langSub = row(c, "언어", "", v -> pickLanguage());
         line(c);
-        row(c, "날씨 지금 보내기", "평소엔 1시간마다 자동으로 보내요", v -> {
+        placeSub = row(c, "현재 위치로 날씨 업데이트", "", v -> updateLocation());
+        line(c);
+        row(c, "날씨 지금 보내기", "평소엔 1시간마다 자동으로 보내요 (현재·시간별·7일)", v -> {
             if (link.isReady()) { WatchWeather.get(this).sendNow(); toast("날씨를 보내는 중"); } else toast("워치가 연결되어 있지 않아요");
         });
         line(c);
@@ -316,6 +319,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         String loc = prefs.getString("locale", "ko_KR");
         langSub.setText(loc.equals("ko_KR") ? "한국어" : loc.equals("zh_CN") ? "中文" : "English");
         notiSwitch.setChecked(LinkService.statusNotification(this));
+        placeSub.setText("지금 위치: " + prefs.getString("place", "서울 광진구 구의1동"));
 
         // 계정 · 연결 정보
         String user = prefs.getString("userId", "");
@@ -640,9 +644,77 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         if (!need.isEmpty()) requestPermissions(need.toArray(new String[0]), REQ_PERM);
     }
 
+    // ---------------- 위치 ----------------
+
+    private boolean hasLocation() {
+        return checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @SuppressWarnings("MissingPermission")
+    private void updateLocation() {
+        if (!hasLocation()) {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION}, REQ_LOC);
+            return;
+        }
+        android.location.LocationManager lm = (android.location.LocationManager) getSystemService(LOCATION_SERVICE);
+        if (lm == null) { toast("위치를 쓸 수 없어요"); return; }
+        String provider = lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) ? android.location.LocationManager.NETWORK_PROVIDER
+                : lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ? android.location.LocationManager.GPS_PROVIDER : null;
+        if (provider == null) { toast("폰의 위치(GPS)를 켜 주세요"); return; }
+        toast("현재 위치를 찾는 중…");
+        final boolean[] done = {false};
+        java.util.function.Consumer<android.location.Location> got = loc -> {
+            if (done[0]) return;
+            done[0] = true;
+            if (loc == null) { toast("위치를 찾지 못했어요. 잠시 뒤 다시 해 보세요"); return; }
+            onLocation(loc);
+        };
+        if (Build.VERSION.SDK_INT >= 30) {
+            lm.getCurrentLocation(provider, null, getMainExecutor(), got::accept);
+        } else {
+            lm.requestSingleUpdate(provider, new android.location.LocationListener() {
+                @Override public void onLocationChanged(android.location.Location l) { got.accept(l); }
+                @Override public void onStatusChanged(String p, int s, Bundle e) {}
+                @Override public void onProviderEnabled(String p) {}
+                @Override public void onProviderDisabled(String p) {}
+            }, Looper.getMainLooper());
+        }
+        // 15초 안에 못 찾으면 마지막으로 알던 위치라도 씀
+        ui.postDelayed(() -> got.accept(lm.getLastKnownLocation(provider)), 15000);
+    }
+
+    private void onLocation(android.location.Location loc) {
+        double lat = loc.getLatitude(), lon = loc.getLongitude();
+        new Thread(() -> {
+            String place = String.format(java.util.Locale.US, "%.3f, %.3f", lat, lon);
+            try {
+                List<android.location.Address> list = new android.location.Geocoder(this, java.util.Locale.KOREA).getFromLocation(lat, lon, 1);
+                if (list != null && !list.isEmpty()) {
+                    android.location.Address a = list.get(0);
+                    StringBuilder sb = new StringBuilder();
+                    for (String p : new String[]{a.getAdminArea(), a.getSubLocality() != null ? a.getSubLocality() : a.getLocality(), a.getThoroughfare()}) {
+                        if (p != null && !p.isEmpty() && sb.indexOf(p) < 0) sb.append(sb.length() > 0 ? " " : "").append(p);
+                    }
+                    if (sb.length() > 0) place = sb.toString();
+                }
+            } catch (Exception ignored) {}
+            final String fp = place;
+            ui.post(() -> {
+                WatchWeather.get(this).useLocation(lat, lon, fp);
+                toast("위치: " + fp);
+                refresh();
+            });
+        }).start();
+    }
+
     @Override
     public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
         super.onRequestPermissionsResult(req, perms, res);
+        if (req == REQ_LOC) {
+            if (hasLocation()) updateLocation(); else toast("위치 권한이 없어 현재 위치를 쓸 수 없어요");
+            return;
+        }
         if (hasBtPermission()) LinkService.autoStart(this);
         else log("블루투스(근처 기기) 권한이 없어 워치에 연결할 수 없어요");
     }
