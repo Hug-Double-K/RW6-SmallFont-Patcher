@@ -290,7 +290,8 @@ public final class XiaoAi {
                 send(instr(RECOGNIZE_RESULT).msg(2, new Pb.W().bool(1, true).msg(2, new Pb.W().msg(1, new Pb.W().str(1, fq.isEmpty() ? "…" : fq)))), "최종 인식");
                 boolean app = cmd[0] != null && runCommand(cmd[0]);
                 showText(fa, !app);
-                voice.speak(fa);
+                if (prefs.getBoolean("aiVoice", true)) voice.speak(fa);
+                else log("음성 답변 꺼짐 → 글자만 표시");
                 active = false;
                 lastEndAt = System.currentTimeMillis();
             });
@@ -319,6 +320,12 @@ public final class XiaoAi {
         log("명령: " + c);
         try {
             String[] w = c.split("\\s+");
+            if (w[0].equalsIgnoreCase("VOICE") && w.length >= 2) {
+                boolean on = w[1].equalsIgnoreCase("ON");
+                prefs.edit().putBoolean("aiVoice", on).apply();
+                log("음성 답변 " + (on ? "켬" : "끔"));
+                return false;
+            }
             SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
             iso.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Seoul"));
             if (w[0].equalsIgnoreCase("TIMER") && w.length >= 2) {
@@ -408,7 +415,9 @@ public final class XiaoAi {
                 + "출력 형식은 반드시 다음과 같아. 첫 줄: 'Q: ' 뒤에 사용자가 한 말을 그대로 받아 적은 것. 둘째 줄부터: 'A: ' 뒤에 답. "
                 + "소리가 없거나 알아들을 수 없으면 Q는 '(안 들림)'으로 하고 A에서 다시 말해 달라고 해. "
                 + "사용자가 타이머를 맞춰 달라고 하면 마지막 줄에 'CMD: TIMER <전체 초>'를 써(예: 1분 45초 → CMD: TIMER 105). "
-                + "알람을 맞춰 달라고 하면 마지막 줄에 'CMD: ALARM <yyyy-MM-ddTHH:mm> <이름>'을 써(지금 이후 가장 가까운 그 시각). 그때 A는 맞췄다고 짧게 말해. 그 밖에는 CMD 줄을 쓰지 마. "
+                + "알람을 맞춰 달라고 하면 마지막 줄에 'CMD: ALARM <yyyy-MM-ddTHH:mm> <이름>'을 써(지금 이후 가장 가까운 그 시각). 그때 A는 맞췄다고 짧게 말해. "
+                + "사용자가 조용히 해 달라거나 소리 내지 말라고(무음으로, 말하지 마 등) 하면 마지막 줄에 'CMD: VOICE OFF'를, 다시 소리로 말해 달라고 하면 'CMD: VOICE ON'을 써. 그때 A는 알겠다고 짧게 말해. "
+                + "그 밖에는 CMD 줄을 쓰지 마. "
                 + "날씨를 물으면 다음 실제 날씨 정보로만 답해(지어내지 마): " + (WatchWeather.get(app).summary().isEmpty() ? "(날씨 정보 없음)" : WatchWeather.get(app).summary()) + ". "
                 + "사용자는 서울 광진구 구의1동에 있어. 지금은 한국 시간 " + now + " 이야.";
         JSONObject body = new JSONObject();

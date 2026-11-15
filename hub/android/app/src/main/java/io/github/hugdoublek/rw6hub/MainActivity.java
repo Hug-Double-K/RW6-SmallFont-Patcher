@@ -158,9 +158,11 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
             refresh();
         }));
         root.addView(button("Gemini API 키 · 모델 설정", v -> aiSettings()));
-        TextView voiceInfo = text();
-        voiceInfo.setText("음성 답변: 워치가 무음(방해 금지)이면 글자만, 아니면 워치 스피커로 읽어요");
-        root.addView(voiceInfo);
+        android.widget.CheckBox voiceBox = new android.widget.CheckBox(this);
+        voiceBox.setText("음성 답변 (워치 스피커로 읽기) — 워치에 \"조용히 해\" / \"소리로 말해\"라고 해도 바뀌어요");
+        voiceBox.setChecked(prefs.getBoolean("aiVoice", true));
+        voiceBox.setOnCheckedChangeListener((b, on) -> prefs.edit().putBoolean("aiVoice", on).apply());
+        root.addView(voiceBox);
 
         root.addView(header("계정 (샤오미, 중국 지역)"));
         accountView = text();

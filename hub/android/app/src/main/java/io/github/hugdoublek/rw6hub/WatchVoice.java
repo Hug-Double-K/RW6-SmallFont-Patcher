@@ -176,9 +176,6 @@ final class WatchVoice {
             return;
         }
         if (text == null) return;
-        int scoVol = am.getStreamVolume(6), scoMax = am.getStreamMaxVolume(6);
-        log("워치 통화 음량(스트림 6): " + scoVol + "/" + scoMax + (lastVgs >= 0 ? " · 워치가 마지막에 알린 값 " + lastVgs : ""));
-        if (scoVol == 0 || lastVgs == 0) { log("워치가 무음이라 글자만 표시"); return; }
         if (!ttsReady) { pending = text; return; }
         // TTS 엔진이 오디오 설정을 무시하고 폰 스피커로 내는 경우가 있어, 파일로 만든 뒤 직접 '통화 음성'으로 재생
         java.io.File f = new java.io.File(app.getCacheDir(), "answer.wav");
