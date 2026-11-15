@@ -258,6 +258,7 @@ public final class XiaoAi {
             String q = "", a;
             try {
                 long t0 = System.currentTimeMillis();
+                WatchWeather.get(app).refreshForAi();
                 String reply = gemini(key, prefs.getString("aiModel", DEFAULT_MODEL), ogg);
                 // 명령 줄(CMD:)은 따로 떼어 냄
                 StringBuilder rest = new StringBuilder();
@@ -304,7 +305,7 @@ public final class XiaoAi {
             // 샤오아이 화면을 닫고 시계 화면으로
             send(instr(END_LISTENING), "듣기 끝");
             send(instr(DIALOG_FINISH), "대화 끝");
-            send(instr(APPLICATION_OPERATE).msg(18, new Pb.W().varint(1, 3).str(2, "小爱同学").str(3, "")), "샤오아이 닫기");
+            goHome();
         }, ms);
     }
 
@@ -331,6 +332,41 @@ public final class XiaoAi {
         // AlertsSetAlert: id·type·datetime·circle(ONCE)·circle_extra·offset·event (모두 필수 문자열은 빈 값이라도 넣음)
         return new Pb.W().str(1, String.valueOf(System.currentTimeMillis() / 1000)).varint(2, type).str(3, datetime)
                 .varint(4, 0).str(5, "").str(6, offset).str(7, event);
+    }
+
+    // ---- 시계 화면으로 돌아가기: 지금 쓰는 워치페이스를 다시 '설정'하면 워치가 시계 화면을 띄움 ----
+    private String currentFace;
+    private boolean faceListen;
+
+    private void goHome() {
+        if (!faceListen) {
+            faceListen = true;
+            link().addPacketListener((type, id, p) -> {
+                if (type != 4 || id != 0) return;
+                List<Pb.Field> wf = Pb.sub(p, 6);
+                List<Pb.Field> list = wf == null ? null : Pb.sub(wf, 1);
+                if (list == null) return;
+                for (Pb.Field f : list) {
+                    if (f.number != 1 || f.bytes == null) continue;
+                    List<Pb.Field> item = Pb.parse(f.bytes);
+                    Pb.Field cur = Pb.find(item, 3), fid = Pb.find(item, 1);
+                    if (cur != null && cur.varint == 1 && fid != null) {
+                        boolean first = currentFace == null;
+                        currentFace = new String(fid.bytes, StandardCharsets.UTF_8);
+                        if (first) h.post(this::setFace);
+                    }
+                }
+            });
+        }
+        if (currentFace != null) setFace();
+        // 매번 목록을 다시 받아 바뀐 워치페이스도 따라감
+        link().send(new Pb.W().varint(1, 4).varint(2, 0), null);
+    }
+
+    private void setFace() {
+        if (currentFace == null) return;
+        link().send(new Pb.W().varint(1, 4).varint(2, 1).msg(6, new Pb.W().str(2, currentFace)),
+                ok -> log("→ 시계 화면으로" + (ok ? " ✓" : " ✘")));
     }
 
     private Pb.W partial(String text) {
@@ -365,6 +401,7 @@ public final class XiaoAi {
                 + "소리가 없거나 알아들을 수 없으면 Q는 '(안 들림)'으로 하고 A에서 다시 말해 달라고 해. "
                 + "사용자가 타이머를 맞춰 달라고 하면 마지막 줄에 'CMD: TIMER <전체 초>'를 써(예: 1분 45초 → CMD: TIMER 105). "
                 + "알람을 맞춰 달라고 하면 마지막 줄에 'CMD: ALARM <yyyy-MM-ddTHH:mm> <이름>'을 써(지금 이후 가장 가까운 그 시각). 그때 A는 맞췄다고 짧게 말해. 그 밖에는 CMD 줄을 쓰지 마. "
+                + "날씨를 물으면 다음 실제 날씨 정보로만 답해(지어내지 마): " + (WatchWeather.get(app).summary().isEmpty() ? "(날씨 정보 없음)" : WatchWeather.get(app).summary()) + ". "
                 + "사용자는 서울 광진구 구의1동에 있어. 지금은 한국 시간 " + now + " 이야.";
         JSONObject body = new JSONObject();
         body.put("system_instruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", sys))));

@@ -231,6 +231,7 @@ public final class WatchLink {
                 syncTime();
                 sendLanguage(prefs.getString("locale", "ko_KR"));
                 QuickApps.get(app).onConnected();
+                WatchWeather.get(app).onConnected();
             }
 
             @Override public void onDeviceInfo(String model, String fw, String serial) {
@@ -271,6 +272,7 @@ public final class WatchLink {
             @Override public void onPacket(int type, int id, List<Pb.Field> p) {
                 if (type == 14) log("샤오아이 메시지 id=" + id);
                 XiaoAi.get(app).onPacket(type, id, p);
+                if (type == 10) WatchWeather.get(app).onPacket(id, p);
                 if (type == 2 && id == 1) {
                     List<Pb.Field> sys = Pb.sub(p, 4);
                     List<Pb.Field> st = sys == null ? null : Pb.sub(sys, 2);

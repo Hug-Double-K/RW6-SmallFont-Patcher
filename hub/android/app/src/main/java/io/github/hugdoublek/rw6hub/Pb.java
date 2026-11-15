@@ -38,6 +38,14 @@ public final class Pb {
             return varint(field, ((long) ((value << 1) ^ (value >> 31))) & 0xFFFFFFFFL);
         }
 
+        /** float (fixed32, 리틀엔디언) */
+        public W fixed32(int field, float value) {
+            raw(((long) field << 3) | 5);
+            int b = Float.floatToIntBits(value);
+            out.write(b & 0xFF); out.write((b >> 8) & 0xFF); out.write((b >> 16) & 0xFF); out.write((b >>> 24) & 0xFF);
+            return this;
+        }
+
         public W bool(int field, boolean value) {
             return varint(field, value ? 1 : 0);
         }
