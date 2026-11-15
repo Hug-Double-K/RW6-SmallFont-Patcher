@@ -126,6 +126,7 @@ public final class XiaoAi {
         log("크라운 질문 시작 (세션 " + session + ")");
         openDecoder();
         voice.prepare();
+        link().refreshWatchQuiet();
         final int myGen = gen;
         // 시험: 듣는 동안 화면에 글자가 뜨는지 세션 번호별로 확인
         h.postDelayed(() -> { if (myGen == gen && !stopped) send(partial("듣는 중…"), "듣는 중 글자"); }, 800);
@@ -306,7 +307,12 @@ public final class XiaoAi {
         long ms = prefs.getInt("aiCloseTenths", 100) * 100L;
         h.postDelayed(() -> {
             if (myGen != gen || active) return;
-            send(instr(DIALOG_FINISH), "대화 끝 (화면 닫기)");
+            // Mi Fitness는 [일반 카드 + DIALOG_FINISH]를 한 패킷에 묶어 보냄 → 그대로 따라 함
+            sendList("대화 끝 (화면 닫기)",
+                    instr(TEMPLATE_GENERAL).msg(4, new Pb.W()
+                            .msg(1, new Pb.W().str(1, "Gemini").str(2, shortText(text)))
+                            .str(2, "").str(4, "Gemini")),
+                    instr(DIALOG_FINISH));
         }, ms);
     }
 
@@ -341,6 +347,16 @@ public final class XiaoAi {
 
     private Pb.W instr(int resultType) {
         return new Pb.W().varint(1, resultType).varint(13, sendSession);
+    }
+
+    private static String shortText(String t) { return t.length() > 40 ? t.substring(0, 40) + "…" : t; }
+
+    /** 지시 여러 개를 한 패킷(한 목록)에 */
+    private void sendList(String label, Pb.W... list) {
+        Pb.W l = new Pb.W();
+        for (Pb.W i : list) l.msg(1, i);
+        Pb.W packet = new Pb.W().varint(1, 14).varint(2, 0).msg(16, new Pb.W().msg(1, l));
+        if (!link().send(packet, ok -> log("→ " + label + (ok ? " ✓" : " ✘")))) log("워치에 보내지 못함 (연결 없음)");
     }
 
     private void send(Pb.W instruction, String label) {

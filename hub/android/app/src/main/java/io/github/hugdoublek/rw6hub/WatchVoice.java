@@ -152,6 +152,7 @@ final class WatchVoice {
             return;
         }
         if (text == null) return;
+        if (WatchLink.get(app).watchQuiet()) { log("워치가 방해 금지(무음) 중이라 글자만 표시"); return; }
         if (silentNow(am) && !app.getSharedPreferences("hub", Context.MODE_PRIVATE).getBoolean("aiVoiceSilent", true)) {
             log("무음 모드라 글자만 표시");
             return;
