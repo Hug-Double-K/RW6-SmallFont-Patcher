@@ -43,6 +43,39 @@ final class WatchVoice {
         android.content.IntentFilter f = new android.content.IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED);
         if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(r, f, Context.RECEIVER_EXPORTED);
         else app.registerReceiver(r, f);
+        try {
+            android.bluetooth.BluetoothManager bm = (android.bluetooth.BluetoothManager) app.getSystemService(Context.BLUETOOTH_SERVICE);
+            bm.getAdapter().getProfileProxy(app, new android.bluetooth.BluetoothProfile.ServiceListener() {
+                @Override public void onServiceConnected(int p, android.bluetooth.BluetoothProfile proxy) { hs = (android.bluetooth.BluetoothHeadset) proxy; }
+                @Override public void onServiceDisconnected(int p) { hs = null; }
+            }, android.bluetooth.BluetoothProfile.HEADSET);
+        } catch (Exception e) { /* 권한 없음 등 */ }
+    }
+
+    private volatile android.bluetooth.BluetoothHeadset hs;
+    private android.bluetooth.BluetoothDevice vrDev;
+
+    /** 헤드셋 '음성 인식' 모드로 SCO를 엶 (통화로 착각하지 않게) */
+    private boolean startVr() {
+        try {
+            if (hs == null) { log("헤드셋 프로필 준비 안 됨"); return false; }
+            String mac = app.getSharedPreferences("hub", Context.MODE_PRIVATE).getString("mac", "");
+            for (android.bluetooth.BluetoothDevice d : hs.getConnectedDevices()) {
+                if (mac.equalsIgnoreCase(d.getAddress())) {
+                    boolean ok = hs.startVoiceRecognition(d);
+                    log("음성 인식 모드로 워치 소리 요청: " + (ok ? "받아들여짐" : "거절됨"));
+                    if (ok) vrDev = d;
+                    return ok;
+                }
+            }
+            log("워치 헤드셋 연결이 없음");
+        } catch (Exception e) { log("음성 인식 모드 오류: " + e.getMessage()); }
+        return false;
+    }
+
+    private void stopVr() {
+        try { if (hs != null && vrDev != null) hs.stopVoiceRecognition(vrDev); } catch (Exception ignored) {}
+        vrDev = null;
     }
 
     private void log(String s) { WatchLink.get(app).log("[AI] " + s); }
@@ -57,10 +90,18 @@ final class WatchVoice {
             int m = am.getMode();
             if (m == AudioManager.MODE_IN_CALL || m == AudioManager.MODE_RINGTONE) return;
             if (tts == null) speakMain(null);   // TTS 미리 준비
-            main.postDelayed(() -> { if (!routed) route(am); }, 600);   // HFP가 붙을 시간
             main.removeCallbacks(giveUp);
             main.postDelayed(giveUp, 40_000);
         });
+    }
+
+    /** 폰이 무음·진동이거나 방해 금지 중인지 */
+    private boolean silentNow(AudioManager am) {
+        if (am.getRingerMode() != AudioManager.RINGER_MODE_NORMAL) return true;
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) app.getSystemService(Context.NOTIFICATION_SERVICE);
+            return nm != null && nm.getCurrentInterruptionFilter() > android.app.NotificationManager.INTERRUPTION_FILTER_ALL;
+        } catch (Exception e) { return false; }
     }
 
     private final Runnable giveUp = this::unroute;
@@ -104,6 +145,10 @@ final class WatchVoice {
             return;
         }
         if (text == null) return;
+        if (silentNow(am) && !app.getSharedPreferences("hub", Context.MODE_PRIVATE).getBoolean("aiVoiceSilent", true)) {
+            log("무음 모드라 글자만 표시");
+            return;
+        }
         if (!ttsReady) { pending = text; return; }
         // TTS 엔진이 오디오 설정을 무시하고 폰 스피커로 내는 경우가 있어, 파일로 만든 뒤 직접 '통화 음성'으로 재생
         java.io.File f = new java.io.File(app.getCacheDir(), "answer.wav");
@@ -115,25 +160,25 @@ final class WatchVoice {
     private void play(java.io.File f) {
         AudioManager am = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
         if (am == null) return;
+        startVr();
         if (!routed) route(am);
-        log("소리 직전 상태: " + state(am));
-        if (!onWatch(am)) {
-            // 한 번 더 요청하고 1.5초 기다려 봄
-            routed = false;
-            route(am);
-            main.postDelayed(() -> {
-                log("다시 확인: " + state(am));
-                if (!onWatch(am)) { log("워치 소리 통로(SCO)가 없음 → 소리 생략 (폰에서 안 냄)"); unroute(); return; }
-                start(am, f);
-            }, 1500);
+        waitSco(am, f, 0);
+    }
+
+    /** 실제 SCO가 열릴 때까지 최대 3초 기다렸다가 재생 */
+    private void waitSco(AudioManager am, java.io.File f, int tries) {
+        if (scoUp) { log("소리 직전 상태: " + state(am)); start(am, f); return; }
+        if (tries >= 15) {
+            log("워치 소리 통로(SCO)가 안 열림 → 소리 생략 (폰에서 안 냄). " + state(am));
+            unroute();
             return;
         }
-        start(am, f);
+        main.postDelayed(() -> waitSco(am, f, tries + 1), 200);
     }
 
     private void start(AudioManager am, java.io.File f) {
         main.postDelayed(() -> {
-            if (!onWatch(am)) { log("워치 소리 통로가 끊김 → 소리 생략"); unroute(); return; }
+            if (!scoUp) { log("워치 소리 통로가 끊김 → 소리 생략"); unroute(); return; }
             try {
                 android.media.MediaPlayer mp = new android.media.MediaPlayer();
                 mp.setAudioAttributes(new AudioAttributes.Builder()
@@ -144,7 +189,7 @@ final class WatchVoice {
                 // 재생 중 통로가 끊기면 폰 스피커로 넘어가지 않게 바로 멈춤
                 Runnable watch = new Runnable() { public void run() {
                     try { if (!mp.isPlaying()) return; } catch (Exception e) { return; }
-                    if (!onWatch(am)) { log("재생 중 워치 통로 끊김 → 멈춤"); try { mp.stop(); mp.release(); } catch (Exception ignored) {} unroute(); return; }
+                    if (!scoUp) { log("재생 중 워치 통로 끊김 → 멈춤"); try { mp.stop(); mp.release(); } catch (Exception ignored) {} unroute(); return; }
                     main.postDelayed(this, 150);
                 }};
                 main.postDelayed(watch, 150);
@@ -156,7 +201,7 @@ final class WatchVoice {
                 log("재생 오류: " + e.getMessage());
                 unroute();
             }
-        }, 800);
+        }, 300);
     }
 
     private boolean route(AudioManager am) {
@@ -192,6 +237,7 @@ final class WatchVoice {
     }
 
     private void unroute() {
+        stopVr();
         if (!routed) return;
         routed = false;
         AudioManager am = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
