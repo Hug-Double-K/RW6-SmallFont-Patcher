@@ -196,6 +196,13 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         keyView = text();
         root.addView(keyView);
         root.addView(button("인증키 직접 입력", v -> enterKey()));
+        root.addView(button("인증키 전체 복사", v -> {
+            String k = prefs.getString("authKey", "");
+            if (k.isEmpty()) { log("인증키 없음"); return; }
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("인증키", k));
+            android.widget.Toast.makeText(this, "인증키 32자리를 복사했어요", android.widget.Toast.LENGTH_SHORT).show();
+        }));
 
         root.addView(header("기록"));
         logView = text();
