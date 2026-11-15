@@ -157,10 +157,6 @@ final class WatchVoice {
         }
         if (text == null) return;
         if (WatchLink.get(app).watchQuiet()) { log("워치가 방해 금지(무음) 중이라 글자만 표시"); return; }
-        if (silentNow(am) && !app.getSharedPreferences("hub", Context.MODE_PRIVATE).getBoolean("aiVoiceSilent", true)) {
-            log("무음 모드라 글자만 표시");
-            return;
-        }
         if (!ttsReady) { pending = text; return; }
         // TTS 엔진이 오디오 설정을 무시하고 폰 스피커로 내는 경우가 있어, 파일로 만든 뒤 직접 '통화 음성'으로 재생
         java.io.File f = new java.io.File(app.getCacheDir(), "answer.wav");

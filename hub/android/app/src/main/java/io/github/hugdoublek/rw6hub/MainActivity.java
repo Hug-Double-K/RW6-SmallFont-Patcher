@@ -176,11 +176,9 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
             @Override public void onStopTrackingTouch(android.widget.SeekBar sb) { }
         });
         root.addView(closeBar);
-        android.widget.CheckBox silentBox = new android.widget.CheckBox(this);
-        silentBox.setText("무음모드에서도 음성 답변하기 (끄면 무음·진동·방해 금지일 때 글자만)");
-        silentBox.setChecked(prefs.getBoolean("aiVoiceSilent", true));
-        silentBox.setOnCheckedChangeListener((b, on) -> prefs.edit().putBoolean("aiVoiceSilent", on).apply());
-        root.addView(silentBox);
+        TextView voiceInfo = text();
+        voiceInfo.setText("음성 답변: 워치가 무음(방해 금지)이면 글자만, 아니면 워치 스피커로 읽어요");
+        root.addView(voiceInfo);
 
         root.addView(header("계정 (샤오미, 중국 지역)"));
         accountView = text();

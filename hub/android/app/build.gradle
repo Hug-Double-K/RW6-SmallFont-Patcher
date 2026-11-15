@@ -1,4 +1,4 @@
-// 0.50
+// 0.51
 plugins {
     id 'com.android.application'
 }
@@ -14,8 +14,8 @@ android {
         applicationId "io.github.hugdoublek.rw6hub"
         minSdk 26
         targetSdk 34
-        versionCode 50
-        versionName "0.50"
+        versionCode 51
+        versionName "0.51"
     }
 
     signingConfigs {

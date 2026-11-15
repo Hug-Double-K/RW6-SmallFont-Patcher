@@ -39,3 +39,4 @@
   - 0.48: 위 순서대로 바꿈(DIALOG_FINISH는 슬라이더 시간 뒤), SPEAK(264) 추가, 날씨 sint32·from/to·10/6·영문 aqi.
   - 0.48 결과: **워치 스피커 소리 성공**(SPEAK 264 후 startVoiceRecognition → SCO 연결 → 재생). 날씨 10/6 응답 0(성공)·전송됨. 닫기는 아직 안 됨(DIALOG_FINISH 단독). 0.49: 닫기 = [TEMPLATE_GENERAL+DIALOG_FINISH] 한 패킷(Mi Fitness와 같게, 슬라이더 시간 뒤). 사용자 요청: 워치 무음(방해 금지)이면 소리 안 냄 → 2/22 조회(연결 때·질문마다), 2/23 워치 알림, system field 11 TimingSetting.timing_mode(0 켬·1 시간지정·2 끔·3 스마트, GB: 0 enabled/2 disabled).
   - 0.49 결과: [카드+DIALOG_FINISH]를 소리 끝난 뒤(슬라이더 시간)에 보내도 안 닫힘. 가설: Mi Fitness는 FINISH를 소리 전에 보내고, 워치는 SCO(+BVRA:0)가 닫힐 때 화면을 닫음. 0.50: SPEAK 바로 뒤 [카드+FINISH] 즉시 전송, WatchVoice가 다 읽은 뒤에도 정한 시각까지 VR/SCO를 열어 두었다가 stopVoiceRecognition → 그때 닫히는지 시험.
+  - 0.51(사용자 요청): 폰 무음 관련 체크 메뉴 삭제. 규칙 = **워치가 무음(방해 금지)이면 글자만, 아니면 워치 스피커로 읽기**(폰 무음·진동은 무관).
