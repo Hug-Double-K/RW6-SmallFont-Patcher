@@ -56,6 +56,10 @@ public final class WatchWeather {
 
     public String summary() { return summary; }
 
+    /** 화면 표시용: 워치에 마지막으로 보낸 날씨 */
+    private volatile String sentText = "";
+    public String sentText() { return sentText; }
+
     /** 연결 직후 호출 */
     public void onConnected() {
         h.removeCallbacks(tick);
@@ -188,7 +192,14 @@ public final class WatchWeather {
         }
         Pb.W forecast = new Pb.W().msg(1, id).msg(2, list);
         link().send(new Pb.W().varint(1, 10).varint(2, 1).msg(12, new Pb.W().msg(2, forecast)), ok ->
-                log(ok ? String.format(Locale.KOREA, "워치에 보냄: %s %.0f℃", wmoKo(cur.optInt("weather_code")), cur.optDouble("temperature_2m")) : "보내기 실패"));
+                {
+                    if (ok) {
+                        sentText = String.format(Locale.KOREA, "%s %.0f℃ · %s 보냄", wmoKo(cur.optInt("weather_code")), cur.optDouble("temperature_2m"),
+                                new SimpleDateFormat("HH:mm", Locale.KOREA).format(new Date()));
+                        log("워치에 보냄: " + sentText);
+                        link().notifyChanged();
+                    } else log("보내기 실패");
+                });
     }
 
     private void sendCityKeys() {

@@ -35,7 +35,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
     private SharedPreferences prefs;
     private WatchLink link;
     private TextView accountView, keyView, addrView, stateView, infoView, logView;
-    private Button connectBtn, mifitBtn, notiBtn;
+    private Button connectBtn, mifitBtn;
     private TextView mifitWarn, aiView;
     private static final String[] MIFIT = {"com.mi.health", "com.xiaomi.wearable"};
 
@@ -105,128 +105,249 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
 
     // ---------------- 화면 ----------------
 
+    private static final int BG = 0xFF101114, CARD = 0xFF1C1E24, LINE = 0xFF2B2E37, TEXT = 0xFFF2F3F5, SUB = 0xFF9AA0AC,
+            ACCENT = 0xFFFF6FA8, OK = 0xFF3DDC97, WARN = 0xFFFFB067, BAD = 0xFFFF6B6B;
+
+    private View stateDot;
+    private TextView weatherView, langSub, aiKeySub, setupTitle, logToggle;
+    private android.widget.Switch aiSwitch, voiceSwitch, notiSwitch, diagSwitch;
+    private LinearLayout setupBox;
+    private Button disconnectBtn;
+    private boolean updating, logFull;
+
     private void buildUi() {
-        int pad = dp(16);
+        if (getActionBar() != null) getActionBar().hide();
+        getWindow().setStatusBarColor(BG);
+        getWindow().setNavigationBarColor(BG);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad, pad, pad, pad);
+        root.setPadding(dp(14), dp(18), dp(14), dp(28));
 
-        TextView title = new TextView(this);
-        title.setText("Mi Manager " + version());
-        title.setTextSize(22);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        root.addView(title);
+        // 제목
+        LinearLayout head = new LinearLayout(this);
+        head.setGravity(android.view.Gravity.BOTTOM);
+        TextView title = label("Mi Manager", 26, TEXT, true);
+        TextView ver = label("  " + version(), 13, SUB, false);
+        head.addView(title);
+        head.addView(ver);
+        root.addView(head);
 
-        root.addView(header("연결"));
-        stateView = text();
-        stateView.setTextSize(17);
-        root.addView(stateView);
-        infoView = text();
-        root.addView(infoView);
+        // ── 연결 상태 ──
+        LinearLayout c = card(root, null);
+        LinearLayout st = new LinearLayout(this);
+        st.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        stateDot = new View(this);
+        LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(dp(12), dp(12));
+        dl.rightMargin = dp(10);
+        st.addView(stateDot, dl);
+        stateView = label("", 20, TEXT, true);
+        st.addView(stateView);
+        c.addView(st);
+        infoView = label("", 14, SUB, false);
+        infoView.setPadding(0, dp(6), 0, 0);
+        c.addView(infoView);
+        weatherView = label("", 14, SUB, false);
+        weatherView.setPadding(0, dp(2), 0, 0);
+        c.addView(weatherView);
         // Mi Fitness가 워치를 몇 분마다 가져가 연결이 끊기던 원인 → 블루투스 권한이 켜져 있으면 경고
-        mifitWarn = text();
-        mifitWarn.setTextColor(android.graphics.Color.rgb(255, 170, 120));
-        root.addView(mifitWarn);
-        mifitBtn = button("Mi Fitness 블루투스 권한 끄러 가기", v -> openMiFitnessSettings());
-        root.addView(mifitBtn);
-        connectBtn = button("연결 (계속 유지)", v -> { askPermissions(); LinkService.start(this); });
-        root.addView(connectBtn);
-        root.addView(button("연결 해제 · Mi Fitness에 양보", v -> yieldToMiFitness()));
-        notiBtn = button("", v -> toggleStatusNotification());
-        root.addView(notiBtn);
+        mifitWarn = label("", 14, WARN, false);
+        mifitWarn.setPadding(0, dp(10), 0, 0);
+        c.addView(mifitWarn);
+        mifitBtn = pill("Mi Fitness 블루투스 권한 끄러 가기", false, v -> openMiFitnessSettings());
+        c.addView(mifitBtn, topMargin(8));
+        LinearLayout btns = new LinearLayout(this);
+        connectBtn = pill("연결", true, v -> { askPermissions(); LinkService.start(this); });
+        disconnectBtn = pill("해제 · Mi Fitness에 양보", false, v -> yieldToMiFitness());
+        LinearLayout.LayoutParams b1 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        b1.rightMargin = dp(8);
+        btns.addView(connectBtn, b1);
+        btns.addView(disconnectBtn, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2));
+        c.addView(btns, topMargin(12));
 
-        root.addView(header("기능"));
-        root.addView(button("메신저 알림 (RW6 알림)", v ->
-                startActivity(new Intent(this, io.github.hugdoublek.rw6hub.noti.MainActivity.class))));
-        root.addView(button("메모 (RW6 메모)", v ->
-                startActivity(new Intent(this, io.github.hugdoublek.rw6hub.memo.MainActivity.class))));
-        root.addView(button("퀵앱 · 워치페이스 · 펌웨어 설치", v -> startActivity(new Intent(this, InstallActivity.class))));
-        root.addView(button("워치에 설치된 퀵앱 (실행 · 삭제)", v -> showInstalled()));
-        root.addView(button("워치 언어", v -> pickLanguage()));
-        root.addView(button("샤오아이 분석용 기록 저장", v -> {
-            String r = AivsCapture.save(this);
-            log(r == null ? "아직 모인 샤오아이 기록이 없어요. 워치 크라운을 길게 눌러 말해 본 뒤 다시 누르세요" : "저장: " + r);
-        }));
-        root.addView(button("워치 날씨 지금 보내기", v -> { if (link.isReady()) WatchWeather.get(this).sendNow(); else log("워치가 연결되어 있지 않음"); }));
-        root.addView(button("워치 시간 다시 맞추기", v -> { if (link.isReady()) link.syncTime(); else log("워치가 연결되어 있지 않음"); }));
+        // ── 기능 ──
+        c = card(root, "기능");
+        row(c, "메신저 알림", "카톡·문자 등을 워치로 보내기 (RW6 알림)", v ->
+                startActivity(new Intent(this, io.github.hugdoublek.rw6hub.noti.MainActivity.class)));
+        line(c);
+        row(c, "메모", "폰 메모를 워치에서 보기 (RW6 메모)", v ->
+                startActivity(new Intent(this, io.github.hugdoublek.rw6hub.memo.MainActivity.class)));
+        line(c);
+        row(c, "설치", "퀵앱 · 워치페이스 · 펌웨어 파일을 워치에 넣기", v -> startActivity(new Intent(this, InstallActivity.class)));
+        line(c);
+        row(c, "워치의 퀵앱", "설치된 앱 보기 · 실행 · 삭제", v -> showInstalled());
 
-        root.addView(header("AI 비서 (크라운 길게 누르기)"));
-        aiView = text();
-        root.addView(aiView);
-        root.addView(button("AI 켜기 / 끄기", v -> {
-            prefs.edit().putBoolean("aiOn", !prefs.getBoolean("aiOn", true)).apply();
+        // ── AI 비서 ──
+        c = card(root, "AI 비서 · 크라운 길게 누르기");
+        aiView = label("", 14, SUB, false);
+        aiView.setPadding(0, 0, 0, dp(4));
+        c.addView(aiView);
+        aiSwitch = toggle(c, "AI 비서 사용", "샤오아이 대신 Gemini가 답해요", on -> {
+            prefs.edit().putBoolean("aiOn", on).apply();
             refresh();
-        }));
-        root.addView(button("Gemini API 키 · 모델 설정", v -> aiSettings()));
-        android.widget.CheckBox voiceBox = new android.widget.CheckBox(this);
-        voiceBox.setText("음성 답변 (워치 스피커로 읽기) — 워치에 \"조용히 해\" / \"소리로 말해\"라고 해도 바뀌어요");
-        voiceBox.setChecked(prefs.getBoolean("aiVoice", true));
-        voiceBox.setOnCheckedChangeListener((b, on) -> prefs.edit().putBoolean("aiVoice", on).apply());
-        root.addView(voiceBox);
+        });
+        line(c);
+        voiceSwitch = toggle(c, "음성 답변", "워치 스피커로 읽기 · \"조용히 해\" / \"소리로 말해\"로도 바뀜",
+                on -> prefs.edit().putBoolean("aiVoice", on).apply());
+        line(c);
+        aiKeySub = row(c, "Gemini API 키 · 모델", "", v -> aiSettings());
 
-        root.addView(header("계정 (샤오미, 중국 지역)"));
-        accountView = text();
-        root.addView(accountView);
-        root.addView(button("웹 화면으로 로그인", v -> startLogin(null)));
-        root.addView(button("아이디·비밀번호로 로그인", v -> passwordLogin()));
-        root.addView(button("인증키 다시 가져오기", v -> fetchKey()));
+        // ── 워치 ──
+        c = card(root, "워치");
+        langSub = row(c, "언어", "", v -> pickLanguage());
+        line(c);
+        row(c, "날씨 지금 보내기", "평소엔 1시간마다 자동으로 보내요", v -> {
+            if (link.isReady()) { WatchWeather.get(this).sendNow(); toast("날씨를 보내는 중"); } else toast("워치가 연결되어 있지 않아요");
+        });
+        line(c);
+        row(c, "시간 다시 맞추기", "연결할 때마다 자동으로 맞춰요", v -> {
+            if (link.isReady()) { link.syncTime(); toast("시간을 맞췄어요"); } else toast("워치가 연결되어 있지 않아요");
+        });
+        line(c);
+        notiSwitch = toggle(c, "상단 연결 알림", "꺼도 연결은 유지돼요", on -> {
+            LinkService.setStatusNotification(this, on);
+            log(on ? "상단 연결 알림을 켬" : "상단 연결 알림을 끔 (연결 유지는 그대로)");
+            if (!on) askBatteryExemption();
+        });
 
-        root.addView(header("워치"));
-        addrView = text();
-        root.addView(addrView);
-        root.addView(button("페어링된 기기에서 선택", v -> pickDevice()));
-        keyView = text();
-        root.addView(keyView);
-        root.addView(button("인증키 직접 입력", v -> enterKey()));
-        root.addView(button("인증키 전체 복사", v -> {
+        // ── 계정 · 연결 정보 (설정이 끝났으면 접어 둠) ──
+        c = card(root, null);
+        setupTitle = label("", 13, ACCENT, true);
+        setupTitle.setPadding(0, dp(2), 0, dp(2));
+        c.addView(setupTitle);
+        setupBox = new LinearLayout(this);
+        setupBox.setOrientation(LinearLayout.VERTICAL);
+        setupBox.setPadding(0, dp(8), 0, 0);
+        boolean done = !prefs.getString("authKey", "").isEmpty() && !prefs.getString("mac", "").isEmpty();
+        setupBox.setVisibility(done ? View.GONE : View.VISIBLE);
+        setupTitle.setOnClickListener(v -> { setupBox.setVisibility(setupBox.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE); refresh(); });
+        c.addView(setupBox);
+        accountView = label("", 14, SUB, false);
+        setupBox.addView(accountView);
+        row(setupBox, "웹 화면으로 로그인", "샤오미 계정 (중국 지역)", v -> startLogin(null));
+        line(setupBox);
+        row(setupBox, "아이디·비밀번호로 로그인", "비밀번호는 저장하지 않아요", v -> passwordLogin());
+        line(setupBox);
+        row(setupBox, "인증키 다시 가져오기", "로그인한 계정에서 받아 와요", v -> fetchKey());
+        line(setupBox);
+        addrView = row(setupBox, "워치 선택", "", v -> pickDevice());
+        line(setupBox);
+        keyView = row(setupBox, "인증키 직접 입력", "", v -> enterKey());
+        line(setupBox);
+        row(setupBox, "인증키 전체 복사", "32자리를 클립보드로", v -> {
             String k = prefs.getString("authKey", "");
-            if (k.isEmpty()) { log("인증키 없음"); return; }
-            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            cm.setPrimaryClip(android.content.ClipData.newPlainText("인증키", k));
-            android.widget.Toast.makeText(this, "인증키 32자리를 복사했어요", android.widget.Toast.LENGTH_SHORT).show();
-        }));
+            if (k.isEmpty()) { toast("인증키가 없어요"); return; }
+            copy("인증키", k);
+            toast("인증키 32자리를 복사했어요");
+        });
 
-        root.addView(header("기록"));
-        logView = text();
+        // ── 기록 ──
+        c = card(root, "기록");
+        logView = label("", 12, 0xFFC9CDD6, false);
         logView.setTypeface(Typeface.MONOSPACE);
-        logView.setTextSize(12);
         logView.setTextIsSelectable(true);
-        root.addView(logView);
-        root.addView(button("기록 복사 (붙여 넣어 보내기용)", v -> {
-            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            cm.setPrimaryClip(android.content.ClipData.newPlainText("기록", link.logText()));
-            android.widget.Toast.makeText(this, "기록을 복사했어요", android.widget.Toast.LENGTH_SHORT).show();
-        }));
-        root.addView(button("기록 지우기", v -> link.clearLog()));
+        logView.setLineSpacing(dp(2), 1f);
+        c.addView(logView);
+        LinearLayout lb = new LinearLayout(this);
+        logToggle = pill("전체 보기", false, v -> { logFull = !logFull; refresh(); });
+        Button copyBtn = pill("복사", false, v -> { copy("기록", link.logText()); toast("기록을 복사했어요"); });
+        Button clearBtn = pill("지우기", false, v -> link.clearLog());
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        lp.rightMargin = dp(8);
+        lb.addView(logToggle, lp);
+        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        lp2.rightMargin = dp(8);
+        lb.addView(copyBtn, lp2);
+        lb.addView(clearBtn, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        c.addView(lb, topMargin(12));
+        line(c);
+        diagSwitch = toggle(c, "분석용 기록 모으기", "문제를 찾을 때만 켜요 (워치가 보낸 내용을 저장)", on -> AivsCapture.enabled = on);
+        row(c, "분석용 기록 파일로 저장", "다운로드 폴더에 저장", v -> {
+            String r = AivsCapture.save(this);
+            toast(r == null ? "모인 기록이 없어요. '분석용 기록 모으기'를 켜고 다시 해 보세요" : "저장: " + r);
+        });
 
         ScrollView sv = new ScrollView(this);
+        sv.setBackgroundColor(BG);
         sv.addView(root);
         setContentView(sv);
     }
 
     private void refresh() {
-        String user = prefs.getString("userId", "");
-        accountView.setText(user.isEmpty() ? "로그인 안 됨" : "로그인됨 (userId " + user + ")");
-        String addr = prefs.getString("mac", "");
-        addrView.setText(addr.isEmpty() ? "워치 주소: 선택 안 됨" : "워치 주소: " + addr);
-        String key = prefs.getString("authKey", "");
-        keyView.setText(key.isEmpty() ? "인증키: 없음" : "인증키: " + key.substring(0, 4) + "…" + key.substring(28) + " (32자리)");
-        stateView.setText("상태: " + link.state());
-        infoView.setText(link.isReady() && !link.watchModel().isEmpty()
-                ? "모델 " + link.watchModel() + " · 펌웨어 " + link.watchFirmware() : "");
+        updating = true;
+        // 연결 상태
+        String state = link.state();
+        boolean ready = link.isReady();
+        boolean busy = state.contains("중");
+        stateView.setText(state);
+        android.graphics.drawable.GradientDrawable dot = new android.graphics.drawable.GradientDrawable();
+        dot.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        dot.setColor(ready ? OK : busy ? WARN : BAD);
+        stateDot.setBackground(dot);
+        StringBuilder info = new StringBuilder();
+        if (ready && !link.watchModel().isEmpty()) info.append(link.watchModel()).append(" · 펌웨어 ").append(link.watchFirmware());
+        if (ready && link.battery >= 0) info.append(info.length() > 0 ? " · " : "").append("배터리 ").append(link.battery).append("%");
+        infoView.setText(info);
+        infoView.setVisibility(info.length() > 0 ? View.VISIBLE : View.GONE);
+        String wx = WatchWeather.get(this).sentText();
+        weatherView.setText(wx.isEmpty() ? "" : "날씨 " + wx);
+        weatherView.setVisibility(wx.isEmpty() ? View.GONE : View.VISIBLE);
         connectBtn.setEnabled(!link.wantsConnection());
-        logView.setText(link.logText());
-        boolean aiOn = prefs.getBoolean("aiOn", true);
-        String aiKey = prefs.getString("aiKey", "");
-        aiView.setText((aiOn ? "켜짐: 크라운을 길게 눌러 말하면 샤오아이 대신 Gemini가 답해요" : "꺼짐")
-                + "\nAPI 키: " + (aiKey.isEmpty() ? "없음 (설정 필요)" : "있음") + " · 모델: " + prefs.getString("aiModel", XiaoAi.DEFAULT_MODEL));
-        notiBtn.setText("상단 연결 알림: " + (LinkService.statusNotification(this) ? "켜짐 (누르면 끔)" : "꺼짐 (누르면 켬)"));
+        connectBtn.setAlpha(link.wantsConnection() ? 0.4f : 1f);
+        connectBtn.setText(link.wantsConnection() ? "연결 유지 중" : "연결");
         boolean yielded = prefs.getBoolean("yielded", false);
         boolean warn = !yielded && miFitnessWithBt() != null;
         mifitWarn.setText(warn ? "⚠ Mi Fitness가 워치를 몇 분마다 가져가서 연결이 끊기고, 통화 소리가 스피커↔일반으로 바뀔 수 있어요. "
                 + "Mi Fitness → 권한 → '근처 기기'를 '허용 안 함'으로 바꿔 주세요." : "");
         mifitWarn.setVisibility(warn ? View.VISIBLE : View.GONE);
         mifitBtn.setVisibility(warn ? View.VISIBLE : View.GONE);
+
+        // AI
+        boolean aiOn = prefs.getBoolean("aiOn", true);
+        String aiKey = prefs.getString("aiKey", "");
+        aiView.setText(!aiOn ? "꺼짐 — 크라운을 누르면 원래 샤오아이가 나와요"
+                : aiKey.isEmpty() ? "⚠ Gemini API 키를 넣어야 쓸 수 있어요" : "켜짐 — 크라운을 길게 누르고 말하세요");
+        aiView.setTextColor(aiOn && aiKey.isEmpty() ? WARN : SUB);
+        aiSwitch.setChecked(aiOn);
+        voiceSwitch.setChecked(prefs.getBoolean("aiVoice", true));
+        aiKeySub.setText("키 " + (aiKey.isEmpty() ? "없음" : "있음") + " · " + prefs.getString("aiModel", XiaoAi.DEFAULT_MODEL));
+
+        // 워치
+        String loc = prefs.getString("locale", "ko_KR");
+        langSub.setText(loc.equals("ko_KR") ? "한국어" : loc.equals("zh_CN") ? "中文" : "English");
+        notiSwitch.setChecked(LinkService.statusNotification(this));
+
+        // 계정 · 연결 정보
+        String user = prefs.getString("userId", "");
+        String addr = prefs.getString("mac", "");
+        String key = prefs.getString("authKey", "");
+        boolean open = setupBox.getVisibility() == View.VISIBLE;
+        setupTitle.setText((open ? "▾ " : "▸ ") + "계정 · 연결 정보"
+                + (open ? "" : key.isEmpty() || addr.isEmpty() ? "  (설정 필요)" : "  (설정 완료 · 눌러서 펼치기)"));
+        accountView.setText(user.isEmpty() ? "로그인 안 됨" : "로그인됨 (userId " + user + ")");
+        addrView.setText(addr.isEmpty() ? "선택 안 됨 — 페어링된 기기에서 고르기" : addr);
+        keyView.setText(key.isEmpty() ? "없음" : key.substring(0, 4) + "…" + key.substring(28) + " (32자리)");
+
+        // 기록: 평소엔 마지막 몇 줄만
+        String all = link.logText();
+        if (!logFull) {
+            String[] lines = all.split("\n");
+            int from = Math.max(0, lines.length - 8);
+            StringBuilder sb = new StringBuilder();
+            for (int i = from; i < lines.length; i++) sb.append(lines[i]).append(i < lines.length - 1 ? "\n" : "");
+            all = sb.toString();
+        }
+        logView.setText(all.isEmpty() ? "(기록 없음)" : all);
+        logToggle.setText(logFull ? "접기" : "전체 보기");
+        diagSwitch.setChecked(AivsCapture.enabled);
+        updating = false;
+    }
+
+    private void toast(String s) { android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_SHORT).show(); }
+
+    private void copy(String label, String text) {
+        android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(android.content.ClipData.newPlainText(label, text));
     }
 
     private void showInstalled() {
@@ -306,14 +427,6 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                 })
                 .setNegativeButton("취소", null)
                 .show();
-    }
-
-    private void toggleStatusNotification() {
-        boolean on = !LinkService.statusNotification(this);
-        LinkService.setStatusNotification(this, on);
-        log(on ? "상단 연결 알림을 켬" : "상단 연결 알림을 끔 (연결 유지는 그대로)");
-        if (!on) askBatteryExemption();
-        refresh();
     }
 
     /** 배터리 최적화에서 빼 달라고 요청 (백그라운드에서 연결이 끊기지 않게) */
@@ -554,32 +667,110 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
                 .show();
     }
 
-    @SuppressWarnings("MissingPermission")
-
     // ---------------- 도우미 ----------------
 
-    private TextView header(String s) {
+    private interface OnToggle { void set(boolean on); }
+
+    private TextView label(String s, int sp, int color, boolean bold) {
         TextView t = new TextView(this);
         t.setText(s);
-        t.setTextSize(15);
-        t.setTypeface(Typeface.DEFAULT_BOLD);
-        t.setPadding(0, dp(18), 0, dp(4));
+        t.setTextSize(sp);
+        t.setTextColor(color);
+        if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
         return t;
     }
 
-    private TextView text() {
-        TextView t = new TextView(this);
-        t.setTextSize(15);
-        t.setPadding(0, dp(2), 0, dp(2));
-        return t;
+    private LinearLayout.LayoutParams topMargin(int d) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(d);
+        return lp;
     }
 
-    private Button button(String label, View.OnClickListener l) {
+    /** 둥근 카드. title이 있으면 위에 작은 제목 */
+    private LinearLayout card(LinearLayout root, String title) {
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(CARD);
+        bg.setCornerRadius(dp(18));
+        c.setBackground(bg);
+        c.setPadding(dp(16), dp(14), dp(16), dp(14));
+        root.addView(c, topMargin(14));
+        if (title != null) {
+            TextView t = label(title, 13, ACCENT, true);
+            t.setPadding(0, 0, 0, dp(6));
+            c.addView(t);
+        }
+        return c;
+    }
+
+    private void line(LinearLayout parent) {
+        View v = new View(this);
+        v.setBackgroundColor(LINE);
+        parent.addView(v, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)));
+    }
+
+    private LinearLayout rowBase(String title, String sub, TextView[] subOut) {
+        LinearLayout r = new LinearLayout(this);
+        r.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        r.setPadding(0, dp(11), 0, dp(11));
+        r.setMinimumHeight(dp(52));
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.addView(label(title, 16, TEXT, false));
+        TextView s = label(sub, 13, SUB, false);
+        s.setPadding(0, dp(2), 0, 0);
+        texts.addView(s);
+        subOut[0] = s;
+        r.addView(texts, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return r;
+    }
+
+    /** 누르는 줄 (제목 + 설명 + ›). 설명 글자를 돌려줌 */
+    private TextView row(LinearLayout parent, String title, String sub, View.OnClickListener l) {
+        TextView[] s = new TextView[1];
+        LinearLayout r = rowBase(title, sub, s);
+        TextView arrow = label("›", 22, SUB, false);
+        arrow.setPadding(dp(10), 0, dp(2), 0);
+        r.addView(arrow);
+        android.util.TypedValue tv = new android.util.TypedValue();
+        getTheme().resolveAttribute(android.R.attr.selectableItemBackground, tv, true);
+        r.setBackgroundResource(tv.resourceId);
+        r.setClickable(true);
+        r.setOnClickListener(l);
+        parent.addView(r);
+        return s[0];
+    }
+
+    /** 켬/끔 줄 */
+    private android.widget.Switch toggle(LinearLayout parent, String title, String sub, OnToggle l) {
+        TextView[] s = new TextView[1];
+        LinearLayout r = rowBase(title, sub, s);
+        android.widget.Switch sw = new android.widget.Switch(this);
+        sw.setOnCheckedChangeListener((b, on) -> { if (!updating) l.set(on); });
+        r.addView(sw);
+        r.setOnClickListener(v -> sw.toggle());
+        parent.addView(r);
+        return sw;
+    }
+
+    /** 둥근 버튼. primary면 강조색으로 채움 */
+    private Button pill(String text, boolean primary, View.OnClickListener l) {
         Button b = new Button(this);
-        b.setText(label);
+        b.setText(text);
         b.setAllCaps(false);
+        b.setTextSize(14);
+        b.setTextColor(primary ? 0xFF1A0A12 : TEXT);
+        if (primary) b.setTypeface(Typeface.DEFAULT_BOLD);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setCornerRadius(dp(22));
+        if (primary) bg.setColor(ACCENT); else { bg.setColor(0xFF272A33); bg.setStroke(Math.max(1, dp(1)), LINE); }
+        b.setBackground(bg);
+        b.setStateListAnimator(null);
+        b.setMinHeight(dp(44));
+        b.setMinimumHeight(dp(44));
+        b.setPadding(dp(14), 0, dp(14), 0);
         b.setOnClickListener(l);
-        io.github.hugdoublek.rw6hub.Ui.spaced(b);
         return b;
     }
 

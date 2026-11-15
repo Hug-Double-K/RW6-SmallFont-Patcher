@@ -140,7 +140,7 @@ public final class WatchSession implements SarLink.Listener {
         int type = t == null ? -1 : (int) t.varint;
         int id = i == null ? -1 : (int) i.varint;
         Pb.Field err = Pb.find(pkt, F_ERROR);
-        if (err != null) cb.onLog("워치 오류 코드 " + err.varint + " (type " + type + ", id " + id + ")");
+        if (err != null && err.varint != 0) cb.onLog("워치 오류 코드 " + err.varint + " (type " + type + ", id " + id + ")");
 
         if (type == TYPE_ACCOUNT) { onAccount(id, Pb.sub(pkt, F_ACCOUNT)); return; }
         if (type == TYPE_SYSTEM && id == ID_GET_DEVICE_INFO) {

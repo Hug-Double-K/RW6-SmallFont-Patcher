@@ -75,12 +75,7 @@ public final class XiaoAi {
     public boolean isActive() { return active; }
 
     /** 질문 중 워치가 보낸 PB 메시지 기록 (응답 형식 찾기용) */
-    public void onPacket(int type, int id, List<Pb.Field> p) {
-        if (!active && System.currentTimeMillis() - lastEndAt > 15_000) return;
-        if (type == 2 && id == 1) return;
-        Pb.Field err = Pb.find(p, 100);
-        log("워치→ type=" + type + " id=" + id + (err != null ? " 오류=" + err.varint : ""));
-    }
+    public void onPacket(int type, int id, List<Pb.Field> p) { }
 
     private long lastEndAt = 0;
 
@@ -127,7 +122,6 @@ public final class XiaoAi {
         log("크라운 질문 시작 (세션 " + session + ")");
         openDecoder();
         voice.prepare();
-        link().refreshWatchQuiet();
         final int myGen = gen;
         // 시험: 듣는 동안 화면에 글자가 뜨는지 세션 번호별로 확인
         h.postDelayed(() -> { if (myGen == gen && !stopped) send(partial("듣는 중…"), "듣는 중 글자"); }, 800);
@@ -273,9 +267,11 @@ public final class XiaoAi {
                 int ai = reply.indexOf("A:");
                 if (reply.startsWith("Q:") && ai > 0) { q = reply.substring(2, ai).trim(); a = reply.substring(ai + 2).trim(); }
                 else a = reply;
+                if (myGen != gen) { log("새 질문이 시작돼 앞 질문의 답은 버림"); return; }
                 log(String.format(Locale.US, "Gemini %.1f초 · 들은 말: %s", (System.currentTimeMillis() - t0) / 1000f, q));
                 log("답: " + a);
             } catch (Exception e) {
+                if (myGen != gen) return;
                 log("✘ " + e.getMessage());
                 final String msg = "AI 오류: " + e.getMessage();
                 h.post(() -> { if (myGen == gen) { showText(msg, true); active = false; } });
@@ -306,13 +302,7 @@ public final class XiaoAi {
         // 워치가 '읽는 중'으로 알게 하는 지시 (이게 있어야 SCO 소리를 받아들이는 듯)
         send(instr(SPEECHSYNTHESIZER_SPEAK).msg(11, new Pb.W().str(1, text)), "읽기 지시");
         if (!close) return;   // 타이머 등 워치 앱을 연 경우엔 그 화면을 그대로 둠
-        // Mi Fitness 그대로: 읽기 지시 바로 뒤에 [일반 카드 + DIALOG_FINISH] 한 패킷.
-        // 워치는 소리 통로(SCO)가 닫힐 때 화면을 닫는 것으로 보여, 닫는 시각은 WatchVoice가 통로를 정한 시간까지 열어 두는 것으로 맞춤.
-        sendList("대화 끝 표시",
-                instr(TEMPLATE_GENERAL).msg(4, new Pb.W()
-                        .msg(1, new Pb.W().str(1, "Gemini").str(2, shortText(text)))
-                        .str(2, "").str(4, "Gemini")),
-                instr(DIALOG_FINISH));
+        send(instr(DIALOG_FINISH), "대화 끝");
     }
 
     /** Gemini가 낸 명령을 워치에서 실행 (샤오아이 알림 지시 ALERTS_SETALERT) */
@@ -352,34 +342,6 @@ public final class XiaoAi {
 
     private Pb.W instr(int resultType) {
         return new Pb.W().varint(1, resultType).varint(13, sendSession);
-    }
-
-    /** 시험: 샤오아이 화면을 닫게 하는 지시 후보들 (화면에 답이 떠 있을 때 하나씩 눌러 봄) */
-    public static final String[] CLOSE_TESTS = {
-            "1. 비서 상태 '쉬는 중' 알림", "2. 오류: 소리 없음", "3. 오류: 인식 시간 초과", "4. 오류: 알 수 없음",
-            "5. 대화 잘림 알림", "6. 앱 닫기(샤오아이)", "7. 앱 닫기(이름 없음)", "8. 듣기 끝", "9. 재생 멈춤", "10. 비서 오류 알림"};
-
-    public void closeTest(int n) {
-        h.post(() -> {
-            String label = "닫기 시험 " + (n + 1);
-            switch (n) {
-                case 0: raw(new Pb.W().varint(1, 14).varint(2, 5).msg(16, new Pb.W().msg(5, new Pb.W()
-                        .varint(1, 0).varint(2, 0).varint(3, 0).varint(4, 0).varint(5, 0).varint(6, 0))), label); break;
-                case 1: send(instr(85), label); break;
-                case 2: send(instr(112), label); break;
-                case 3: send(instr(91), label); break;
-                case 4: send(instr(5), label); break;
-                case 5: send(instr(APPLICATION_OPERATE).msg(18, new Pb.W().varint(1, 3).str(2, "小爱同学").str(3, "com.xiaomi.xiaoai")), label); break;
-                case 6: send(instr(APPLICATION_OPERATE).msg(18, new Pb.W().varint(1, 3).str(2, "").str(3, "")), label); break;
-                case 7: send(instr(END_LISTENING), label); break;
-                case 8: send(instr(274), label); break;
-                case 9: raw(new Pb.W().varint(1, 14).varint(2, 6).msg(16, new Pb.W().msg(6, new Pb.W().varint(1, 1).str(2, ""))), label); break;
-            }
-        });
-    }
-
-    private void raw(Pb.W packet, String label) {
-        if (!link().send(packet, ok -> log("→ " + label + (ok ? " ✓" : " ✘")))) log("워치에 보내지 못함 (연결 없음)");
     }
 
     private static String shortText(String t) { return t.length() > 40 ? t.substring(0, 40) + "…" : t; }

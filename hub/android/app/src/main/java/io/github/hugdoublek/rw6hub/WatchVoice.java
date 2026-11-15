@@ -28,29 +28,12 @@ final class WatchVoice {
     private int savedMode = AudioManager.MODE_NORMAL;
     private boolean routed = false;
 
-    private volatile int lastVgs = -1;
-    private volatile long lastVgsAt = 0;
     private volatile boolean scoUp = false;   // 실제 SCO 소리 연결 상태 (방송으로 받음)
 
     WatchVoice(Context app) {
         this.app = app;
         android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
             @Override public void onReceive(Context c, android.content.Intent i) {
-                if ("android.media.VOLUME_CHANGED_ACTION".equals(i.getAction())) {
-                    // 워치가 HFP로 알려 주는 스피커 음량(AT+VGS)이 폰의 '블루투스 통화 음량'(스트림 6)에 반영됨
-                    if (i.getIntExtra("android.media.EXTRA_VOLUME_STREAM_TYPE", -1) == 6) {
-                        int v = i.getIntExtra("android.media.EXTRA_VOLUME_STREAM_VALUE", -1);
-                        log("워치 통화 음량 바뀜: " + v);
-                        lastVgs = v; lastVgsAt = System.currentTimeMillis();
-                    }
-                    return;
-                }
-                if (android.bluetooth.BluetoothHeadset.ACTION_VENDOR_SPECIFIC_HEADSET_EVENT.equals(i.getAction())) {
-                    Object[] args = (Object[]) i.getSerializableExtra(android.bluetooth.BluetoothHeadset.EXTRA_VENDOR_SPECIFIC_HEADSET_EVENT_ARGS);
-                    log("워치 헤드셋 신호: " + i.getStringExtra(android.bluetooth.BluetoothHeadset.EXTRA_VENDOR_SPECIFIC_HEADSET_EVENT_CMD)
-                            + " " + (args == null ? "" : java.util.Arrays.toString(args)));
-                    return;
-                }
                 if (android.bluetooth.BluetoothHeadset.ACTION_AUDIO_STATE_CHANGED.equals(i.getAction())) {
                     int hst = i.getIntExtra(android.bluetooth.BluetoothProfile.EXTRA_STATE, -1);
                     log("워치 헤드셋 소리 " + (hst == android.bluetooth.BluetoothHeadset.STATE_AUDIO_CONNECTED ? "연결됨" : hst == android.bluetooth.BluetoothHeadset.STATE_AUDIO_CONNECTING ? "연결 중" : "끊김"));
@@ -65,9 +48,6 @@ final class WatchVoice {
         };
         android.content.IntentFilter f = new android.content.IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED);
         f.addAction(android.bluetooth.BluetoothHeadset.ACTION_AUDIO_STATE_CHANGED);
-        f.addAction("android.media.VOLUME_CHANGED_ACTION");
-        f.addAction(android.bluetooth.BluetoothHeadset.ACTION_VENDOR_SPECIFIC_HEADSET_EVENT);
-        f.addCategory(android.bluetooth.BluetoothHeadset.VENDOR_SPECIFIC_HEADSET_EVENT_COMPANY_ID_CATEGORY + ".76");
         if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(r, f, Context.RECEIVER_EXPORTED);
         else app.registerReceiver(r, f);
         try {

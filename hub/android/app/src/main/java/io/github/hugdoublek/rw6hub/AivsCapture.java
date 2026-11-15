@@ -22,9 +22,12 @@ public final class AivsCapture {
     private static int aivsPackets, rawFrames;
     private static long rawBytes;
 
-    static synchronized void addPb(byte[] plain) { add(1, 1, plain); aivsPackets++; }
+    /** 분석용 기록은 켰을 때만 모음 (평소엔 메모리를 쓰지 않게) */
+    public static volatile boolean enabled = false;
 
-    static synchronized void addRaw(int channel, int opcode, byte[] body) { add(opcode == 2 ? 3 : 2, channel, body); rawFrames++; rawBytes += body.length; }
+    static synchronized void addPb(byte[] plain) { if (!enabled) return; add(1, 1, plain); aivsPackets++; }
+
+    static synchronized void addRaw(int channel, int opcode, byte[] body) { if (!enabled) return; add(opcode == 2 ? 3 : 2, channel, body); rawFrames++; rawBytes += body.length; }
 
     private static void add(int kind, int ch, byte[] d) {
         if (BUF.size() > 8 * 1024 * 1024) return;

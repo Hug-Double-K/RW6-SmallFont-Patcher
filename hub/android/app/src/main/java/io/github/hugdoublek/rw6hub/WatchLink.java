@@ -82,48 +82,6 @@ public final class WatchLink {
 
     public boolean isReady() { return authed; }
 
-    // ---- 워치 방해 금지(무음) 상태: 2/22 조회, 워치에서 바꾸면 2/23으로 알려 줌. system field 11 = TimingSetting ----
-    private volatile int quietMode = 2;      // 0 항상 켬, 1 시간 지정, 2 끔, 3 스마트
-    private volatile int quietFrom = -1, quietTo = -1;   // 분 단위
-    /** 진단: 워치 무음·방해 금지 상태를 알려 줄 만한 조회를 모두 보내 봄 (조회만, 설정은 안 바꿈) */
-    public void probeQuiet() {
-        if (!authed) { log("워치가 연결되어 있지 않음"); return; }
-        log("── 무음 상태 조사 시작 ──");
-        int[] sys = {22, 78, 90, 93, 10};
-        for (int id : sys) send(new Pb.W().varint(1, 2).varint(2, id));
-        for (int items : new int[]{1, 2, 4, 8, 16, 32, 64, 128, 256})
-            send(new Pb.W().varint(1, 2).varint(2, 14).msg(4, new Pb.W().msg(34, new Pb.W().varint(1, items))));
-        send(new Pb.W().varint(1, 14).varint(2, 1));   // 샤오아이 설정(음성 읽기 켬/끔)
-        send(new Pb.W().varint(1, 18).varint(2, 0));   // 미디어·음량
-    }
-
-    public void refreshWatchQuiet() { if (authed) send(new Pb.W().varint(1, 2).varint(2, 22)); }
-
-    /** 지금 워치가 방해 금지(무음) 중인지 */
-    public boolean watchQuiet() {
-        if (quietMode == 0 || quietMode == 3) return true;
-        if (quietMode == 1 && quietFrom >= 0 && quietTo >= 0) {
-            java.util.Calendar c = java.util.Calendar.getInstance();
-            int now = c.get(java.util.Calendar.HOUR_OF_DAY) * 60 + c.get(java.util.Calendar.MINUTE);
-            return quietFrom <= quietTo ? (now >= quietFrom && now < quietTo) : (now >= quietFrom || now < quietTo);
-        }
-        return false;
-    }
-
-    private void onQuiet(List<Pb.Field> p) {
-        List<Pb.Field> sys = Pb.sub(p, 4);
-        List<Pb.Field> ts = sys == null ? null : Pb.sub(sys, 11);
-        if (ts == null) return;
-        Pb.Field m = Pb.find(ts, 1);
-        int mode = m == null ? 2 : (int) m.varint;
-        List<Pb.Field> a = Pb.sub(ts, 2), b = Pb.sub(ts, 3);
-        quietFrom = a == null ? -1 : (int) (fv(a, 1) * 60 + fv(a, 2));
-        quietTo = b == null ? -1 : (int) (fv(b, 1) * 60 + fv(b, 2));
-        if (mode != quietMode) log("워치 방해 금지: " + (mode == 0 ? "켜짐" : mode == 1 ? "시간 지정" : mode == 3 ? "스마트" : "꺼짐"));
-        quietMode = mode;
-    }
-
-    private static long fv(List<Pb.Field> f, int n) { Pb.Field x = Pb.find(f, n); return x == null ? 0 : x.varint; }
     public String state() { return state; }
     public String watchModel() { return watchModel; }
     public String watchFirmware() { return watchFirmware; }
@@ -155,6 +113,8 @@ public final class WatchLink {
         state = s;
         changed();
     }
+
+    public void notifyChanged() { changed(); }
 
     private void changed() {
         for (StateListener l : stateListeners) l.onStateChanged();
@@ -275,7 +235,6 @@ public final class WatchLink {
                 sendLanguage(prefs.getString("locale", "ko_KR"));
                 QuickApps.get(app).onConnected();
                 WatchWeather.get(app).onConnected();
-                refreshWatchQuiet();
             }
 
             @Override public void onDeviceInfo(String model, String fw, String serial) {
@@ -314,10 +273,8 @@ public final class WatchLink {
             }
 
             @Override public void onPacket(int type, int id, List<Pb.Field> p) {
-                if (type == 14) log("샤오아이 메시지 id=" + id);
                 XiaoAi.get(app).onPacket(type, id, p);
                 if (type == 10) WatchWeather.get(app).onPacket(id, p);
-                if (type == 2 && (id == 22 || id == 23)) onQuiet(p);
                 if (type == 2 && id == 1) {
                     List<Pb.Field> sys = Pb.sub(p, 4);
                     List<Pb.Field> st = sys == null ? null : Pb.sub(sys, 2);
