@@ -34,6 +34,12 @@ final class WatchVoice {
         this.app = app;
         android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
             @Override public void onReceive(Context c, android.content.Intent i) {
+                if (android.bluetooth.BluetoothHeadset.ACTION_AUDIO_STATE_CHANGED.equals(i.getAction())) {
+                    int hst = i.getIntExtra(android.bluetooth.BluetoothProfile.EXTRA_STATE, -1);
+                    log("워치 헤드셋 소리 " + (hst == android.bluetooth.BluetoothHeadset.STATE_AUDIO_CONNECTED ? "연결됨" : hst == android.bluetooth.BluetoothHeadset.STATE_AUDIO_CONNECTING ? "연결 중" : "끊김"));
+                    scoUp = hst == android.bluetooth.BluetoothHeadset.STATE_AUDIO_CONNECTED;
+                    return;
+                }
                 int st = i.getIntExtra(AudioManager.EXTRA_SCO_AUDIO_STATE, -1);
                 boolean up = st == AudioManager.SCO_AUDIO_STATE_CONNECTED;
                 if (up != scoUp) log("워치 소리 연결(SCO) " + (up ? "열림" : st == AudioManager.SCO_AUDIO_STATE_CONNECTING ? "여는 중" : "닫힘"));
@@ -41,6 +47,7 @@ final class WatchVoice {
             }
         };
         android.content.IntentFilter f = new android.content.IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED);
+        f.addAction(android.bluetooth.BluetoothHeadset.ACTION_AUDIO_STATE_CHANGED);
         if (Build.VERSION.SDK_INT >= 33) app.registerReceiver(r, f, Context.RECEIVER_EXPORTED);
         else app.registerReceiver(r, f);
         try {
@@ -157,19 +164,25 @@ final class WatchVoice {
         if (r != TextToSpeech.SUCCESS) log("음성 만들기 실패");
     }
 
+    /** Mi Fitness 방식(2026-11-15 HCI 기록): 폰이 +BVRA:1(음성 인식 시작)을 보내면 폰이 SCO를 열고, 거기로 답을 재생한 뒤 +BVRA:0.
+     *  통화 모드(MODE_IN_COMMUNICATION)는 쓰지 않음 — 그러면 워치가 전화로 착각해 SCO를 닫음. */
     private void play(java.io.File f) {
         AudioManager am = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
         if (am == null) return;
-        startVr();
-        if (!routed) route(am);
+        if (!startVr()) { log("워치 소리 통로 요청 실패 → 소리 생략"); return; }
         waitSco(am, f, 0);
     }
 
-    /** 실제 SCO가 열릴 때까지 최대 3초 기다렸다가 재생 */
+    private boolean vrAudio() {
+        try { if (hs != null && vrDev != null && hs.isAudioConnected(vrDev)) return true; } catch (Exception ignored) {}
+        return scoUp;
+    }
+
+    /** SCO가 열릴 때까지 최대 4초 기다렸다가 재생 */
     private void waitSco(AudioManager am, java.io.File f, int tries) {
-        if (scoUp) { log("소리 직전 상태: " + state(am)); start(am, f); return; }
-        if (tries >= 15) {
-            log("워치 소리 통로(SCO)가 안 열림 → 소리 생략 (폰에서 안 냄). " + state(am));
+        if (vrAudio()) { log("워치 소리 통로 열림"); start(am, f); return; }
+        if (tries >= 20) {
+            log("워치 소리 통로(SCO)가 안 열림 → 소리 생략 (폰에서 안 냄)");
             unroute();
             return;
         }
@@ -178,25 +191,29 @@ final class WatchVoice {
 
     private void start(AudioManager am, java.io.File f) {
         main.postDelayed(() -> {
-            if (!scoUp) { log("워치 소리 통로가 끊김 → 소리 생략"); unroute(); return; }
+            if (!vrAudio()) { log("워치 소리 통로가 끊김 → 소리 생략"); unroute(); return; }
             try {
+                AudioDeviceInfo sco = null;
+                for (AudioDeviceInfo d : am.getDevices(AudioManager.GET_DEVICES_OUTPUTS))
+                    if (d.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) sco = d;
                 android.media.MediaPlayer mp = new android.media.MediaPlayer();
                 mp.setAudioAttributes(new AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
+                if (sco != null) mp.setPreferredDevice(sco);
+                else log("SCO 출력 장치가 목록에 없음 → 기본 경로로 재생 시도");
                 mp.setDataSource(f.getAbsolutePath());
                 mp.setOnCompletionListener(m -> { m.release(); main.postDelayed(this::unroute, 300); });
-                // 재생 중 통로가 끊기면 폰 스피커로 넘어가지 않게 바로 멈춤
                 Runnable watch = new Runnable() { public void run() {
                     try { if (!mp.isPlaying()) return; } catch (Exception e) { return; }
-                    if (!scoUp) { log("재생 중 워치 통로 끊김 → 멈춤"); try { mp.stop(); mp.release(); } catch (Exception ignored) {} unroute(); return; }
+                    if (!vrAudio()) { log("재생 중 워치 통로 끊김 → 멈춤"); try { mp.stop(); mp.release(); } catch (Exception ignored) {} unroute(); return; }
                     main.postDelayed(this, 150);
                 }};
                 main.postDelayed(watch, 150);
                 mp.setOnErrorListener((m, w, x) -> { m.release(); unroute(); return true; });
                 mp.prepare();
                 mp.start();
-                log("답을 워치 스피커로 읽는 중");
+                log("답을 워치 스피커로 읽는 중" + (sco != null ? " (" + sco.getProductName() + ")" : ""));
             } catch (Exception e) {
                 log("재생 오류: " + e.getMessage());
                 unroute();
