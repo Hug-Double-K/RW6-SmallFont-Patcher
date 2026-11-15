@@ -158,31 +158,6 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
             refresh();
         }));
         root.addView(button("Gemini API 키 · 모델 설정", v -> aiSettings()));
-        // 답한 뒤 샤오아이 화면을 닫기까지 시간 (0.5초 단위, 5~40초, 기본 10초)
-        TextView closeView = text();
-        root.addView(closeView);
-        android.widget.SeekBar closeBar = new android.widget.SeekBar(this);
-        closeBar.setMax(70);   // (40-5)/0.5
-        int tenths = prefs.getInt("aiCloseTenths", 100);
-        closeBar.setProgress((tenths - 50) / 5);
-        Runnable showClose = () -> closeView.setText(String.format(java.util.Locale.US,
-                "답한 뒤 화면 닫기: %.1f초 (앱 실행 명령일 땐 안 닫음)", prefs.getInt("aiCloseTenths", 100) / 10f));
-        showClose.run();
-        closeBar.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(android.widget.SeekBar sb, int v, boolean u) {
-                prefs.edit().putInt("aiCloseTenths", 50 + v * 5).apply(); showClose.run();
-            }
-            @Override public void onStartTrackingTouch(android.widget.SeekBar sb) { }
-            @Override public void onStopTrackingTouch(android.widget.SeekBar sb) { }
-        });
-        root.addView(closeBar);
-        root.addView(button("시험: 화면 닫기 후보 보내기", v -> new AlertDialog.Builder(this)
-                .setTitle("워치에 답이 떠 있을 때 하나씩 누르세요")
-                .setItems(XiaoAi.CLOSE_TESTS, (d, w) -> {
-                    XiaoAi.get(this).closeTest(w);
-                    android.widget.Toast.makeText(this, XiaoAi.CLOSE_TESTS[w] + " 보냄", android.widget.Toast.LENGTH_SHORT).show();
-                }).setNegativeButton("닫기", null).show()));
-        root.addView(button("시험: 워치 무음 상태 조사", v -> link.probeQuiet()));
         TextView voiceInfo = text();
         voiceInfo.setText("음성 답변: 워치가 무음(방해 금지)이면 글자만, 아니면 워치 스피커로 읽어요");
         root.addView(voiceInfo);
@@ -215,6 +190,11 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         logView.setTextSize(12);
         logView.setTextIsSelectable(true);
         root.addView(logView);
+        root.addView(button("기록 복사 (붙여 넣어 보내기용)", v -> {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("기록", link.logText()));
+            android.widget.Toast.makeText(this, "기록을 복사했어요", android.widget.Toast.LENGTH_SHORT).show();
+        }));
         root.addView(button("기록 지우기", v -> link.clearLog()));
 
         ScrollView sv = new ScrollView(this);

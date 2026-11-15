@@ -290,7 +290,7 @@ public final class XiaoAi {
                 send(instr(RECOGNIZE_RESULT).msg(2, new Pb.W().bool(1, true).msg(2, new Pb.W().msg(1, new Pb.W().str(1, fq.isEmpty() ? "…" : fq)))), "최종 인식");
                 boolean app = cmd[0] != null && runCommand(cmd[0]);
                 showText(fa, !app);
-                voice.speak(fa, app ? 0 : System.currentTimeMillis() + prefs.getInt("aiCloseTenths", 100) * 100L);
+                voice.speak(fa);
                 active = false;
                 lastEndAt = System.currentTimeMillis();
             });

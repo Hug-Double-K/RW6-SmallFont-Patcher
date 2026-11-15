@@ -311,11 +311,6 @@ public final class WatchLink {
                 // 분석용: 연결 유지 응답(2/1)만 빼고 워치가 보낸 PB를 모두 캡처
                 boolean keepalive = plain.length >= 4 && plain[0] == 0x08 && plain[1] == 2 && plain[2] == 0x10 && plain[3] == 1;
                 if (!keepalive) AivsCapture.addPb(plain);
-                // 진단: 워치가 보낸 것을 그대로 기록 (무음 상태를 어디로 알려 주는지 찾는 중). 퀵앱(20)·날씨(10)는 뺌
-                if (!keepalive && plain.length >= 2 && plain[0] == 0x08 && plain[1] != 20 && plain[1] != 10) {
-                    byte[] cut = plain.length > 48 ? java.util.Arrays.copyOf(plain, 48) : plain;
-                    log("[받음] " + Hex.of(cut) + (plain.length > 48 ? "… (" + plain.length + "B)" : ""));
-                }
             }
 
             @Override public void onPacket(int type, int id, List<Pb.Field> p) {
