@@ -75,7 +75,7 @@ public final class WatchWeather {
     /** 워치가 보낸 type 10 메시지 */
     public void onPacket(int id, List<Pb.Field> p) {
         if (id == 3) { log("워치가 날씨를 요청함"); h.post(() -> update(false)); }
-        else if (id == 5) h.post(this::sendCityKeys);
+        // id 5 = 워치가 가진 도시 키 목록(응답) — 따로 할 일 없음
     }
 
     /** Gemini가 쓸 수 있게 날씨만 받아 둠 (워치로는 안 보냄) */
@@ -155,6 +155,9 @@ public final class WatchWeather {
         JSONObject cur = lastWx.getJSONObject("current");
         JSONObject d = lastWx.getJSONObject("daily");
         Pb.W id = weatherId();
+        // Mi Fitness처럼 먼저 도시 키 목록을 우리 위치로 갱신(10/6)
+        link().send(new Pb.W().varint(1, 10).varint(2, 6).msg(12, new Pb.W().msg(4, new Pb.W().msg(1,
+                new Pb.W().str(1, locationKey()).str(2, place())))), null);
 
         int aqi = Math.max(aqiNow(), 0);
         Pb.W latest = new Pb.W()
@@ -164,7 +167,7 @@ public final class WatchWeather {
                 .msg(4, kv("%", cur.optInt("relative_humidity_2m")))
                 .msg(5, kv(String.valueOf(cur.optInt("wind_direction_10m")), beaufort(cur.optDouble("wind_speed_10m"))))
                 .msg(6, kv("", (int) Math.round(cur.optDouble("uv_index", 0))))
-                .msg(7, kv(aqiKo(aqi), aqi))
+                .msg(7, kv(aqiEn(aqi), aqi))
                 .msg(8, new Pb.W())
                 .fixed32(9, (float) (cur.optDouble("surface_pressure", 1013) * 100));
         link().send(new Pb.W().varint(1, 10).varint(2, 0).msg(12, new Pb.W().msg(1, latest)), ok -> { });
@@ -177,9 +180,9 @@ public final class WatchWeather {
             int c = cma(codes.optInt(i));
             int a = aqiDay(i);
             list.msg(1, new Pb.W()
-                    .msg(1, kv(aqiKo(a), a))
+                    .msg(1, kv(aqiEn(a), a))
                     .msg(2, range(c, c))
-                    .msg(3, range((int) Math.round(mn.optDouble(i)), (int) Math.round(mx.optDouble(i))))
+                    .msg(3, range((int) Math.round(mx.optDouble(i)), (int) Math.round(mn.optDouble(i))))   // from=최고, to=최저 (Mi Fitness 기록)
                     .str(4, "℃")
                     .msg(5, new Pb.W().str(1, sr.optString(i) + ":00" + off).str(2, ss.optString(i) + ":00" + off)));
         }
@@ -196,7 +199,7 @@ public final class WatchWeather {
     private Pb.W weatherId() {
         SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
         f.setTimeZone(TimeZone.getTimeZone(prefs.getString("tz", "Asia/Seoul")));
-        return new Pb.W().str(1, f.format(new Date()) + offset()).str(2, place()).str(3, place())
+        return new Pb.W().str(1, f.format(new Date()) + offset()).str(2, "").str(3, place())
                 .str(4, locationKey()).bool(5, true);
     }
 
@@ -216,7 +219,8 @@ public final class WatchWeather {
         return String.format(Locale.US, "%s%02d:%02d", ms < 0 ? "-" : "+", m / 60, m % 60);
     }
 
-    private static Pb.W kv(String key, int value) { return new Pb.W().str(1, key).varint(2, value); }
+    // HCI 기록: 이 펌웨어는 값을 sint32(지그재그)로 읽음 (Mi Fitness가 15℃를 30으로 보냄)
+    private static Pb.W kv(String key, int value) { return new Pb.W().str(1, key).sint(2, value); }
     private static Pb.W range(int from, int to) { return new Pb.W().sint(1, from).sint(2, to); }
 
     private static int beaufort(double kmh) {
@@ -261,6 +265,14 @@ public final class WatchWeather {
             case 95: return "뇌우"; case 96: case 99: return "우박 동반 뇌우";
             default: return "알 수 없음";
         }
+    }
+
+    private static String aqiEn(int a) {
+        if (a <= 50) return "Good";
+        if (a <= 100) return "Moderate";
+        if (a <= 150) return "Unhealthy for sensitive groups";
+        if (a <= 200) return "Unhealthy";
+        return "Very unhealthy";
     }
 
     private static String aqiKo(int a) {

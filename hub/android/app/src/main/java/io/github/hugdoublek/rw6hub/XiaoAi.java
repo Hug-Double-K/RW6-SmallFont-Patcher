@@ -282,7 +282,10 @@ public final class XiaoAi {
             final String fq = q, fa = a;
             h.post(() -> {
                 if (myGen != gen) return;
-                if (!fq.isEmpty()) send(partial(fq), "들은 말");   // 말풍선에는 사용자가 한 말
+                // Mi Fitness 순서(HCI 기록): 중간 글자들 → STOP_CAPTURE → 최종 인식(is_final) → TOAST → SPEAK → [카드 + DIALOG_FINISH]
+                if (!fq.isEmpty()) send(partial(fq), "들은 말");
+                send(instr(STOP_CAPTURE), "녹음 멈춤");
+                send(instr(RECOGNIZE_RESULT).msg(2, new Pb.W().bool(1, true).msg(2, new Pb.W().msg(1, new Pb.W().str(1, fq.isEmpty() ? "…" : fq)))), "최종 인식");
                 boolean app = cmd[0] != null && runCommand(cmd[0]);
                 showText(fa, !app);
                 voice.speak(fa);
@@ -297,15 +300,13 @@ public final class XiaoAi {
         // 0.37 시험 결과: 토스트(TEMPLATE_TOAST)가 화면에 바로 뜸. 녹음 멈춤은 답을 띄운 뒤에.
         final int myGen = gen;
         send(instr(TEMPLATE_TOAST).msg(3, new Pb.W().str(1, text)), "답 표시");
-        h.postDelayed(() -> { if (myGen == gen) send(instr(STOP_CAPTURE), "녹음 멈춤"); }, 3000);
+        // 워치가 '읽는 중'으로 알게 하는 지시 (이게 있어야 SCO 소리를 받아들이는 듯)
+        send(instr(SPEECHSYNTHESIZER_SPEAK).msg(11, new Pb.W().str(1, text)), "읽기 지시");
         if (!close) return;   // 타이머 등 워치 앱을 연 경우엔 그 화면을 그대로 둠
         long ms = prefs.getInt("aiCloseTenths", 100) * 100L;
         h.postDelayed(() -> {
             if (myGen != gen || active) return;
-            // 샤오아이 화면을 닫고 시계 화면으로
-            send(instr(END_LISTENING), "듣기 끝");
-            send(instr(DIALOG_FINISH), "대화 끝");
-            // 워치페이스를 바꾸는 방식은 위험해서 뺌 (0.44에서 패처 워치페이스가 선택되고 연결이 끊김)
+            send(instr(DIALOG_FINISH), "대화 끝 (화면 닫기)");
         }, ms);
     }
 
