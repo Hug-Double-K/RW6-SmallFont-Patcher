@@ -305,7 +305,7 @@ public final class XiaoAi {
             // 샤오아이 화면을 닫고 시계 화면으로
             send(instr(END_LISTENING), "듣기 끝");
             send(instr(DIALOG_FINISH), "대화 끝");
-            goHome();
+            // 워치페이스를 바꾸는 방식은 위험해서 뺌 (0.44에서 패처 워치페이스가 선택되고 연결이 끊김)
         }, ms);
     }
 
@@ -332,50 +332,6 @@ public final class XiaoAi {
         // AlertsSetAlert: id·type·datetime·circle(ONCE)·circle_extra·offset·event (모두 필수 문자열은 빈 값이라도 넣음)
         return new Pb.W().str(1, String.valueOf(System.currentTimeMillis() / 1000)).varint(2, type).str(3, datetime)
                 .varint(4, 0).str(5, "").str(6, offset).str(7, event);
-    }
-
-    // ---- 시계 화면으로 돌아가기: 지금 쓰는 워치페이스를 다시 '설정'하면 워치가 시계 화면을 띄움 ----
-    private String currentFace, otherFace;
-    private boolean faceListen, homeWanted;
-
-    private void goHome() {
-        if (!faceListen) {
-            faceListen = true;
-            link().addPacketListener((type, id, p) -> {
-                if (type != 4 || id != 0) return;
-                List<Pb.Field> wf = Pb.sub(p, 6);
-                List<Pb.Field> list = wf == null ? null : Pb.sub(wf, 1);
-                if (list == null) return;
-                otherFace = null;
-                for (Pb.Field f : list) {
-                    if (f.number != 1 || f.bytes == null) continue;
-                    List<Pb.Field> item = Pb.parse(f.bytes);
-                    Pb.Field cur = Pb.find(item, 3), fid = Pb.find(item, 1);
-                    if (fid == null) continue;
-                    String idStr = new String(fid.bytes, StandardCharsets.UTF_8);
-                    if (cur != null && cur.varint == 1) currentFace = idStr;
-                    else if (otherFace == null) otherFace = idStr;
-                }
-                if (homeWanted) { homeWanted = false; h.post(this::setFace); }
-            });
-        }
-        // 매번 목록을 새로 받아 지금 워치페이스를 확인한 뒤 전환
-        homeWanted = true;
-        link().send(new Pb.W().varint(1, 4).varint(2, 0), null);
-    }
-
-    /** 같은 워치페이스를 다시 고르면 아무 일도 안 일어나서, 다른 페이스로 잠깐 바꿨다가 원래대로 되돌림 */
-    private void setFace() {
-        if (currentFace == null) { log("지금 워치페이스를 모름"); return; }
-        final String back = currentFace;
-        if (otherFace != null) {
-            link().send(new Pb.W().varint(1, 4).varint(2, 1).msg(6, new Pb.W().str(2, otherFace)), null);
-            h.postDelayed(() -> link().send(new Pb.W().varint(1, 4).varint(2, 1).msg(6, new Pb.W().str(2, back)),
-                    ok -> log("→ 시계 화면으로" + (ok ? " ✓" : " ✘"))), 1200);
-        } else {
-            link().send(new Pb.W().varint(1, 4).varint(2, 1).msg(6, new Pb.W().str(2, back)),
-                    ok -> log("→ 시계 화면으로" + (ok ? " ✓" : " ✘")));
-        }
     }
 
     private Pb.W partial(String text) {

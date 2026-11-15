@@ -70,7 +70,7 @@ public final class WatchWeather {
         }
     };
 
-    public void sendNow() { log("날씨 받는 중…"); h.post(() -> update(true)); }
+    public void sendNow() { log("날씨 받는 중…"); lastSent = 0; h.post(() -> update(true)); }
 
     /** 워치가 보낸 type 10 메시지 */
     public void onPacket(int id, List<Pb.Field> p) {
@@ -145,8 +145,13 @@ public final class WatchWeather {
         return Math.max(max, 0);
     }
 
+    private long lastSent = 0;
+
     private void sendAll() throws Exception {
         if (lastWx == null) return;
+        // 워치가 몇 초 간격으로 여러 번 요청해도 1분 안에는 한 번만 보냄
+        if (System.currentTimeMillis() - lastSent < 60_000L) return;
+        lastSent = System.currentTimeMillis();
         JSONObject cur = lastWx.getJSONObject("current");
         JSONObject d = lastWx.getJSONObject("daily");
         Pb.W id = weatherId();
