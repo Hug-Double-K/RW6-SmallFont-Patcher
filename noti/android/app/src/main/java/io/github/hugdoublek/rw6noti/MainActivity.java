@@ -200,41 +200,104 @@ public class MainActivity extends Activity {
     }
 
     /** 설치된 앱 목록에서 알림을 보낼 앱을 직접 고른다 */
+    /** 설치된 앱 목록에서 알림을 보낼 앱을 직접 고른다 (아이콘 표시, 선택한 앱은 위로) */
     private void pickOtherApps() {
-        android.content.pm.PackageManager pm = getPackageManager();
+        final android.content.pm.PackageManager pm = getPackageManager();
         Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         java.util.List<android.content.pm.ResolveInfo> found = pm.queryIntentActivities(launcher, 0);
-        java.util.TreeMap<String, String> apps = new java.util.TreeMap<>(); // 이름 → 패키지
         java.util.Set<String> skip = new java.util.HashSet<>(java.util.Arrays.asList(Prefs.SMS));
         skip.add(Prefs.KAKAO);
         skip.add(getPackageName());
+        final java.util.Set<String> chosen = new java.util.HashSet<>(prefs.otherApps());
+
+        // 패키지별로 한 번만 (여러 런처 액티비티 중복 제거)
+        java.util.LinkedHashMap<String, android.content.pm.ResolveInfo> byPkg = new java.util.LinkedHashMap<>();
         for (android.content.pm.ResolveInfo ri : found) {
             String pkg = ri.activityInfo.packageName;
-            if (skip.contains(pkg)) continue;
-            apps.put(ri.loadLabel(pm).toString() + "\u0000" + pkg, pkg);
+            if (skip.contains(pkg) || byPkg.containsKey(pkg)) continue;
+            byPkg.put(pkg, ri);
         }
-        String[] labels = new String[apps.size()];
-        String[] pkgs = new String[apps.size()];
-        boolean[] checked = new boolean[apps.size()];
-        java.util.Set<String> chosen = prefs.otherApps();
-        int i = 0;
-        for (java.util.Map.Entry<String, String> e : apps.entrySet()) {
-            labels[i] = e.getKey().substring(0, e.getKey().indexOf('\u0000'));
-            pkgs[i] = e.getValue();
-            checked[i] = chosen.contains(pkgs[i]);
-            i++;
+        final java.util.List<Row> rows = new java.util.ArrayList<>();
+        for (android.content.pm.ResolveInfo ri : byPkg.values()) {
+            Row r = new Row();
+            r.pkg = ri.activityInfo.packageName;
+            r.label = ri.loadLabel(pm).toString();
+            r.ri = ri;
+            r.checked = chosen.contains(r.pkg);
+            rows.add(r);
         }
+        sortRows(rows);
+
+        final java.util.HashMap<String, android.graphics.drawable.Drawable> iconCache = new java.util.HashMap<>();
+        final android.widget.BaseAdapter adapter = new android.widget.BaseAdapter() {
+            @Override public int getCount() { return rows.size(); }
+            @Override public Object getItem(int p) { return rows.get(p); }
+            @Override public long getItemId(int p) { return p; }
+            @Override public android.view.View getView(int p, android.view.View cv, android.view.ViewGroup parent) {
+                android.widget.LinearLayout row;
+                if (cv instanceof android.widget.LinearLayout) row = (android.widget.LinearLayout) cv;
+                else {
+                    row = new android.widget.LinearLayout(MainActivity.this);
+                    row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+                    row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                    int pd = Math.round(12 * getResources().getDisplayMetrics().density);
+                    row.setPadding(pd, pd, pd, pd);
+                    android.widget.ImageView icon = new android.widget.ImageView(MainActivity.this);
+                    int sz = Math.round(32 * getResources().getDisplayMetrics().density);
+                    android.widget.LinearLayout.LayoutParams il = new android.widget.LinearLayout.LayoutParams(sz, sz);
+                    il.rightMargin = pd;
+                    row.addView(icon, il);
+                    android.widget.TextView name = new android.widget.TextView(MainActivity.this);
+                    name.setTextSize(16);
+                    row.addView(name, new android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+                    android.widget.CheckBox cb = new android.widget.CheckBox(MainActivity.this);
+                    cb.setClickable(false);
+                    cb.setFocusable(false);
+                    row.addView(cb);
+                    row.setTag(new android.view.View[]{icon, name, cb});
+                }
+                Row r = rows.get(p);
+                android.view.View[] v = (android.view.View[]) row.getTag();
+                android.graphics.drawable.Drawable d = iconCache.get(r.pkg);
+                if (d == null) { try { d = r.ri.loadIcon(pm); } catch (Throwable t) { d = null; } iconCache.put(r.pkg, d); }
+                ((android.widget.ImageView) v[0]).setImageDrawable(d);
+                ((android.widget.TextView) v[1]).setText(r.label);
+                ((android.widget.CheckBox) v[2]).setChecked(r.checked);
+                return row;
+            }
+        };
+        android.widget.ListView list = new android.widget.ListView(this);
+        list.setAdapter(adapter);
+        list.setOnItemClickListener((parent, view, pos, id) -> {
+            Row r = rows.get(pos);
+            r.checked = !r.checked;
+            adapter.notifyDataSetChanged();
+        });
         new android.app.AlertDialog.Builder(this)
                 .setTitle("알림을 보낼 앱 선택")
-                .setMultiChoiceItems(labels, checked, (d, which, on) -> checked[which] = on)
+                .setView(list)
                 .setPositiveButton("저장", (d, w) -> {
                     java.util.Set<String> out = new java.util.HashSet<>();
-                    for (int k = 0; k < pkgs.length; k++) if (checked[k]) out.add(pkgs[k]);
+                    for (Row r : rows) if (r.checked) out.add(r.pkg);
                     prefs.setOtherApps(out);
                     refreshOtherLabel();
                 })
                 .setNegativeButton("취소", null)
                 .show();
+    }
+
+    private static final class Row {
+        String pkg, label;
+        android.content.pm.ResolveInfo ri;
+        boolean checked;
+    }
+
+    /** 선택된 앱을 위로, 그 안에서는 이름순 */
+    private static void sortRows(java.util.List<Row> rows) {
+        java.util.Collections.sort(rows, (a, b) -> {
+            if (a.checked != b.checked) return a.checked ? -1 : 1;
+            return a.label.compareToIgnoreCase(b.label);
+        });
     }
 
     private void refreshOtherLabel() {
