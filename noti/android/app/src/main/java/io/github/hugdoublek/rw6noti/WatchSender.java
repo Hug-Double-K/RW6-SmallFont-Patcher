@@ -189,7 +189,8 @@ public final class WatchSender {
         return "S" + (p.vibrate() && !quiet ? "1" : "0") + (p.wake() && !quiet ? "1" : "0")
                 + String.format("%02d", p.fontSize()) + (quiet ? "1" : "0")
                 + String.format("%03d", p.wakeTenths())
-                + (p.group() ? "1" : "0"); // 같은 대화방 묶어 보기
+                + (p.group() ? "1" : "0") // 같은 대화방 묶어 보기
+                + String.format("%02d", p.maxSave()); // 워치가 보관할 최대 개수
     }
 
     // ---------- 못 보낸 알림 다시 보내기 ----------

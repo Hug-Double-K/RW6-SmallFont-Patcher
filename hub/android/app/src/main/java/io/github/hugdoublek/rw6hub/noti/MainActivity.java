@@ -102,7 +102,24 @@ public class MainActivity extends Activity {
         // 워치 알림 센터에 올린 줄은 누르면 '무시'만 있고 앱이 열리지 않음 (샤오미 개발 도구의 한계)
         root.addView(check("워치 알림 목록에 'OO 알림 - N건' 한 줄 표시 (알림만, 눌러도 앱은 안 열림)", prefs.watchList(), prefs::setWatchList));
 
-        root.addView(section("4. 확인"));
+        root.addView(section("4. 최대 수신 알림 갯수"));
+        final TextView maxLabel = text("워치에 보관할 최근 알림: " + prefs.maxSave() + "개 (바꾸면 다음 알림부터 적용)");
+        root.addView(maxLabel);
+        SeekBar maxBar = new SeekBar(this);
+        maxBar.setMax(60); // 20~80
+        maxBar.setProgress(prefs.maxSave() - 20);
+        maxBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar s, int v, boolean u) {
+                int n = 20 + v;
+                prefs.setMaxSave(n);
+                maxLabel.setText("워치에 보관할 최근 알림: " + n + "개 (바꾸면 다음 알림부터 적용)");
+            }
+            @Override public void onStartTrackingTouch(SeekBar s) { }
+            @Override public void onStopTrackingTouch(SeekBar s) { }
+        });
+        root.addView(maxBar);
+
+        root.addView(section("5. 확인"));
         root.addView(button("워치로 테스트 알림 보내기", v -> sendTest()));
         root.addView(button("지금 상태 점검 (6시간마다 자동으로도 점검)", v -> {
             log.setText("점검 중…");
@@ -111,13 +128,13 @@ public class MainActivity extends Activity {
         log = text("");
         root.addView(log);
 
-        root.addView(section("5. 최근 기록 (사진이 빠지면 여기 이유가 남아요)"));
+        root.addView(section("6. 최근 기록 (사진이 빠지면 여기 이유가 남아요)"));
         hist = text("");
         hist.setTextSize(12);
         hist.setTextIsSelectable(true);
         root.addView(hist);
 
-        root.addView(section("6. 마지막 카톡 알림 분석"));
+        root.addView(section("7. 마지막 카톡 알림 분석"));
         diag = text("");
         diag.setTextSize(12);
         diag.setTextIsSelectable(true);

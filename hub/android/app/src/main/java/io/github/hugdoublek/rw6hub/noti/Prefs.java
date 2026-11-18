@@ -22,6 +22,10 @@ public final class Prefs {
     public int fontSize() { return sp.getInt("fontSize", 26); }
     public void setFontSize(int v) { sp.edit().putInt("fontSize", v).apply(); }
 
+    /** 워치가 보관할 최대 알림 개수 (20~80, 기본 40) */
+    public int maxSave() { return Math.max(20, Math.min(80, sp.getInt("maxSave", 40))); }
+    public void setMaxSave(int v) { sp.edit().putInt("maxSave", Math.max(20, Math.min(80, v))).apply(); }
+
     public boolean kakao() { return sp.getBoolean("kakao", true); }
     public void setKakao(boolean v) { sp.edit().putBoolean("kakao", v).apply(); }
 
