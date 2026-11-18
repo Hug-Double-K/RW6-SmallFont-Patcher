@@ -4,9 +4,13 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.util.Base64;
 
 import java.io.ByteArrayOutputStream;
@@ -197,14 +201,48 @@ public final class Renderer {
     public static Bitmap iconBitmap(Drawable d, int size) {
         if (d == null) return null;
         try {
-            Bitmap b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-            Canvas c = new Canvas(b);
-            d.setBounds(0, 0, size, size);
-            d.draw(c);
-            // 적응형 아이콘 등이 투명하게 그려지면(사실상 빈 그림) null → 호출 측에서 글자 아이콘으로 대체
-            if (!isBlank(b)) return b;
+            int big = Math.max(size * 3, 144);     // 크게 그린 뒤 축소하면 또렷함
+            Bitmap b = rasterize(d, big);
+            if (b != null && !isBlank(b)) {
+                if (big == size) return b;
+                Bitmap s = Bitmap.createScaledBitmap(b, size, size, true);
+                if (s != b) b.recycle();
+                return s;
+            }
         } catch (Throwable ignored) { }
         return null;
+    }
+
+    /** 드로어블을 size×size 비트맵으로. 적응형 아이콘은 배경·전경 층을 직접 합성(그냥 draw하면 투명하게 나오는 기기 대응) */
+    private static Bitmap rasterize(Drawable d, int size) {
+        Bitmap b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(b);
+        if (Build.VERSION.SDK_INT >= 26 && d instanceof AdaptiveIconDrawable) {
+            AdaptiveIconDrawable aid = (AdaptiveIconDrawable) d;
+            Drawable bg = aid.getBackground();
+            Drawable fg = aid.getForeground();
+            int ext = Math.round(size * 0.25f);    // 108/72 비율: 안전영역이 화면을 채우도록 바깥으로 넓혀 그림
+            int l = -ext, t = -ext, r = size + ext, bo = size + ext;
+            if (bg != null) { bg.setBounds(l, t, r, bo); bg.draw(c); }
+            if (fg != null) { fg.setBounds(l, t, r, bo); fg.draw(c); }
+            return roundMask(b);                   // 둥근 사각형으로 다듬음
+        }
+        d.setBounds(0, 0, size, size);
+        d.draw(c);
+        return b;
+    }
+
+    /** 비트맵을 둥근 사각형으로 오려냄 */
+    private static Bitmap roundMask(Bitmap src) {
+        int w = src.getWidth(), h = src.getHeight();
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        float rad = w * 0.24f;
+        c.drawRoundRect(new RectF(0, 0, w, h), rad, rad, p);
+        p.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.SRC_IN));
+        c.drawBitmap(src, 0, 0, p);
+        return out;
     }
 
     /** 그려진 아이콘이 거의 투명하면 true (빈 아이콘 판정) */
