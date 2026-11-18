@@ -245,6 +245,7 @@ public class NotiListener extends NotificationListenerService {
             o.put("b", text == null ? "" : text); o.put("w", when);
             if (pending) o.put("p", 1);
             Bitmap ib = Renderer.iconBitmap(icon, 40);
+            if (ib == null) ib = Renderer.letterIcon(appName, 40);
             String k = String.valueOf(Math.abs(appName.hashCode()));
             o.put("k", k);
             Long at = ICON_AT.get(k);

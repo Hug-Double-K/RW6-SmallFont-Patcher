@@ -91,10 +91,9 @@ public final class Renderer {
         c.drawRoundRect(new RectF(0, 0, WIDTH, height), 28, 28, bg);
 
         // 헤더: 아이콘 + 앱/대화방 · 시간
-        if (icon != null) {
-            icon.setBounds(PAD, PAD, PAD + iconSize, PAD + iconSize);
-            icon.draw(c);
-        }
+        Bitmap iconBmp = iconBitmap(icon, iconSize);
+        if (iconBmp == null) iconBmp = letterIcon(appName, iconSize);
+        if (iconBmp != null) c.drawBitmap(iconBmp, PAD, PAD, null);
         float hx = PAD + (icon != null ? iconSize + 10 : 0);
         float hy = PAD + (iconSize + small.getTextSize()) / 2f - 2;
         c.drawText(headerLines.get(0), hx, hy, small);
@@ -197,10 +196,51 @@ public final class Renderer {
     /** 앱 아이콘을 작은 정사각형 이미지로 (글 알림 카드용) */
     public static Bitmap iconBitmap(Drawable d, int size) {
         if (d == null) return null;
+        try {
+            Bitmap b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            Canvas c = new Canvas(b);
+            d.setBounds(0, 0, size, size);
+            d.draw(c);
+            // 적응형 아이콘 등이 투명하게 그려지면(사실상 빈 그림) null → 호출 측에서 글자 아이콘으로 대체
+            if (!isBlank(b)) return b;
+        } catch (Throwable ignored) { }
+        return null;
+    }
+
+    /** 그려진 아이콘이 거의 투명하면 true (빈 아이콘 판정) */
+    private static boolean isBlank(Bitmap b) {
+        int w = b.getWidth(), h = b.getHeight();
+        int step = Math.max(1, Math.min(w, h) / 10);
+        int opaque = 0, total = 0;
+        for (int y = 0; y < h; y += step) {
+            for (int x = 0; x < w; x += step) {
+                total++;
+                if ((b.getPixel(x, y) >>> 24) > 24) opaque++;
+            }
+        }
+        return opaque * 100 < total * 4; // 불투명 픽셀 4% 미만이면 빈 것으로 봄
+    }
+
+    private static final int[] ICON_COLORS = {
+            0xFF5B8DEF, 0xFF34C759, 0xFFFF9F0A, 0xFFFF6FA8, 0xFFAF7BFF, 0xFF00B8C4, 0xFFEF5B5B, 0xFF7C8AA5 };
+
+    /** 앱 아이콘을 못 그릴 때 쓰는 대체 아이콘: 색 원 + 앱 이름 첫 글자 */
+    public static Bitmap letterIcon(String name, int size) {
         Bitmap b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(b);
-        d.setBounds(0, 0, size, size);
-        d.draw(c);
+        String s = name == null ? "" : name.trim();
+        String ch = s.isEmpty() ? "?" : s.substring(0, 1);
+        int color = ICON_COLORS[Math.abs(s.hashCode()) % ICON_COLORS.length];
+        Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG);
+        bg.setColor(color);
+        c.drawCircle(size / 2f, size / 2f, size / 2f, bg);
+        Paint tp = new Paint(Paint.ANTI_ALIAS_FLAG);
+        tp.setColor(0xFFFFFFFF);
+        tp.setTextAlign(Paint.Align.CENTER);
+        tp.setFakeBoldText(true);
+        tp.setTextSize(size * 0.56f);
+        Paint.FontMetrics fm = tp.getFontMetrics();
+        c.drawText(ch, size / 2f, size / 2f - (fm.ascent + fm.descent) / 2f, tp);
         return b;
     }
 
