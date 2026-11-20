@@ -73,6 +73,78 @@ public final class QuickApps implements WatchLink.PacketListener {
     /** 이 퀵앱의 짝 역할을 Mi Manager가 맡는다고 알림 (워치가 물으면 "연결됨"으로 답함). */
     public void register(String pkg, String name) { handled.put(pkg, name); }
 
+    // ---------------- 다른 이름표로 설치한 같은 퀵앱 (자리 빌리기) ----------------
+    // 워치페이스 버튼은 워치에 원래 있던 퀵앱만 열 수 있다(예: 253번 = com.tencent.wechatrtos).
+    // 그래서 우리 퀵앱을 그 이름표로 한 벌 더 만들어 설치하면 워치페이스에서 바로 열 수 있다.
+    // 폰 쪽에서는 원래 이름표(primary)와 빌린 이름표(alt)를 같은 앱으로 다루고,
+    // 마지막으로 말을 걸어 온 쪽(= 사용자가 실제로 쓰는 쪽)으로 메시지를 보낸다.
+    private final Map<String, String> altOf = new ConcurrentHashMap<>();     // primary → alt
+    private final Map<String, String> primaryOf = new ConcurrentHashMap<>(); // alt → primary
+
+    public void registerAlias(String primary, String alt) {
+        if (primary == null || alt == null || alt.isEmpty() || alt.equals(primary)) return;
+        altOf.put(primary, alt);
+        primaryOf.put(alt, primary);
+    }
+
+    /** 빌린 이름표의 퀵앱이 정말 우리 것인지: 서명 지문이 원래 앱과 같아야 한다(원래 워치에 있던 남의 앱과 구분). */
+    private boolean aliasIsOurs(String alt, byte[] fp) {
+        String primary = primaryOf.get(alt);
+        if (primary == null) return false;
+        byte[] mine = fingerprint(primary);
+        if (mine != null && fp != null && fp.length > 0 && java.util.Arrays.equals(mine, fp)) return true;
+        // 지문을 모르거나 다르게 계산되는 경우엔 버전으로 구분 (워치에 원래 있던 앱은 버전이 아주 낮음: 위챗 v2)
+        List<App> list = installed;
+        if (list != null) for (App a : list) if (a.pkg.equals(alt)) return a.versionCode >= 20;
+        return false;
+    }
+
+    /** 우리가 맡는 퀵앱인가 (빌린 이름표면 지문까지 확인). */
+    private boolean isOurs(String pkg, byte[] fp) {
+        if (primaryOf.containsKey(pkg)) return aliasIsOurs(pkg, fp);
+        return handled.containsKey(pkg);
+    }
+
+    private void heardFrom(String pkg) {
+        String primary = primaryOf.containsKey(pkg) ? primaryOf.get(pkg) : (altOf.containsKey(pkg) ? pkg : null);
+        if (primary == null) return;
+        String key = "active:" + primary;
+        if (!pkg.equals(fpStore.getString(key, null))) {
+            fpStore.edit().putString(key, pkg).apply();
+            link().log("퀵앱 " + shortName(primary) + " → 이제 " + pkg + " 쪽으로 보냄");
+        }
+    }
+
+    /** 이 퀵앱에 보낼 때 실제로 쓸 이름표. */
+    public String target(String primary) {
+        String alt = altOf.get(primary);
+        if (alt == null) return primary;
+        String active = fpStore.getString("active:" + primary, primary);
+        List<App> list = installed;
+        if (list != null) {
+            boolean hasP = false, hasA = false;
+            for (App a : list) {
+                if (a.pkg.equals(primary)) hasP = true;
+                else if (a.pkg.equals(alt) && aliasIsOurs(alt, a.fingerprint)) hasA = true;
+            }
+            if (hasP && !hasA) return primary;
+            if (hasA && !hasP) return alt;
+            if (!hasP && !hasA) return primary;
+        }
+        if (active.equals(alt) && !aliasIsOurs(alt, fingerprint(alt))) return primary;
+        return active;
+    }
+
+    public boolean isInstalledAny(String primary) {
+        if (isInstalled(primary)) return true;
+        String alt = altOf.get(primary);
+        if (alt == null) return false;
+        List<App> list = installed;
+        if (list == null) return aliasIsOurs(alt, fingerprint(alt));
+        for (App a : list) if (a.pkg.equals(alt) && aliasIsOurs(alt, a.fingerprint)) return true;
+        return false;
+    }
+
     public void addListener(String pkg, MessageListener l) {
         listeners.computeIfAbsent(pkg, k -> new CopyOnWriteArrayList<>()).addIfAbsent(l);
     }
@@ -85,6 +157,10 @@ public final class QuickApps implements WatchLink.PacketListener {
         for (String pkg : handled.keySet()) {
             byte[] fp = fingerprint(pkg);
             if (fp != null) syncStatus(pkg, fp, STATUS_CONNECTED);
+        }
+        for (String alt : primaryOf.keySet()) {
+            byte[] fp = fingerprint(alt);
+            if (fp != null && aliasIsOurs(alt, fp)) syncStatus(alt, fp, STATUS_CONNECTED);
         }
     }
 
@@ -221,7 +297,8 @@ public final class QuickApps implements WatchLink.PacketListener {
                 String pkg = str(bi, 1);
                 byte[] fp = bytes(bi, 2);
                 rememberFingerprint(pkg, fp);
-                boolean ours = handled.containsKey(pkg);
+                boolean ours = isOurs(pkg, fp);
+                if (ours) heardFrom(pkg);
                 syncStatus(pkg, fp, ours ? STATUS_CONNECTED : STATUS_DISCONNECTED);
                 link().log("퀵앱 " + shortName(pkg) + " 이 폰 앱 상태를 물음 → " + (ours ? "연결됨" : "맡지 않음"));
                 break;
@@ -233,7 +310,12 @@ public final class QuickApps implements WatchLink.PacketListener {
                 String pkg = bi == null ? "" : str(bi, 1);
                 if (bi != null) rememberFingerprint(pkg, bytes(bi, 2));
                 byte[] data = bytes(mc, 2);
-                CopyOnWriteArrayList<MessageListener> ls = listeners.get(pkg);
+                String listenKey = pkg;
+                if (primaryOf.containsKey(pkg)) {
+                    // 빌린 이름표로 설치한 우리 퀵앱이면 원래 이름표의 받는 곳으로 넘긴다
+                    if (bi != null && aliasIsOurs(pkg, bytes(bi, 2))) { listenKey = primaryOf.get(pkg); heardFrom(pkg); }
+                } else if (altOf.containsKey(pkg)) heardFrom(pkg);
+                CopyOnWriteArrayList<MessageListener> ls = listeners.get(listenKey);
                 if (ls == null || ls.isEmpty()) {
                     link().log("퀵앱 " + shortName(pkg) + " 메시지 (" + data.length + "B) → 받을 곳 없음");
                     return;

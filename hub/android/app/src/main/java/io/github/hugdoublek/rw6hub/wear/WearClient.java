@@ -18,12 +18,19 @@ public final class WearClient {
     final String pkg;
     final String label;
 
-    public WearClient(Context c, String pkg, String label) {
+    public WearClient(Context c, String pkg, String label) { this(c, pkg, label, null); }
+
+    /** altPkg: 같은 퀵앱을 다른 이름표로도 설치해 쓰는 경우(워치페이스 버튼용 자리 빌리기). 없으면 null. */
+    public WearClient(Context c, String pkg, String label, String altPkg) {
         this.app = c.getApplicationContext();
         this.pkg = pkg;
         this.label = label;
         QuickApps.get(app).register(pkg, label);
+        QuickApps.get(app).registerAlias(pkg, altPkg);
     }
+
+    /** 지금 메시지를 보낼 실제 이름표 (자리 빌리기를 쓰면 그쪽). */
+    String target() { return apps().target(pkg); }
 
     WatchLink link() { return WatchLink.get(app); }
     QuickApps apps() { return QuickApps.get(app); }

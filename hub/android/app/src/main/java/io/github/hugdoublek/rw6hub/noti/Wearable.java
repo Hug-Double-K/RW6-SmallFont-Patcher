@@ -16,6 +16,8 @@ public final class Wearable {
     private Wearable() {}
 
     public static final String WATCH_PACKAGE = "io.github.hugdoublek.rw6noti";
+    /** 워치페이스 버튼(253번)으로 바로 열려고, 같은 퀵앱을 워치의 위챗 이름표로도 설치할 수 있다. */
+    public static final String WATCH_PACKAGE_ALT = "com.tencent.wechatrtos";
     public static final String LABEL = "RW6 알림";
     /** 워치 퀵앱과 버전을 맞춰 보는 데 쓰는 이 기능의 버전 */
     public static final String PHONE_VERSION = "4.4";
@@ -23,7 +25,7 @@ public final class Wearable {
     private static WearClient client;
 
     public static synchronized WearClient client(Context c) {
-        if (client == null) client = new WearClient(c, WATCH_PACKAGE, LABEL);
+        if (client == null) client = new WearClient(c, WATCH_PACKAGE, LABEL, WATCH_PACKAGE_ALT);
         return client;
     }
 

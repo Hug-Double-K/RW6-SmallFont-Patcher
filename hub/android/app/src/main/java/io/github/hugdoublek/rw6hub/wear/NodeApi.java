@@ -41,7 +41,7 @@ public final class NodeApi {
     public Task<Boolean> isWearAppInstalled(String nodeId) {
         Task<Boolean> t = new Task<>();
         if (!c.link().isReady()) { t.fail(new Exception("워치가 연결되어 있지 않음")); return t; }
-        c.apps().refreshInstalled(apps -> t.succeed(c.apps().isInstalled(c.pkg)));
+        c.apps().refreshInstalled(apps -> t.succeed(c.apps().isInstalledAny(c.pkg)));
         return t;
     }
 
@@ -49,7 +49,7 @@ public final class NodeApi {
     public Task<Void> launchWearApp(String nodeId, String uri) {
         QuickApps.Done[] h = new QuickApps.Done[1];
         Task<Void> t = WearClient.fromDone(h, null);
-        c.apps().launch(c.pkg, uri, h[0]);
+        c.apps().launch(c.target(), uri, h[0]);
         return t;
     }
 }

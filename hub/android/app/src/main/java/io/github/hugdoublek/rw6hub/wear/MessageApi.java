@@ -14,7 +14,7 @@ public final class MessageApi {
     public Task<Void> sendMessage(String nodeId, byte[] data) {
         QuickApps.Done[] h = new QuickApps.Done[1];
         Task<Void> t = WearClient.fromDone(h, null);
-        c.apps().sendMessage(c.pkg, data, h[0]);
+        c.apps().sendMessage(c.target(), data, h[0]);
         return t;
     }
 
