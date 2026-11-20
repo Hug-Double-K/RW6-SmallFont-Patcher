@@ -1,7 +1,9 @@
 AppName-MessengerNoti2
+NanumSmall85Both
+NanumSmallBody85Menu80
+NanumSmall85Body
+NanumSmall80Body
 NanumSmall85Medium
 NanumSmall80Medium
 MapTest
-NanumSmall85Body
-NanumSmall80Body
 AppName-WeChat
