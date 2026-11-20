@@ -27,7 +27,11 @@
       </list-item>
       <list-item type="end" class="tcard-end"><text class="t-app">{{ time }}</text></list-item>
     </list>
-    <text class="btn off" @click="remove">{{ room ? '모두 끄기' : '끄기' }}</text>
+    <!-- 아래 줄: 왼쪽 3분의 2 = 끄기(이 알림 삭제), 오른쪽 3분의 1 = 고정(목록 맨 위에 두기) -->
+    <div class="offrow">
+      <text class="offbtn" @click="remove">{{ room ? '모두 끄기' : '끄기' }}</text>
+      <text class="pinbtn {{ pinned ? 'pin-on' : '' }}" @click="togglePin">{{ pinned ? '해제' : '고정' }}</text>
+    </div>
   </div>
 </template>
 
@@ -37,8 +41,23 @@ import file from '@system.file'
 import router from '@system.router'
 import interconnect from '@system.interconnect'
 import storage from '@system.storage'
+import prompt from '@system.prompt'
 
-const INDEX = 'internal://mass/rw6noti_meta/index.json'
+const META = 'internal://mass/rw6noti_meta'
+const INDEX = `${META}/index.json`
+// 고정한 알림 { 고정 키: 고정한 시각 } — 목록 화면(index)과 같은 파일
+const PINF = `${META}/pins.json`
+function pinKey(e) { return e.rk || `#${e.name}` }
+function readPins(cb) {
+  file.readText({
+    uri: PINF,
+    success(r) { let p = {}; try { p = JSON.parse(r.text) || {} } catch (e) { p = {} } cb(p) },
+    fail() { cb({}) },
+  })
+}
+function writePins(p, cb) {
+  file.mkdir({ uri: META, recursive: true, complete() { file.writeText({ uri: PINF, text: JSON.stringify(p), complete() { if (cb) cb() } }) } })
+}
 
 function split(body) {
   const out = []
@@ -75,10 +94,12 @@ export default {
     uri: '',
     room: '', // 값이 있으면 이 대화방의 알림 전부를 시간 순서로
     arrival: '0',
+    pk: '', // 고정 키 (목록 화면이 넘겨 줌)
   },
-  private: { isText: false, app: '', sender: '', parts: [], time: '', fs: 26, lh: 35, emo: '', ew: 0, eh: 0, sf: '', sw: 0, sh: 0, hf: '', hw: 0, hh: 0, uris: [] },
+  private: { isText: false, app: '', sender: '', parts: [], time: '', fs: 26, lh: 35, emo: '', ew: 0, eh: 0, sf: '', sw: 0, sh: 0, hf: '', hw: 0, hh: 0, uris: [], pinned: false },
   onInit() {
     const self = this
+    self.initPin()
     storage.get({ key: 'alert', success(v) { try { const a = JSON.parse(v); if (a.fs) { self.fs = a.fs; self.lh = Math.round(a.fs * 1.35) } } catch (e) {} } })
     if (self.room) { self.loadRoom(); return }
     if (self.uri.indexOf('.json') < 0) return
@@ -148,7 +169,34 @@ export default {
     })
   },
 
-  openPhoto(u) { router.push({ uri: '/pages/detail', params: { uri: u, arrival: '0' } }) },
+  openPhoto(u) { router.push({ uri: '/pages/detail', params: { uri: u, arrival: '0', pk: this.pk } }) },
+
+  // 고정 키를 모르면(옛 방식으로 열린 경우) 목록 모음에서 찾음 → 지금 고정돼 있는지 표시
+  initPin() {
+    const self = this
+    const show = () => readPins((p) => { self.pinned = !!p[self.pk] })
+    if (self.pk) { show(); return }
+    file.readText({
+      uri: INDEX,
+      success(r) {
+        try { const hit = JSON.parse(r.text).find((e) => e.uri === self.uri); if (hit) self.pk = pinKey(hit) } catch (e) {}
+        if (self.pk) show()
+      },
+    })
+  },
+
+  // '고정' = 이 알림(대화)을 목록 맨 위에 둠, 다시 누르면 해제
+  togglePin() {
+    const self = this
+    if (!self.pk) return
+    readPins((p) => {
+      if (p[self.pk]) delete p[self.pk]; else p[self.pk] = Date.now()
+      writePins(p, () => {
+        self.pinned = !!p[self.pk]
+        try { prompt.showToast({ message: self.pinned ? '맨 위에 고정했어요' : '고정을 풀었어요' }) } catch (e) {}
+      })
+    })
+  },
 
   remove() {
     const self = this
@@ -168,7 +216,12 @@ export default {
       success(r) {
         let list = []
         try { list = JSON.parse(r.text).filter((e) => !gone[e.uri]) } catch (e) {}
-        file.writeText({ uri: INDEX, text: JSON.stringify(list), complete: done })
+        // 이 대화의 알림이 하나도 안 남으면 고정도 풂
+        const unpin = (next) => {
+          if (!self.pk || list.some((e) => pinKey(e) === self.pk)) { next(); return }
+          readPins((p) => { if (p[self.pk]) { delete p[self.pk]; writePins(p, next) } else next() })
+        }
+        file.writeText({ uri: INDEX, text: JSON.stringify(list), complete() { unpin(done) } })
       },
       fail: done,
     })
@@ -178,4 +231,8 @@ export default {
 
 <style>
   @import '../../common/common.css';
+  .offrow { width: 86%; height: 72px; margin-top: 8px; flex-direction: row; }
+  .offbtn { flex: 2; height: 72px; border-radius: 36px; background-color: #2f4a8a; text-align: center; font-size: 30px; }
+  .pinbtn { flex: 1; height: 72px; margin-left: 8px; border-radius: 36px; background-color: #2a2d35; text-align: center; font-size: 26px; }
+  .pin-on { background-color: #b07a12; }
 </style>

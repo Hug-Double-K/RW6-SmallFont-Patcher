@@ -38,6 +38,7 @@
       <list id="list" style="width: 100%; flex: 1" if="{{ notis }}">
         <list-item type="{{ li.kind === 'img' ? 'img' : (li.e ? 'emo' : 'text') }}" for="(i, li) in list" class="card" show="{{ !li.gone }}">
           <text class="btn danger" if="{{ deleteOn }}" @click="deleteOne(li, i)">지우기</text>
+          <text if="{{ li.kind === 'img' && li.pin }}" class="t-pin" style="margin: 0 0 4px 14px">고정</text>
           <text if="{{ li.kind === 'img' && li.badge }}" class="t-app" style="margin: 0 0 4px 14px">{{ li.al }} · {{ li.badge }}</text>
           <image if="{{ li.kind === 'img' }}" src="{{ li.uri }}" style="width: 100%" @click="openPopup(li)" />
           <div if="{{ li.kind === 'text' }}" class="tcard" @click="openPopup(li)">
@@ -46,6 +47,7 @@
               <image if="{{ li.hf }}" src="{{ li.hf }}" style="width: {{ li.hw }}px; height: {{ li.hh }}px" />
               <text if="{{ li.hf && li.tm }}" class="t-app" style="margin-left: 8px">{{ li.tm }}</text>
               <text if="{{ !li.hf }}" class="t-app" style="flex: 1">{{ li.al }}</text>
+              <text if="{{ li.pin }}" class="t-pin">고정</text>
               <text class="t-badge">{{ li.badge }}</text>
             </div>
             <image if="{{ li.sf }}" src="{{ li.sf }}" style="width: {{ li.sw }}px; height: {{ li.sh }}px; margin-top: 6px" />
@@ -75,6 +77,19 @@ const ICONS = 'internal://mass/rw6noti_icons'
 const META = 'internal://mass/rw6noti_meta'
 const INDEX = `${META}/index.json`
 let IDX = null // [{ name, kind, uri, a, s, b, icon }] 최신이 앞
+// 고정한 알림: { 고정 키: 고정한 시각 }. 고정 키 = 대화방 키(rk), 없으면 '#이름'. 읽기 화면의 '고정' 버튼이 바꿈
+const PINF = `${META}/pins.json`
+const PIN_KEEP = 30 // 고정한 대화의 알림은 '최대 보관' 수와 따로 이만큼까지 남김
+let PINS = {}
+let pinsLoaded = false
+let pinsSig = ''
+function pinKey(e) { return e.rk || `#${e.name}` }
+function isPinned(e) { return !!PINS[pinKey(e)] }
+// 보관할 알림: 고정 안 한 것은 최신 maxSave개, 고정한 것은 따로 최신 PIN_KEEP개 (최신이 앞)
+function keepList(list) {
+  let free = 0, pinned = 0
+  return list.filter((e) => (isPinned(e) ? pinned++ < PIN_KEEP : free++ < maxSave))
+}
 let idxWaiters = []
 let saving = false
 let saveAgain = false
@@ -165,6 +180,8 @@ export default {
       fail() { self.needSetting() },
     })
     self.ready()
+    pinsLoaded = false
+    self.pinsLoad()
     // 기다리는 동안 목록을 미리 읽어 둠 → 목록으로 넘어갈 때 바로 그림
     self.idxLoad(() => {})
     // 폰이 연 게 아니라 직접 열었으면 잠시 뒤 목록
@@ -321,8 +338,8 @@ export default {
   showList() {
     if (waitTimer) { clearTimeout(waitTimer); waitTimer = null }
     this.mode = 'list'
-    // 미리 읽어 둔 게 있으면 그대로 바로
-    if (IDX) this.applyList(); else this.idxLoad(() => this.applyList())
+    // 미리 읽어 둔 게 있으면 그대로 바로 (고정 목록도 읽은 뒤)
+    this.pinsLoad(() => { if (IDX) this.applyList(); else this.idxLoad(() => this.applyList()) })
   },
 
   // 도착 화면에서 알림을 누르면 읽기 화면으로 ('끄기' = 지우고 앱 닫기, 뒤로 = 도착 화면)
@@ -335,7 +352,8 @@ export default {
     const c = this.cur
     if (!c.name) return
     inDetailAt = Date.now()
-    router.push({ uri: '/pages/detail', params: { uri: c.img || `${DIR}/${c.name}.json`, arrival: '1' } })
+    const hit = (IDX || []).find((e) => e.name === c.name)
+    router.push({ uri: '/pages/detail', params: { uri: c.img || `${DIR}/${c.name}.json`, arrival: '1', pk: hit ? pinKey(hit) : `#${c.name}` } })
   },
 
   // 도착 화면의 '끄기' = 이 알림 지우고 앱 닫기
@@ -345,7 +363,7 @@ export default {
     ;['json', 'jpg', 'png'].forEach((e) => { try { file.delete({ uri: `${DIR}/${n}.${e}` }) } catch (x) {} })
     try { conn.send({ data: { del: 1 } }) } catch (x) {}
     // 이 알림의 그림 조각(이모지·보낸 사람·윗줄)도 지운 뒤 닫기
-    const close = () => self.idxRemove((e) => e.name === n, () => self.closeApp())
+    const close = () => self.idxRemove((e) => e.name === n, () => { self.pinsClean(); self.closeApp() })
     file.list({
       uri: META,
       success(md) {
@@ -358,15 +376,29 @@ export default {
 
   // 오래된 알림 정리
   trim() {
+    const self = this
+    // 고정 목록과 미리보기 모음을 읽은 뒤에 정리 (고정한 알림을 지우지 않게)
+    if (!pinsLoaded || !IDX) { self.pinsLoad(() => self.idxLoad(() => self.trimNow())); return }
+    self.trimNow()
+  },
+  trimNow() {
+    // 고정한 대화의 알림 이름 (최신 PIN_KEEP개까지)
+    const pinnedNames = {}
+    let pc = 0
+    ;(IDX || []).forEach((e) => { if (isPinned(e) && pc++ < PIN_KEEP) pinnedNames[e.name] = true })
     file.list({
       uri: DIR,
       success(data) {
-        const files = data.fileList.sort((a, b) => b.uri.localeCompare(a.uri))
-        files.slice(maxSave).forEach((f) => { try { file.delete({ uri: f.uri }) } catch (e) {} })
+        const all = data.fileList.sort((a, b) => b.uri.localeCompare(a.uri))
+        const nameOf = (f) => f.uri.replace(/^.*\//, '').substr(0, 13)
+        const keepP = all.filter((f) => pinnedNames[nameOf(f)])
+        const rest = all.filter((f) => !pinnedNames[nameOf(f)])
+        rest.slice(maxSave).forEach((f) => { try { file.delete({ uri: f.uri }) } catch (e) {} })
+        const files = keepP.concat(rest.slice(0, maxSave))
         // 남은 알림 이름(13자리) → 그에 딸린 그림 조각만 남기고 나머지 그림 조각은 지움
         const alive = {}
         let newest = ''
-        files.slice(0, maxSave).forEach((f) => { const n = f.uri.replace(/^.*\//, '').substr(0, 13); alive[n] = true; if (n > newest) newest = n })
+        files.forEach((f) => { const n = nameOf(f); alive[n] = true; if (n > newest) newest = n })
         file.list({
           uri: META,
           success(md) {
@@ -381,6 +413,27 @@ export default {
         })
       },
     })
+  },
+
+  // ---- 고정 ----
+  pinsLoad(cb) {
+    file.readText({
+      uri: PINF,
+      success(r) { try { PINS = JSON.parse(r.text) || {} } catch (e) { PINS = {} } pinsLoaded = true; if (cb) cb() },
+      fail() { PINS = {}; pinsLoaded = true; if (cb) cb() },
+    })
+  },
+  pinsSave() {
+    file.mkdir({ uri: META, recursive: true, complete() { file.writeText({ uri: PINF, text: JSON.stringify(PINS) }) } })
+  },
+  // 알림이 하나도 안 남은 대화의 고정은 풂
+  pinsClean() {
+    if (!pinsLoaded || !IDX) return
+    const live = {}
+    IDX.forEach((e) => { live[pinKey(e)] = true })
+    let changed = false
+    Object.keys(PINS).forEach((k) => { if (!live[k]) { delete PINS[k]; changed = true } })
+    if (changed) this.pinsSave()
   },
 
   // ---- 목록 미리보기 모음 ----
@@ -423,11 +476,13 @@ export default {
   },
   idxPut(e) {
     const self = this
+    // 고정 목록을 아직 못 읽었으면 먼저 읽음 (고정한 알림이 보관 수에 밀려 빠지지 않게)
+    if (!pinsLoaded) { self.pinsLoad(() => self.idxPut(e)); return }
     self.idxLoad((list) => {
       const old = list.find((x) => x.name === e.name)
       if (old && e.kind === 'img') { e.rk = e.rk || old.rk; e.a = e.a || old.a; e.s = e.s || old.s; e.w = e.w || old.w; e.icon = e.icon || old.icon }
       // 다시 보낸 옛 알림도 제자리에 들어가게 이름(= 받은 시각) 순서로
-      IDX = [e].concat(list.filter((x) => x.name !== e.name)).sort((a, b) => b.name.localeCompare(a.name)).slice(0, maxSave)
+      IDX = keepList([e].concat(list.filter((x) => x.name !== e.name)).sort((a, b) => b.name.localeCompare(a.name)))
       self.idxSave()
       if (self.mode === 'list') self.applyList()
     })
@@ -471,7 +526,9 @@ export default {
   refreshList() {
     const self = this
     IDX = null // 상세 화면에서 지웠을 수 있으니 다시 읽음 (파일 하나라 빠름)
-    self.idxLoad(() => {
+    self.pinsLoad(() => self.idxLoad(() => {
+      // 읽기 화면에서 고정을 바꿨으면 순서가 달라지므로 새로 그림
+      if (JSON.stringify(PINS) !== pinsSig) { self.applyList(); return }
       // 새 알림이 없고 지워진 것만 있으면 목록을 새로 그리지 않고 숨기기만 → 보던 위치 그대로
       const now = {}
       IDX.forEach((e) => { now[e.uri] = true })
@@ -490,7 +547,7 @@ export default {
         if (!self.notis) self.deleteOn = false
         self.report()
       } else self.applyList()
-    })
+    }))
   },
 
   applyList() {
@@ -507,11 +564,14 @@ export default {
       const li = { uri: e.uri, kind: e.kind, a: e.a, s: e.s, b: e.b, icon: e.icon, e: e.e || '', ew: e.ew || 0, eh: e.eh || 0,
         tm: fmtTime(e.w), al: (e.a || '알림') + (e.w ? ` · ${fmtTime(e.w)}` : ''),
         sf: e.sf || '', sw: Math.round((e.sw || 0) * r), sh: Math.round((e.sh || 0) * r), hf: e.hf || '', hw: e.hw || 0, hh: e.hh || 0,
-        rk, cnt: 1, items: [e.uri], badge: '', gone: false }
+        rk, pk: pinKey(e), pin: isPinned(e), cnt: 1, items: [e.uri], badge: '', gone: false }
       byRoom[rk] = li
       out.push(li)
     })
-    this.list = out
+    // 고정한 것을 맨 위로 (나중에 고정한 것이 더 위), 나머지는 받은 순서 그대로
+    const pinned = out.filter((li) => li.pin).sort((a, b) => (PINS[b.pk] || 0) - (PINS[a.pk] || 0))
+    pinsSig = JSON.stringify(PINS)
+    this.list = pinned.concat(out.filter((li) => !li.pin))
     this.notis = (IDX || []).length // 개수는 늘 '메시지 수' (카드 수가 아님)
     this.loaded = true
     this.report()
@@ -533,6 +593,8 @@ export default {
     this.list.forEach((li) => li.items.forEach((u) => this.removeFile({ uri: u })))
     IDX = []
     this.idxSave()
+    PINS = {}
+    this.pinsSave()
     this.list = []
     this.notis = 0
     this.deleteOn = false
@@ -544,7 +606,7 @@ export default {
     if (li.gone) return
     const uris = {}
     li.items.forEach((u) => { uris[u] = true; this.removeFile({ uri: u }) })
-    this.idxRemove((e) => uris[e.uri])
+    this.idxRemove((e) => uris[e.uri], () => this.pinsClean())
     li.gone = true
     this.notis = Math.max(0, this.notis - li.cnt)
     if (!this.notis) this.deleteOn = false
@@ -558,8 +620,8 @@ export default {
   openPopup(li) {
     if (this.deleteOn) return
     inDetailAt = Date.now()
-    if (li.cnt > 1) router.push({ uri: '/pages/detail', params: { uri: li.uri, room: li.rk, arrival: '0' } })
-    else router.push({ uri: '/pages/detail', params: { uri: li.uri, arrival: '0' } })
+    if (li.cnt > 1) router.push({ uri: '/pages/detail', params: { uri: li.uri, room: li.rk, arrival: '0', pk: li.pk } })
+    else router.push({ uri: '/pages/detail', params: { uri: li.uri, arrival: '0', pk: li.pk } })
   },
 
   // ---- 알림 도착 뒤 화면 켜기와 닫기 ----
