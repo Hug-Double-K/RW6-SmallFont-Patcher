@@ -19,11 +19,17 @@ os.remove(readbackPath)
 -- 기기 및 작업 상태
 local device, version, productId, operation, packageUrl, currentName
 local selectedFont, listView
-local itemManifests = {
+local fontManifests = {
     "MiSans-Medium/manifest.json",
     "MiSans-Demibold/manifest.json",
     "MiSans-Regular/manifest.json",
 }
+-- 목록에서 'AppName-…'을 고르면 폰트 대신 번역표(앱 이름)만 바꾼다
+local nameManifests = { "messages/manifest.json" }
+local itemManifests = fontManifests
+local function manifestsFor(name)
+    return name and string.match(name, "^AppName") and nameManifests or fontManifests
+end
 local phase, itemIndex, fileCount, installPosition = "need-info", 1, #itemManifests, 0
 local busy, timer, downloadState = false, nil, nil
 
@@ -360,9 +366,10 @@ function showFonts()
     local id, savedProduct, savedVersion, index =
         string.match(read(statePath) or "", "([^\n]+)\n([^\n]+)\n([^\n]+)\n(%d+)")
     if savedProduct == productId and savedVersion == version
-        and tonumber(index) and tonumber(index) < fileCount then
+        and tonumber(index) then
         for _, name in ipairs(fonts) do
-            if id == subOperation .. "." .. name .. ".patch" then return selectFont(name) end
+            if id == subOperation .. "." .. name .. ".patch"
+                and tonumber(index) < #manifestsFor(name) then return selectFont(name) end
         end
     end
 
@@ -397,6 +404,8 @@ end
 -- 2) 폰트선택 (취소 시 메인화면 복귀)
 function selectFont(name)
     selectedFont = name
+    itemManifests = manifestsFor(name)
+    fileCount = #itemManifests
     phase = "ready"
     if listView then listView:add_flag(lvgl.FLAG.HIDDEN) end
     logView:clear_flag(lvgl.FLAG.HIDDEN)
