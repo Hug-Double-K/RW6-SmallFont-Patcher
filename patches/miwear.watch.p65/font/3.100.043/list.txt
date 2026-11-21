@@ -1,6 +1,7 @@
 AppName-MessengerNoti2
 NanumSmall85Both
 NanumSmallBody85Menu80
+BinggraeBody85Menu80
 NanumSmall85Body
 NanumSmall80Body
 NanumSmall85Medium
