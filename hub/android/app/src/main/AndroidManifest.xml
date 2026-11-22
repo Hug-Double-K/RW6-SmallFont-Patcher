@@ -101,6 +101,11 @@
             </intent-filter>
         </receiver>
 
+        <activity
+            android:name=".HealthActivity"
+            android:exported="false"
+            android:label="건강" />
+
         <!-- ===== 메모 (예전 RW6 메모 폰 앱) ===== -->
         <activity
             android:name=".memo.MainActivity"

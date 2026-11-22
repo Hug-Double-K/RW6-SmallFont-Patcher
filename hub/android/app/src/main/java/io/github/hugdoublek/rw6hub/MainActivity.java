@@ -174,6 +174,8 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         row(c, "메모", "폰 메모를 워치에서 보기 (RW6 메모)", v ->
                 startActivity(new Intent(this, io.github.hugdoublek.rw6hub.memo.MainActivity.class)));
         line(c);
+        row(c, "건강", "걸음·심박 실시간 보기 · 워치의 건강 기록 받기", v -> startActivity(new Intent(this, HealthActivity.class)));
+        line(c);
         row(c, "설치", "퀵앱 · 워치페이스 · 펌웨어 파일을 워치에 넣기", v -> startActivity(new Intent(this, InstallActivity.class)));
         line(c);
         row(c, "워치의 퀵앱", "설치된 앱 보기 · 실행 · 삭제", v -> showInstalled());

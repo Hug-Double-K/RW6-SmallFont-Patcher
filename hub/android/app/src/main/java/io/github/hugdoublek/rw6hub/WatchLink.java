@@ -263,6 +263,7 @@ public final class WatchLink {
             @Override public void onRaw(int channel, int opcode, byte[] body) {
                 AivsCapture.addRaw(channel, opcode, body);
                 if (channel == 3) XiaoAi.get(app).onVoice(body);
+                if (channel == 5) Health.get(app).onChunk(body);
                 if (seenKinds.add("raw" + channel)) log("워치 채널 " + channel + " 데이터 받기 시작 (" + body.length + "B, op " + opcode + ")");
             }
 
@@ -275,6 +276,7 @@ public final class WatchLink {
             @Override public void onPacket(int type, int id, List<Pb.Field> p) {
                 XiaoAi.get(app).onPacket(type, id, p);
                 if (type == 10) WatchWeather.get(app).onPacket(id, p);
+                if (type == 8) Health.get(app).onPacket(id, p);
                 if (type == 2 && id == 1) {
                     List<Pb.Field> sys = Pb.sub(p, 4);
                     List<Pb.Field> st = sys == null ? null : Pb.sub(sys, 2);
