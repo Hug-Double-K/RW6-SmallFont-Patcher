@@ -32,13 +32,13 @@ Daemon will be stopped at the end of the build
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:processReleaseJavaRes NO-SOURCE
 > Task :app:processReleaseResources
-> Task :app:collectReleaseDependencies
 > Task :app:mergeReleaseJavaResource
 > Task :app:desugarReleaseFileDependencies
 > Task :app:compileReleaseJavaWithJavac
 > Task :app:generateReleaseLintVitalReportModel
 > Task :app:dexBuilderRelease
 > Task :app:mergeReleaseGlobalSynthetics
+> Task :app:collectReleaseDependencies
 > Task :app:sdkReleaseDependencyData
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
@@ -53,7 +53,7 @@ Daemon will be stopped at the end of the build
 > Task :app:lintVitalReportRelease
 > Task :app:lintVitalRelease
 > Task :app:assembleRelease
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1795210971624.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_4-1795337162917.json
 
-BUILD SUCCESSFUL in 19s
+BUILD SUCCESSFUL in 15s
 43 actionable tasks: 43 executed
