@@ -29,7 +29,7 @@ public class HealthActivity extends Activity implements Health.Listener {
     private final Handler h = new Handler(Looper.getMainLooper());
     private TextView stepsV, hrV, calV, standV, liveNote, syncStatus, daysV, filesV;
     private Button syncBtn, autoBtn;
-    private static final int[] AUTO_MIN = {0, 15, 30, 60, 180, 360, 720};
+    private static final int[] AUTO_MIN = {0, 1, 3, 5, 10, 15, 30, 60, 180, 360, 720};
     private boolean daysDirty = true;
 
     @Override
@@ -63,7 +63,7 @@ public class HealthActivity extends Activity implements Health.Listener {
         c.addView(syncStatus);
         autoBtn = button("", v -> pickAuto());
         c.addView(autoBtn);
-        c.addView(label("워치가 연결돼 있을 때, 정한 주기마다 자동으로 받아요.", 13, SUB, false));
+        c.addView(label("워치가 연결돼 있을 때, 정한 주기마다 자동으로 받아요. 주기가 짧을수록 워치와 폰의 배터리를 더 써요.", 13, SUB, false));
 
         c = card(root, "날짜별 요약");
         daysV = label("", 14, TEXT, false);

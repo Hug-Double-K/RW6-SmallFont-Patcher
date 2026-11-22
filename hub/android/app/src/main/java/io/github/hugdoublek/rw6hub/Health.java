@@ -69,7 +69,7 @@ public final class Health {
 
     private Health(Context c) {
         app = c;
-        h.postDelayed(autoTick, 60_000);
+        h.postDelayed(autoTick, 20_000);
     }
 
     // ------------------------------------------------------------------ 자동 받기
@@ -79,15 +79,15 @@ public final class Health {
     public void setAutoMinutes(int m) { app.getSharedPreferences("hub", Context.MODE_PRIVATE).edit().putInt("healthAutoMin", m).apply(); changed(); }
     public long lastSyncAt() { return app.getSharedPreferences("hub", Context.MODE_PRIVATE).getLong("healthSyncAt", 0); }
 
-    // 1분마다 확인: 연결돼 있고, 정한 주기가 지났으면 기록을 받는다
+    // 20초마다 확인: 연결돼 있고, 정한 주기가 지났으면 기록을 받는다
     private final Runnable autoTick = new Runnable() {
         @Override public void run() {
             try {
                 int m = autoMinutes();
                 if (m > 0 && !syncing && WatchLink.get(app).isReady()
-                        && System.currentTimeMillis() - lastSyncAt() >= m * 60_000L) sync();
+                        && System.currentTimeMillis() - lastSyncAt() >= m * 60_000L - 5_000L) sync();
             } catch (RuntimeException ignored) {}
-            h.postDelayed(this, 60_000);
+            h.postDelayed(this, 20_000);
         }
     };
 
