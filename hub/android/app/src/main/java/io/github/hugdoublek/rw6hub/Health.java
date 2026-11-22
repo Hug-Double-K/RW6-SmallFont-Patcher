@@ -67,7 +67,29 @@ public final class Health {
     private int total = 0, done = 0, saved = 0, skipped = 0, failed = 0;
     private volatile String status = "";
 
-    private Health(Context c) { app = c; }
+    private Health(Context c) {
+        app = c;
+        h.postDelayed(autoTick, 60_000);
+    }
+
+    // ------------------------------------------------------------------ 자동 받기
+
+    /** 자동으로 받는 주기(분). 0 = 끔. 기본 60 */
+    public int autoMinutes() { return app.getSharedPreferences("hub", Context.MODE_PRIVATE).getInt("healthAutoMin", 60); }
+    public void setAutoMinutes(int m) { app.getSharedPreferences("hub", Context.MODE_PRIVATE).edit().putInt("healthAutoMin", m).apply(); changed(); }
+    public long lastSyncAt() { return app.getSharedPreferences("hub", Context.MODE_PRIVATE).getLong("healthSyncAt", 0); }
+
+    // 1분마다 확인: 연결돼 있고, 정한 주기가 지났으면 기록을 받는다
+    private final Runnable autoTick = new Runnable() {
+        @Override public void run() {
+            try {
+                int m = autoMinutes();
+                if (m > 0 && !syncing && WatchLink.get(app).isReady()
+                        && System.currentTimeMillis() - lastSyncAt() >= m * 60_000L) sync();
+            } catch (RuntimeException ignored) {}
+            h.postDelayed(this, 60_000);
+        }
+    };
 
     public void addListener(Listener l) { listeners.addIfAbsent(l); }
     public void removeListener(Listener l) { listeners.remove(l); }

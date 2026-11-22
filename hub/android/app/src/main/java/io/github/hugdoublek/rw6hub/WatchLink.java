@@ -235,6 +235,7 @@ public final class WatchLink {
                 sendLanguage(prefs.getString("locale", "ko_KR"));
                 QuickApps.get(app).onConnected();
                 WatchWeather.get(app).onConnected();
+                Health.get(app);   // 건강 기록 자동 받기 타이머 시작
             }
 
             @Override public void onDeviceInfo(String model, String fw, String serial) {

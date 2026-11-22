@@ -28,7 +28,8 @@ public class HealthActivity extends Activity implements Health.Listener {
     private Health health;
     private final Handler h = new Handler(Looper.getMainLooper());
     private TextView stepsV, hrV, calV, standV, liveNote, syncStatus, daysV, filesV;
-    private Button syncBtn;
+    private Button syncBtn, autoBtn;
+    private static final int[] AUTO_MIN = {0, 15, 30, 60, 180, 360, 720};
     private boolean daysDirty = true;
 
     @Override
@@ -56,10 +57,13 @@ public class HealthActivity extends Activity implements Health.Listener {
 
         c = card(root, "워치의 건강 기록");
         c.addView(label("워치에 쌓인 걸음·심박·수면·운동 기록을 폰으로 받아요. 워치에서는 지워지지 않아요.", 13, SUB, false));
-        syncBtn = button("기록 받기", v -> { health.sync(); });
+        syncBtn = button("지금 동기화", v -> { health.sync(); });
         c.addView(syncBtn);
         syncStatus = label("", 13, TEXT, false);
         c.addView(syncStatus);
+        autoBtn = button("", v -> pickAuto());
+        c.addView(autoBtn);
+        c.addView(label("워치가 연결돼 있을 때, 정한 주기마다 자동으로 받아요.", 13, SUB, false));
 
         c = card(root, "날짜별 요약");
         daysV = label("", 14, TEXT, false);
@@ -124,9 +128,10 @@ public class HealthActivity extends Activity implements Health.Listener {
         else liveNote.setText("마지막 갱신 " + new SimpleDateFormat("HH:mm:ss", Locale.KOREA).format(new Date(health.liveAt)));
 
         syncBtn.setEnabled(ready && !health.isSyncing());
+        autoBtn.setText("자동 동기화 주기: " + autoName(health.autoMinutes()));
         String st = health.status();
-        long at = getSharedPreferences("hub", MODE_PRIVATE).getLong("healthSyncAt", 0);
-        if (st.isEmpty() && at > 0) st = "마지막으로 받은 때 " + new SimpleDateFormat("M/d HH:mm", Locale.KOREA).format(new Date(at));
+        long at = health.lastSyncAt();
+        if (at > 0 && !health.isSyncing()) st = (st.isEmpty() ? "" : st + "\n") + "마지막 동기화 " + new SimpleDateFormat("M/d HH:mm", Locale.KOREA).format(new Date(at));
         syncStatus.setText(st);
 
         if (daysDirty) {
@@ -148,6 +153,22 @@ public class HealthActivity extends Activity implements Health.Listener {
             daysV.setText(sb.length() == 0 ? "아직 보여 줄 기록이 없어요. '기록 받기'를 눌러 보세요.\n(파일은 받았는데 여기가 비어 있으면, 이 워치의 기록 형식을 아직 해석하지 못한 거예요.)" : sb.toString().trim());
             filesV.setText(health.fileSummary());
         }
+    }
+
+    private static String autoName(int m) {
+        if (m <= 0) return "끔";
+        return m < 60 ? m + "분마다" : (m / 60) + "시간마다";
+    }
+
+    private void pickAuto() {
+        String[] names = new String[AUTO_MIN.length];
+        int cur = 0;
+        for (int i = 0; i < AUTO_MIN.length; i++) { names[i] = autoName(AUTO_MIN[i]); if (AUTO_MIN[i] == health.autoMinutes()) cur = i; }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("자동 동기화 주기")
+                .setSingleChoiceItems(names, cur, (d, w) -> { health.setAutoMinutes(AUTO_MIN[w]); d.dismiss(); refresh(); })
+                .setNegativeButton("취소", null)
+                .show();
     }
 
     // ---------------------------------------------------------------- 화면 도우미
