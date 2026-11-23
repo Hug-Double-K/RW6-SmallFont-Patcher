@@ -1,10 +1,10 @@
 <template>
   <div class="main">
     <text class="s-msg">{{ msg }}</text>
-    <text class="s-shot" @click="shoot(0)">{{ left > 0 ? left : '촬영' }}</text>
+    <text class="s-shot" @click="shot">{{ left > 0 ? left : '' }}</text>
     <div class="s-row">
-      <text class="s-timer" @click="shoot(3)">3초 뒤</text>
-      <text class="s-timer" style="margin-left: 10px" @click="shoot(10)">10초 뒤</text>
+      <image class="s-btn" src="{{ leftIcon }}" @click="leftTap" />
+      <image class="s-btn" src="{{ rightIcon }}" @click="video" />
     </div>
   </div>
 </template>
@@ -13,15 +13,21 @@
 import interconnect from '@system.interconnect'
 import vibrator from '@system.vibrator'
 
-// 카메라 셔터: 폰(Mi Manager)에 {cam:1}을 보내면 폰이 열려 있는 카메라의 셔터를 대신 눌러 준다.
-// 폰 카메라가 닫혀 있으면 첫 번째에는 카메라를 열어 준다. 폰이 결과를 {r:"…"}로 알려 주면 위에 보여 줌.
+// 카메라 셔터: 폰(Mi Manager)에 보내는 것 = {cam:1} 사진, {cam:2} 동영상 시작/끝, {cam:3} 일시정지/다시 촬영.
+// 폰이 {r:"글", v:0|1|2}로 답함 (v: 0 안 찍는 중, 1 녹화 중, 2 일시정지) → 아래 버튼 모양을 거기에 맞춤.
+// 왼쪽 아래: 타이머 off→3→5→10초 (사진·동영상 시작에 적용), 녹화 중에는 일시정지/다시 촬영.
 let timer = null
 let conn = null
+const SECS = [0, 3, 5, 10]
 
 export default {
   private: {
     msg: '폰 카메라 셔터',
     left: 0,
+    ti: 0,
+    rec: 0,
+    leftIcon: '/common/t0.png',
+    rightIcon: '/common/rec.png',
   },
 
   onInit() {
@@ -31,28 +37,57 @@ export default {
       conn.onmessage = (m) => {
         try {
           const d = typeof m.data === 'string' ? JSON.parse(m.data) : m.data
-          if (d && d.r) self.msg = d.r
+          if (!d) return
+          if (d.r) self.msg = d.r
+          if (d.v === 0 || d.v === 1 || d.v === 2) { self.rec = d.v; self.icons() }
         } catch (e) {}
       }
     } catch (e) { self.msg = '폰과 연결하지 못했어요' }
   },
 
-  send() {
-    try { conn.send({ data: { cam: 1 } }) } catch (e) { this.msg = '폰에 보내지 못했어요'; return }
+  icons() {
+    this.leftIcon = this.rec === 1 ? '/common/pause.png' : this.rec === 2 ? '/common/resume.png' : '/common/t' + SECS[this.ti] + '.png'
+    this.rightIcon = this.rec ? '/common/stop.png' : '/common/rec.png'
+  },
+
+  send(n) {
+    try { conn.send({ data: { cam: n } }) } catch (e) { this.msg = '폰에 보내지 못했어요'; return }
     try { vibrator.vibrate({ mode: 'short' }) } catch (e) {}
     this.msg = '보냈어요'
   },
 
-  shoot(sec) {
+  cancel() {
+    if (!timer) return false
+    clearInterval(timer); timer = null; this.left = 0; this.msg = '취소했어요'
+    return true
+  },
+
+  // 타이머가 켜져 있으면 그만큼 센 뒤에 보냄 (세는 중에 다시 누르면 취소)
+  later(n) {
     const self = this
-    if (timer) { clearInterval(timer); timer = null; self.left = 0; self.msg = '취소했어요'; return }
-    if (!sec) { self.send(); return }
+    if (self.cancel()) return
+    const sec = SECS[self.ti]
+    if (!sec) { self.send(n); return }
     self.left = sec
-    self.msg = '기다리는 중 (다시 누르면 취소)'
+    self.msg = '다시 누르면 취소'
     timer = setInterval(() => {
       self.left -= 1
-      if (self.left <= 0) { clearInterval(timer); timer = null; self.left = 0; self.send() }
+      if (self.left <= 0) { clearInterval(timer); timer = null; self.left = 0; self.send(n) }
     }, 1000)
+  },
+
+  shot() { if (this.rec) { if (!this.cancel()) this.send(1) } else this.later(1) },
+
+  video() {
+    if (this.rec) { this.cancel(); this.send(2) } else this.later(2)
+  },
+
+  leftTap() {
+    if (this.rec) { this.send(3); return }
+    if (this.cancel()) return
+    this.ti = (this.ti + 1) % SECS.length
+    this.icons()
+    this.msg = SECS[this.ti] ? '타이머 ' + SECS[this.ti] + '초' : '타이머 끔'
   },
 
   onDestroy() { if (timer) { clearInterval(timer); timer = null } },
@@ -61,8 +96,8 @@ export default {
 
 <style>
   .main { width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; background-color: #000000; }
-  .s-msg { width: 90%; text-align: center; font-size: 24px; color: #9aa0aa; margin-bottom: 18px; }
-  .s-shot { width: 200px; height: 200px; border-radius: 100px; background-color: #f2f3f5; color: #101114; text-align: center; font-size: 44px; font-weight: bold; }
-  .s-row { margin-top: 24px; flex-direction: row; justify-content: center; }
-  .s-timer { width: 150px; height: 64px; border-radius: 32px; background-color: #2a2d35; color: #ffffff; text-align: center; font-size: 26px; }
+  .s-msg { width: 90%; text-align: center; font-size: 24px; color: #9aa0aa; margin-bottom: 16px; }
+  .s-shot { width: 200px; height: 200px; border-radius: 100px; background-color: #f2f3f5; color: #101114; text-align: center; font-size: 80px; font-weight: bold; }
+  .s-row { width: 100%; margin-top: 22px; padding-left: 36px; padding-right: 36px; flex-direction: row; justify-content: space-between; }
+  .s-btn { width: 112px; height: 112px; }
 </style>
