@@ -235,31 +235,71 @@ public class ShutterService extends AccessibilityService {
         MAIN.postDelayed(() -> { try { WatchLink.get(app).log("워치 셔터: 녹화 중 화면: " + dumpAll()); } catch (Exception ignored) {} }, 1500);
     }
 
-    /** 동영상 모드로 바꾸기를 차례로 시도: step 0 = 모드 글자 누르기 또는 옆으로 밀기, 1 = 반대로 두 번 밀기, 2 = 포기 */
-    private void toVideo(Context app, int step, String how) {
-        String d = centerDesc();
-        if (videoWords(d)) { startRecord(app, how); return; }
-        if (step == 0) {
-            String t = tab(TAB_VIDEO);
-            final String h = t != null ? "글자 '" + t + "'" : "옆으로 밀기";
-            if (t == null) swipe(true);
-            MAIN.postDelayed(() -> { try { toVideo(app, 1, h); } catch (Exception e) { reply(app, "실패 " + e, "실패했어요"); } }, 1400);
-        } else if (step == 1) {
-            swipe(false);
-            MAIN.postDelayed(() -> { try { if (!videoWords(centerDesc())) swipe(false); } catch (Exception ignored) {} }, 900);
-            MAIN.postDelayed(() -> { try { toVideo(app, 2, "반대로 밀기"); } catch (Exception e) { reply(app, "실패 " + e, "실패했어요"); } }, 2300);
-        } else {
-            reply(app, "동영상 모드로 못 바꿨어요 (가운데 버튼: " + d + ") 화면: " + dumpAll(), "동영상 모드로 못 바꿨어요");
+    /** 화면에서 아이디에 key가 든 보이는 것들 */
+    private java.util.ArrayList<AccessibilityNodeInfo> byId(String key) {
+        java.util.ArrayList<AccessibilityNodeInfo> out = new java.util.ArrayList<>();
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return out;
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        int seen = 0;
+        while (!q.isEmpty() && seen++ < 800) {
+            AccessibilityNodeInfo n = q.poll();
+            if (n == null) continue;
+            String id = n.getViewIdResourceName();
+            if (id != null && id.contains(key) && n.isVisibleToUser()) out.add(n);
+            for (int i = 0; i < n.getChildCount(); i++) q.add(n.getChild(i));
         }
+        return out;
     }
 
-    /** 사진 모드로 되돌리기 (녹화를 끝낸 뒤) */
-    private void toPhoto(Context app, int step) {
-        String d = centerDesc();
-        if (!videoWords(d)) { if (step > 0) WatchLink.get(app).log("워치 셔터: 사진 모드로 돌림"); return; }
-        if (step >= 2) { WatchLink.get(app).log("워치 셔터: 사진 모드로 못 돌림 (가운데 버튼: " + d + ")"); return; }
-        if (tab(TAB_PHOTO) == null) swipe(step != 0);   // 처음엔 사진 쪽으로, 안 되면 반대로
-        MAIN.postDelayed(() -> { try { toPhoto(app, step + 1); } catch (Exception ignored) {} }, 1400);
+    /** 지금 카메라 모드 이름 (삼성: shooting_mode_list 의 설명 "사진, 모드" → "사진"). 모르면 "" */
+    private String mode() {
+        for (AccessibilityNodeInfo n : byId("shooting_mode_list")) {
+            CharSequence d = n.getContentDescription();
+            if (d == null) continue;
+            String t = d.toString();
+            int c = t.indexOf(',');
+            return (c > 0 ? t.substring(0, c) : t).trim();
+        }
+        return "";
+    }
+
+    private static boolean isVideoMode(String m) { String t = m.toLowerCase(); return t.equals("동영상") || t.equals("video") || t.equals("비디오"); }
+    private static boolean isPhotoMode(String m) { String t = m.toLowerCase(); return t.equals("사진") || t.equals("photo") || t.equals("picture"); }
+
+    /** 모드 줄에서 지금 고른 것(화면 가운데에 가장 가까운 것)의 옆 칸을 톡 누름. right: 사진→동영상 쪽 */
+    private boolean tapNeighbor(boolean right) {
+        java.util.ArrayList<AccessibilityNodeInfo> items = byId("shooting_mode_item");
+        if (items.size() < 2) return false;
+        final java.util.ArrayList<Rect> rs = new java.util.ArrayList<>();
+        for (AccessibilityNodeInfo n : items) { Rect r = new Rect(); n.getBoundsInScreen(r); if (!r.isEmpty()) rs.add(r); }
+        if (rs.size() < 2) return false;
+        int minX = Integer.MAX_VALUE, maxX = 0, minY = Integer.MAX_VALUE, maxY = 0;
+        for (Rect r : rs) { minX = Math.min(minX, r.centerX()); maxX = Math.max(maxX, r.centerX()); minY = Math.min(minY, r.centerY()); maxY = Math.max(maxY, r.centerY()); }
+        final boolean horiz = (maxX - minX) >= (maxY - minY);
+        java.util.Collections.sort(rs, (x, y) -> horiz ? x.centerX() - y.centerX() : x.centerY() - y.centerY());
+        DisplayMetrics m = getResources().getDisplayMetrics();
+        int mid = horiz ? m.widthPixels / 2 : m.heightPixels / 2, cur = 0, best = Integer.MAX_VALUE;
+        for (int i = 0; i < rs.size(); i++) { int d = Math.abs((horiz ? rs.get(i).centerX() : rs.get(i).centerY()) - mid); if (d < best) { best = d; cur = i; } }
+        int to = cur + (right ? 1 : -1);
+        if (to < 0 || to >= rs.size()) return false;
+        return tap(rs.get(to).centerX(), rs.get(to).centerY());
+    }
+
+    private interface Done { void run(boolean ok, String path); }
+
+    /** 모드 줄을 한 칸씩 눌러 가며 원하는 모드(동영상/사진)까지 감. 모드 이름을 읽어 확인하므로 엉뚱한 데서 멈추지 않음 */
+    private void goMode(boolean wantVideo, int step, String path, Done done) {
+        String m = mode();
+        String p2 = path + (path.isEmpty() ? "" : "→") + (m.isEmpty() ? "?" : m);
+        if (wantVideo ? isVideoMode(m) : isPhotoMode(m)) { done.run(true, p2); return; }
+        if (step >= 4 || m.isEmpty()) { done.run(false, p2); return; }
+        // 삼성 모드 줄 순서: 싱글테이크 | 사진 | 동영상 | 더보기
+        boolean right = wantVideo ? (isPhotoMode(m) || m.contains("싱글") || m.toLowerCase().contains("single")) : !(isVideoMode(m) || m.contains("더보기"));
+        if (!wantVideo) right = !isVideoMode(m) && (m.contains("싱글") || m.toLowerCase().contains("single"));
+        if (!tapNeighbor(right)) { done.run(false, p2 + "(옆 칸 못 누름)"); return; }
+        MAIN.postDelayed(() -> { try { goMode(wantVideo, step + 1, p2, done); } catch (Exception e) { done.run(false, p2 + " " + e); } }, 1200);
     }
 
     private void videoToggle(Context app) {
@@ -269,7 +309,7 @@ public class ShutterService extends AccessibilityService {
             video = 0;
             if (b == null) { reply(app, "녹화 끝 버튼을 못 눌렀어요 (" + pkg() + ") 화면: " + dumpAll(), "끝내지 못했어요"); return; }
             reply(app, "녹화 끝 (버튼: " + b + ")", "녹화를 끝냈어요");
-            MAIN.postDelayed(() -> { try { toPhoto(app, 0); } catch (Exception ignored) {} }, 1800);
+            MAIN.postDelayed(() -> { try { goMode(false, 0, "", (ok, path) -> WatchLink.get(app).log("워치 셔터: 사진 모드로 " + (ok ? "돌림" : "못 돌림") + " (" + path + ")")); } catch (Exception ignored) {} }, 1800);
             return;
         }
         long wait = 0;
@@ -282,7 +322,10 @@ public class ShutterService extends AccessibilityService {
             try {
                 String p = pkg();
                 if (!isCamera(p)) { reply(app, "카메라 화면이 아니에요 (" + p + ")", "폰에서 카메라를 열어 주세요"); return; }
-                toVideo(app, 0, "이미 동영상 모드");
+                goMode(true, 0, "", (ok, path) -> {
+                    if (ok) startRecord(app, path);
+                    else reply(app, "동영상 모드로 못 바꿨어요 (" + path + ") 화면: " + dumpAll(), "동영상 모드로 못 바꿨어요");
+                });
             } catch (Exception e) { reply(app, "실패 " + e, "실패했어요"); }
         }, wait);
     }
