@@ -2,7 +2,7 @@
   <div class="main">
     <text class="s-msg">{{ msg }}</text>
     <text if="{{ rec === 0 }}" class="s-shot" style="background-color: {{ mode ? '#ee3430' : '#f2f3f5' }}; color: {{ mode ? '#ffffff' : '#101114' }}" @click="center">{{ left > 0 ? left : '' }}</text>
-    <image if="{{ rec !== 0 }}" class="s-shotimg" src="{{ rec === 1 ? '/common/c_stop.png' : '/common/c_resume.png' }}" @click="center" />
+    <image if="{{ rec !== 0 }}" class="s-shotimg" src="/common/c_stop.png" @click="center" />
     <div class="s-row">
       <image class="s-btn" src="{{ leftIcon }}" @click="leftTap" />
       <div class="s-modes">
@@ -20,8 +20,8 @@ import vibrator from '@system.vibrator'
 // 카메라 셔터. 폰(Mi Manager)에 보내는 것:
 //   {cam:1} 사진 / {cam:5} 녹화 시작 / {cam:8} 녹화 끝 / {cam:3} 일시정지·다시 촬영 / {cam:6} 동영상 모드로 / {cam:7} 사진 모드로
 // 폰 답: {r:"글", v:0|1|2, m:0|1} (v: 0 안 찍는 중, 1 녹화 중, 2 일시정지 / m: 0 사진, 1 동영상) → 화면을 거기에 맞춤.
-// 화면: 오른쪽 아래 사진|동영상 고르기. 가운데 = 사진: 흰 셔터 / 동영상: 빨간 원(녹화) → 녹화 중 빨간 네모(끝) → 일시정지 중 빨간 세모(다시 촬영).
-//       왼쪽 아래 = 타이머 off→3→5→10초 / 녹화 중엔 일시정지 / 일시정지 중엔 끝내기.
+// 화면: 오른쪽 아래 사진|동영상 고르기. 가운데 = 사진: 흰 셔터 / 동영상: 빨간 원(녹화) → 녹화 중·일시정지 중 빨간 네모(끝).
+//       왼쪽 아래 = 타이머 off→3→5→10초 / 녹화 중엔 일시정지 / 일시정지 중엔 빨간 세모(다시 촬영).
 let timer = null
 let conn = null
 const SECS = [0, 3, 5, 10]
@@ -54,7 +54,7 @@ export default {
   },
 
   icons() {
-    this.leftIcon = this.rec === 1 ? '/common/pause.png' : this.rec === 2 ? '/common/stop.png' : '/common/t' + SECS[this.ti] + '.png'
+    this.leftIcon = this.rec === 1 ? '/common/pause.png' : this.rec === 2 ? '/common/resume.png' : '/common/t' + SECS[this.ti] + '.png'
   },
 
   send(n) {
@@ -88,15 +88,14 @@ export default {
 
   center() {
     const self = this
-    if (self.rec === 1) { if (self.send(8)) self.setRec(0); return }      // 빨간 네모: 녹화 끝
-    if (self.rec === 2) { if (self.send(3)) self.setRec(1); return }      // 빨간 세모: 다시 촬영
+    if (self.rec) { if (self.send(8)) self.setRec(0); return }            // 빨간 네모: 녹화 끝 (일시정지 중에도)
     if (self.mode) self.later(() => { if (self.send(5)) self.setRec(1) }) // 빨간 원: 녹화 시작
     else self.later(() => { self.send(1) })                               // 흰 셔터: 사진
   },
 
   leftTap() {
     if (this.rec === 1) { if (this.send(3)) this.setRec(2); return }      // 일시정지
-    if (this.rec === 2) { if (this.send(8)) this.setRec(0); return }      // 일시정지 중: 끝내기
+    if (this.rec === 2) { if (this.send(3)) this.setRec(1); return }      // 빨간 세모: 다시 촬영
     if (this.cancel()) return
     this.ti = (this.ti + 1) % SECS.length
     this.icons()

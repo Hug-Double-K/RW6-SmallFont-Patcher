@@ -103,9 +103,10 @@ public class ShutterService extends AccessibilityService {
         if (stop.isEmpty() && byId("recording_time").isEmpty()) return video = 0;
         if (!byId("resume_button").isEmpty()) return video = 2;
         for (AccessibilityNodeInfo n : byId("pause_button")) {
-            String d = label(n).toLowerCase();
-            if (d.contains("일시") || d.contains("pause")) return video = 1;
-            return video = 2;
+            // 아이디(pause_button)엔 늘 pause가 들어 있으니 설명만 봄: '일시정지'면 녹화 중, '계속'이면 멈춘 상태
+            String d = n.getContentDescription() == null ? "" : n.getContentDescription().toString().toLowerCase();
+            if (d.contains("계속") || d.contains("resume") || d.contains("다시") || d.contains("재개")) return video = 2;
+            return video = 1;
         }
         return video = 1;
     }
@@ -270,19 +271,40 @@ public class ShutterService extends AccessibilityService {
         return tapShutterSpot();
     }
 
-    /** 동영상 모드에서 녹화 시작 (가운데 버튼) → 1.2초 뒤 화면으로 정말 시작됐는지 확인 */
+    private interface Cond { boolean ok(); }
+    private interface Res { void done(boolean ok); }
+
+    /** 0.3초마다 화면을 다시 보며 조건이 될 때까지 기다림 (tries번까지) */
+    private void poll(Context app, Cond c, int tries, Res r) {
+        boolean ok = false;
+        try { ok = c.ok(); } catch (Exception ignored) {}
+        if (ok || tries <= 0) {
+            try { r.done(ok); } catch (Exception e) { if (app != null) reply(app, "실패 " + e, "실패했어요", false); }
+            return;
+        }
+        busyUntil = android.os.SystemClock.elapsedRealtime() + 6000;
+        MAIN.postDelayed(() -> poll(app, c, tries - 1, r), 300);
+    }
+
+    /** 가운데 버튼이 '녹화 시작'으로 바뀌었는지 (동영상 모드 화면이 다 준비됐다는 표시) */
+    private boolean recordReady() {
+        String d = centerDesc();
+        return d.contains("녹화") || d.contains("record");
+    }
+
+    /** 동영상 모드에서 녹화 시작: 가운데 버튼이 '녹화 시작'이 될 때까지 기다렸다 누르고, 정말 시작됐는지 화면으로 확인 */
     private void record(Context app) {
         if (!isCamera(pkg())) { reply(app, "카메라 화면이 아니에요 (" + pkg() + ")", "폰에서 카메라를 열어 주세요", false); return; }
         if (readState() != 0) { reply(app, "이미 녹화 중이에요", video == 2 ? "일시정지" : "녹화 중", false); return; }
         String m = mode();
-        if (!isVideoMode(m)) { reply(app, "동영상 모드가 아니에요 (" + m + ")", "동영상 버튼을 다시 눌러 주세요", false); return; }
-        if (!clickCenter()) { reply(app, "녹화 버튼을 못 눌렀어요 화면: " + dumpAll(), "녹화를 시작하지 못했어요", false); return; }
-        MAIN.postDelayed(() -> {
-            try {
-                if (readState() != 0) reply(app, "녹화 시작", "녹화 중", false);
+        if (!isVideoMode(m)) { reply(app, "동영상 모드가 아니에요 (" + m + ")", "동영상을 다시 눌러 주세요", false); return; }
+        poll(app, this::recordReady, 10, ready -> {
+            if (!clickCenter()) { reply(app, "녹화 버튼을 못 눌렀어요 화면: " + dumpAll(), "녹화를 시작하지 못했어요", false); return; }
+            poll(app, () -> readState() != 0, 10, ok -> {
+                if (ok) reply(app, "녹화 시작" + (ready ? "" : " (가운데 버튼 이름은 안 바뀌었음)"), "녹화 중", false);
                 else reply(app, "녹화 버튼을 눌렀는데 시작되지 않았어요 화면: " + dumpAll(), "녹화를 시작하지 못했어요", false);
-            } catch (Exception e) { reply(app, "실패 " + e, "실패했어요", false); }
-        }, 1200);
+            });
+        });
     }
 
     /** 화면에서 아이디에 key가 든 보이는 것들 */
@@ -348,30 +370,94 @@ public class ShutterService extends AccessibilityService {
         return 3;
     }
 
-    /** 모드 줄의 칸 순서가 화면에서 거꾸로 놓였는지 (폰을 눕혀 쓰면 거꾸로일 수 있음). 잘못 간 걸 보면 뒤집어 기억함 */
-    private static volatile boolean modeFlip;
+    /** 모드 줄의 칸 순서가 화면 좌표에서 거꾸로인지 — 화면 방향(0·90·180·270도)별로 따로 기억. 처음 값은 짐작, 잘못 가면 고쳐 저장 */
+    private static final boolean[] FLIP = {false, true, true, false};
+    private static boolean flipLoaded;
+    private static volatile boolean modeFlip;   // 마지막에 쓴 값 (기록용)
 
-    /** 모드 줄을 한 칸씩 눌러 가며 원하는 모드(동영상/사진)까지 감. 누를 때마다 모드 이름을 읽어 확인하고, 반대쪽으로 갔으면 방향을 뒤집어 다시 감 */
+    private int rotation() {
+        try { return ((android.view.WindowManager) getSystemService(WINDOW_SERVICE)).getDefaultDisplay().getRotation() & 3; }
+        catch (Exception e) { return 0; }
+    }
+
+    private void loadFlip() {
+        if (flipLoaded) return;
+        flipLoaded = true;
+        try {
+            android.content.SharedPreferences sp = getSharedPreferences("shutter", MODE_PRIVATE);
+            for (int i = 0; i < 4; i++) if (sp.contains("flip" + i)) FLIP[i] = sp.getBoolean("flip" + i, FLIP[i]);
+        } catch (Exception ignored) {}
+    }
+
+    private void saveFlip(int rot, boolean v) {
+        FLIP[rot] = v;
+        try { getSharedPreferences("shutter", MODE_PRIVATE).edit().putBoolean("flip" + rot, v).apply(); } catch (Exception ignored) {}
+    }
+
+    /**
+     * 모드 줄에서 target 모드의 칸을 바로 누름. cur = 지금 모드 자리(싱글테이크0·사진1·동영상2).
+     * 지금 고른 칸은 화면 가운데에 오므로, 보이는 칸들 중 가운데 칸이 몇 번째인지로 순서가 바른지 거꾸로인지를 그 자리에서 판단함
+     * (판단이 안 되는 배치면 화면 방향별로 기억해 둔 값을 씀). 돌려주는 글: 누른 방법, 못 눌렀으면 null
+     */
+    private String tapMode(int cur, int target) {
+        java.util.ArrayList<AccessibilityNodeInfo> items = byId("shooting_mode_item");
+        final java.util.ArrayList<Rect> rs = new java.util.ArrayList<>();
+        for (AccessibilityNodeInfo n : items) { Rect r = new Rect(); n.getBoundsInScreen(r); if (!r.isEmpty()) rs.add(r); }
+        int n = rs.size();
+        if (n < 2) return null;
+        int minX = Integer.MAX_VALUE, maxX = 0, minY = Integer.MAX_VALUE, maxY = 0;
+        for (Rect r : rs) { minX = Math.min(minX, r.centerX()); maxX = Math.max(maxX, r.centerX()); minY = Math.min(minY, r.centerY()); maxY = Math.max(maxY, r.centerY()); }
+        final boolean horiz = (maxX - minX) >= (maxY - minY);
+        java.util.Collections.sort(rs, (x, y) -> horiz ? x.centerX() - y.centerX() : x.centerY() - y.centerY());
+        DisplayMetrics m = getResources().getDisplayMetrics();
+        int mid = horiz ? m.widthPixels / 2 : m.heightPixels / 2, k = 0, best = Integer.MAX_VALUE;
+        for (int i = 0; i < n; i++) { int d = Math.abs((horiz ? rs.get(i).centerX() : rs.get(i).centerY()) - mid); if (d < best) { best = d; k = i; } }
+        loadFlip();
+        int rot = rotation();
+        boolean flip = FLIP[rot];
+        String how = "기억";
+        // 칸이 4개(싱글테이크·사진·동영상·더보기 모두)면 가운데 칸의 자리로 순서를 알 수 있음. 3개여도 싱글테이크(맨 끝)면 알 수 있음
+        if (n == 4 && cur >= 0 && cur <= 3 && k != 3 - k) {
+            if (k == cur && k != 3 - cur) { flip = false; how = "자리"; }
+            else if (k == 3 - cur && k != cur) { flip = true; how = "자리"; }
+        } else if (n == 3 && cur == 0) {
+            if (k == 0) { flip = false; how = "자리"; } else if (k == 2) { flip = true; how = "자리"; }
+        }
+        if (how.equals("자리") && flip != FLIP[rot]) saveFlip(rot, flip);
+        modeFlip = flip;
+        int to = k + (flip ? -(target - cur) : (target - cur));
+        if (to < 0 || to >= n) {   // 그쪽엔 칸이 없음 → 순서를 거꾸로 알고 있었음
+            flip = !flip; saveFlip(rot, flip); modeFlip = flip; how = "뒤집음";
+            to = k + (flip ? -(target - cur) : (target - cur));
+            if (to < 0 || to >= n) return null;
+        }
+        if (!tap(rs.get(to).centerX(), rs.get(to).centerY())) return null;
+        return how + (flip ? "·거꾸로" : "") + " " + (horiz ? "가로" : "세로") + n + "칸 " + (k + 1) + "→" + (to + 1) + "번째, 화면 " + (rot * 90) + "도";
+    }
+
+    /** 원하는 모드(동영상/사진)의 칸을 눌러 감. 누른 뒤 모드 이름이 바뀔 때까지 기다렸다 확인하고, 다른 데로 갔으면 방향을 고쳐 다시 감 */
     private void goMode(boolean wantVideo, int step, String path, Done done) {
-        String m = mode();
-        String p2 = path + (path.isEmpty() ? "" : "→") + (m.isEmpty() ? "?" : m);
+        final String m = mode();
+        final String p2 = path + (path.isEmpty() ? "" : " → ") + (m.isEmpty() ? "?" : m);
         if (wantVideo ? isVideoMode(m) : isPhotoMode(m)) { done.run(true, p2); return; }
-        if (step >= 7 || m.isEmpty()) { done.run(false, p2); return; }
+        if (step >= 5 || m.isEmpty()) { done.run(false, p2); return; }
         final int from = modeIndex(m), target = wantVideo ? 2 : 1;
-        final boolean forward = target > from;          // 순서상 뒤쪽(동영상·더보기 쪽)으로 가야 하는지
-        boolean ok = tapNeighbor(forward != modeFlip);
-        if (!ok) { modeFlip = !modeFlip; ok = tapNeighbor(forward != modeFlip); }   // 그쪽에 칸이 없으면 반대쪽
-        if (!ok) { done.run(false, p2 + "(옆 칸 못 누름)"); return; }
-        MAIN.postDelayed(() -> {
+        final String how = tapMode(from, target);
+        if (how == null) { done.run(false, p2 + " (모드 칸 못 누름)"); return; }
+        final int rot = rotation();
+        final boolean used = modeFlip;
+        final String p3 = p2 + " [" + how + "]";
+        // 모드 이름이 바뀔 때까지(최대 3초) 기다린 뒤, 화면이 자리 잡도록 0.4초 더
+        poll(null, () -> { String now = mode(); return !now.isEmpty() && !now.equals(m); }, 10, changed -> MAIN.postDelayed(() -> {
             try {
                 String now = mode();
                 if (!now.isEmpty()) {
                     int to = modeIndex(now);
-                    if (to != from && (to > from) != forward) modeFlip = !modeFlip;   // 반대로 갔음 → 다음부터 방향 뒤집기
+                    if (to != from && to != target && (to > from) != (target > from)) saveFlip(rot, !used);   // 반대쪽으로 갔음 → 이 화면 방향의 순서를 고쳐 기억
                 }
-                goMode(wantVideo, step + 1, p2, done);
-            } catch (Exception e) { done.run(false, p2 + " " + e); }
-        }, 1600);
+                goMode(wantVideo, step + 1, p3, done);
+            } catch (Exception e) { done.run(false, p3 + " " + e); }
+        }, 400));
     }
 
     /** 동영상 버튼: 녹화 중이면 끝냄 / 동영상 모드가 아니면 모드만 바꿈(녹화 안 함) / 동영상 모드면 녹화 시작(타이머가 있으면 워치가 센 뒤) */
@@ -462,12 +548,10 @@ public class ShutterService extends AccessibilityService {
         String b = !st.isEmpty() && clickNode(st.get(0)) ? label(st.get(0)) : press(STOP, NOT_STOP);
         if (b == null) { reply(app, "녹화 끝 버튼을 못 눌렀어요 화면: " + dumpAll(), "끝내지 못했어요", false); return; }
         final String bb = b;
-        MAIN.postDelayed(() -> {
-            try {
-                if (readState() == 0) reply(app, "녹화 끝 (버튼: " + bb + ")", "녹화를 끝냈어요", false);
-                else reply(app, "녹화 끝 버튼을 눌렀는데 아직 녹화 중이에요 화면: " + dumpAll(), "끝내지 못했어요", false);
-            } catch (Exception e) { reply(app, "실패 " + e, "실패했어요", false); }
-        }, 1200);
+        poll(app, () -> readState() == 0, 12, ok -> {
+            if (ok) reply(app, "녹화 끝 (버튼: " + bb + ")", "녹화를 끝냈어요", false);
+            else reply(app, "녹화 끝 버튼을 눌렀는데 아직 녹화 중이에요 화면: " + dumpAll(), "끝내지 못했어요", false);
+        });
     }
 
     private void toVideoMode(Context app) {
@@ -491,14 +575,12 @@ public class ShutterService extends AccessibilityService {
         if (b == null) b = press(toPause ? PAUSE : RESUME, NOT_BTN);
         if (b == null) { reply(app, (toPause ? "일시정지" : "다시 촬영") + " 버튼을 못 찾았어요 화면: " + dumpAll(), "버튼을 못 찾았어요", false); return; }
         final String bb = b;
-        MAIN.postDelayed(() -> {
-            try {
-                int now = readState();
-                boolean ok = now == (toPause ? 2 : 1);
-                reply(app, (toPause ? "일시정지" : "다시 촬영") + (ok ? "" : " 버튼을 눌렀는데 상태가 안 바뀜") + " (버튼: " + bb + ")" + (ok && !toPause ? "" : " 화면: " + dumpAll()),
-                        now == 2 ? "일시정지" : now == 1 ? "녹화 중" : "녹화가 끝났어요", false);
-            } catch (Exception e) { reply(app, "실패 " + e, "실패했어요", false); }
-        }, 1000);
+        final int want = toPause ? 2 : 1;
+        poll(app, () -> readState() == want, 8, ok -> {
+            int now = video;
+            reply(app, (toPause ? "일시정지" : "다시 촬영") + (ok ? "" : " 버튼을 눌렀는데 상태가 안 바뀜") + " (버튼: " + bb + ")" + (ok ? "" : " 화면: " + dumpAll()),
+                    now == 2 ? "일시정지" : now == 1 ? "녹화 중" : "녹화가 끝났어요", false);
+        });
     }
 
     /** 사진 버튼: 녹화 중이면 '캡처', 동영상 모드면 사진 모드로 바꾼 뒤 찍음 */
