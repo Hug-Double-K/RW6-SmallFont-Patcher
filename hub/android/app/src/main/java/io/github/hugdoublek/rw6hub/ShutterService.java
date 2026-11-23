@@ -101,6 +101,12 @@ public class ShutterService extends AccessibilityService {
         return video = 1;
     }
 
+    @Override protected void onServiceConnected() { inst = this; }
+    @Override public boolean onUnbind(Intent i) { inst = null; return super.onUnbind(i); }
+    @Override public void onDestroy() { inst = null; super.onDestroy(); }
+    @Override public void onAccessibilityEvent(AccessibilityEvent e) {}
+    @Override public void onInterrupt() {}
+
     private String pkg() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         return root == null || root.getPackageName() == null ? "" : root.getPackageName().toString();
