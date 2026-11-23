@@ -278,6 +278,14 @@ public final class WatchLink {
                 XiaoAi.get(app).onPacket(type, id, p);
                 if (type == 10) WatchWeather.get(app).onPacket(id, p);
                 if (type == 8) Health.get(app).onPacket(id, p);
+                if (type == 2 && id == 17) FindPhone.get(app).onPacket(p);
+                // 카메라 리모컨 설정 응답(2/7)·워치가 보낸 그 밖의 시스템 메시지는 원인 찾기용으로 기록
+                if (type == 2 && id == 7) {
+                    List<Pb.Field> sys = Pb.sub(p, 4);
+                    List<Pb.Field> cam = sys == null ? null : Pb.sub(sys, 15);
+                    Pb.Field en = cam == null ? null : Pb.find(cam, 1);
+                    log("워치 카메라 리모컨 설정: " + (en == null ? "값 없음" : en.varint != 0 ? "켜짐" : "꺼짐"));
+                }
                 if (type == 2 && id == 1) {
                     List<Pb.Field> sys = Pb.sub(p, 4);
                     List<Pb.Field> st = sys == null ? null : Pb.sub(sys, 2);
@@ -330,6 +338,14 @@ public final class WatchLink {
         if (s == null || !authed) return false;
         s.sendRaw(channel, 1, payload, cb);
         return true;
+    }
+
+    /** 카메라 리모컨(워치로 폰 카메라 셔터) 켬/끔을 워치에 보내고, 현재 값을 다시 물어봄 */
+    public boolean setCameraRemote(boolean on) {
+        boolean ok = send(new Pb.W().varint(1, 2).varint(2, 8).msg(4, new Pb.W().msg(15, new Pb.W().varint(1, on ? 1 : 0))));
+        send(new Pb.W().varint(1, 2).varint(2, 7));
+        if (ok) log("카메라 리모컨 " + (on ? "켜기" : "끄기") + " 보냄");
+        return ok;
     }
 
     /** 워치 표시 언어 설정 (Mi Fitness가 연결할 때마다 폰 언어로 맞추던 것). 예: ko_KR, zh_CN, en_US */
