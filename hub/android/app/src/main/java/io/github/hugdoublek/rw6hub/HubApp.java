@@ -14,9 +14,9 @@ public class HubApp extends Application {
         QuickApps.get(this).register(ShutterService.WATCH_PACKAGE, "카메라 셔터");
         QuickApps.get(this).addListener(ShutterService.WATCH_PACKAGE, (pkg, data) -> {
             String s = new String(data, java.nio.charset.StandardCharsets.UTF_8);
-            int n = 0;
-            try { n = new org.json.JSONObject(s).optInt("cam", 0); } catch (Exception e) { if (s.contains("cam")) n = 1; }
-            if (n > 0) ShutterService.trigger(this, n);
+            int n = 0, t = 0;
+            try { org.json.JSONObject o = new org.json.JSONObject(s); n = o.optInt("cam", 0); t = o.optInt("t", 0); } catch (Exception e) { if (s.contains("cam")) n = 1; }
+            if (n > 0) ShutterService.trigger(this, n, t);
         });
         // 워치가 연결되면 알림 기능의 '워치 답 듣기'를 바로 등록 (예전엔 첫 전송 때 등록됨)
         WatchLink link = WatchLink.get(this);

@@ -13,7 +13,7 @@
 import interconnect from '@system.interconnect'
 import vibrator from '@system.vibrator'
 
-// 카메라 셔터: 폰(Mi Manager)에 보내는 것 = {cam:1} 사진, {cam:2} 동영상 시작/끝, {cam:3} 일시정지/다시 촬영.
+// 카메라 셔터: 폰(Mi Manager)에 보내는 것 = {cam:1} 사진, {cam:2} 동영상 버튼, {cam:3} 일시정지/다시 촬영, {cam:5} 타이머 끝·지금 녹화. t = 타이머 초.
 // 폰이 {r:"글", v:0|1|2}로 답함 (v: 0 안 찍는 중, 1 녹화 중, 2 일시정지) → 아래 버튼 모양을 거기에 맞춤.
 // 왼쪽 아래: 타이머 off→3→5→10초 (사진·동영상 시작에 적용), 녹화 중에는 일시정지/다시 촬영.
 let timer = null
@@ -40,6 +40,7 @@ export default {
           if (!d) return
           if (d.r) self.msg = d.r
           if (d.v === 0 || d.v === 1 || d.v === 2) { self.rec = d.v; self.icons() }
+          if (d.w === 1 && !self.rec) self.count(5)
         } catch (e) {}
       }
     } catch (e) { self.msg = '폰과 연결하지 못했어요' }
@@ -51,7 +52,7 @@ export default {
   },
 
   send(n) {
-    try { conn.send({ data: { cam: n } }) } catch (e) { this.msg = '폰에 보내지 못했어요'; return }
+    try { conn.send({ data: { cam: n, t: SECS[this.ti] } }) } catch (e) { this.msg = '폰에 보내지 못했어요'; return }
     try { vibrator.vibrate({ mode: 'short' }) } catch (e) {}
     this.msg = '보냈어요'
   },
@@ -64,8 +65,15 @@ export default {
 
   // 타이머가 켜져 있으면 그만큼 센 뒤에 보냄 (세는 중에 다시 누르면 취소)
   later(n) {
+    if (this.cancel()) return
+    if (!SECS[this.ti]) { this.send(n); return }
+    this.count(n)
+  },
+
+  // 타이머만큼 센 뒤 n을 보냄
+  count(n) {
     const self = this
-    if (self.cancel()) return
+    if (timer) return
     const sec = SECS[self.ti]
     if (!sec) { self.send(n); return }
     self.left = sec
@@ -79,7 +87,9 @@ export default {
   shot() { if (this.rec) { if (!this.cancel()) this.send(1) } else this.later(1) },
 
   video() {
-    if (this.rec) { this.cancel(); this.send(2) } else this.later(2)
+    // 동영상 버튼은 바로 보냄: 폰이 동영상 모드가 아니면 모드만 바꾸고, 동영상 모드면 녹화(타이머가 있으면 폰이 w:1로 답해 여기서 센 뒤 {cam:5})
+    if (this.cancel()) return
+    this.send(2)
   },
 
   leftTap() {
