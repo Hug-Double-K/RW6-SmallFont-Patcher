@@ -351,27 +351,39 @@ public class ShutterService extends AccessibilityService {
     /** 모드 줄의 칸 순서가 화면에서 거꾸로 놓였는지 (폰을 눕혀 쓰면 거꾸로일 수 있음). 잘못 간 걸 보면 뒤집어 기억함 */
     private static volatile boolean modeFlip;
 
-    /** 모드 줄을 한 칸씩 눌러 가며 원하는 모드(동영상/사진)까지 감. 누를 때마다 모드 이름을 읽어 확인하고, 반대쪽으로 갔으면 방향을 뒤집어 다시 감 */
+    /** 모드 줄 순서에서의 자리: 싱글테이크 0 | 사진 1 | 동영상 2, 그 밖(더보기 쪽) 3, 모르면 -1 */
+    private static int modeIndex(String m) {
+        if (m.isEmpty()) return -1;
+        String t = m.toLowerCase();
+        if (t.contains("싱글") || t.contains("single")) return 0;
+        if (isPhotoMode(m)) return 1;
+        if (isVideoMode(m)) return 2;
+        return 3;
+    }
+
+    /** 폰을 눕혀 쥐면 모드 칸의 화면 좌표 순서가 뒤집힘 → 눌러 본 결과로 배움 */
+    private static volatile boolean flipped;
+
+    /** 모드 줄을 한 칸씩 눌러 가며 원하는 모드(동영상/사진)까지 감. 누를 때마다 모드 이름을 읽어, 반대로 갔으면 방향을 뒤집어 다시 감 */
     private void goMode(boolean wantVideo, int step, String path, Done done) {
-        String m = mode();
-        String p2 = path + (path.isEmpty() ? "" : "→") + (m.isEmpty() ? "?" : m);
-        if (wantVideo ? isVideoMode(m) : isPhotoMode(m)) { done.run(true, p2); return; }
-        if (step >= 7 || m.isEmpty()) { done.run(false, p2); return; }
-        final int from = modeIndex(m), target = wantVideo ? 2 : 1;
-        final boolean forward = target > from;          // 순서상 뒤쪽(동영상·더보기 쪽)으로 가야 하는지
-        boolean ok = tapNeighbor(forward != modeFlip);
-        if (!ok) { modeFlip = !modeFlip; ok = tapNeighbor(forward != modeFlip); }   // 그쪽에 칸이 없으면 반대쪽
-        if (!ok) { done.run(false, p2 + "(옆 칸 못 누름)"); return; }
+        final String m = mode();
+        final int idx = modeIndex(m), target = wantVideo ? 2 : 1;
+        final String p2 = path + (path.isEmpty() ? "" : "→") + (m.isEmpty() ? "?" : m);
+        if (idx == target) { done.run(true, p2); return; }
+        if (step >= 7 || idx < 0) { done.run(false, p2); return; }
+        final boolean wantRight = target > idx;
+        if (!tapNeighbor(wantRight ^ flipped)) {
+            flipped = !flipped;   // 그쪽엔 칸이 없음 = 순서를 거꾸로 알고 있었음
+            if (!tapNeighbor(wantRight ^ flipped)) { done.run(false, p2 + "(옆 칸 못 누름)"); return; }
+        }
+        busyUntil = android.os.SystemClock.elapsedRealtime() + 9000;
         MAIN.postDelayed(() -> {
             try {
-                String now = mode();
-                if (!now.isEmpty()) {
-                    int to = modeIndex(now);
-                    if (to != from && (to > from) != forward) modeFlip = !modeFlip;   // 반대로 갔음 → 다음부터 방향 뒤집기
-                }
+                int now = modeIndex(mode());
+                if (now >= 0 && now != idx && (now > idx) != wantRight) flipped = !flipped;   // 반대로 감 → 방향 뒤집기
                 goMode(wantVideo, step + 1, p2, done);
             } catch (Exception e) { done.run(false, p2 + " " + e); }
-        }, 1200);
+        }, 1600);
     }
 
     /** 동영상 버튼: 녹화 중이면 끝냄 / 동영상 모드가 아니면 모드만 바꿈(녹화 안 함) / 동영상 모드면 녹화 시작(타이머가 있으면 워치가 센 뒤) */
