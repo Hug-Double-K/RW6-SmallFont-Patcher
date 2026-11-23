@@ -123,32 +123,83 @@ public class ShutterService extends AccessibilityService {
         return sb.length() == 0 ? "(이름 있는 버튼 없음)" : sb.toString();
     }
 
+    private static final String[] TAB_VIDEO = {"동영상", "video", "비디오"};
+    private static final String[] TAB_PHOTO = {"사진", "photo", "picture"};
+    private static final String[] NOT_TAB = {"촬영", "녹화", "record", "설정", "setting", "크기", "size", "해상도", "화질", "보기", "갤러리", "gallery", "편집", "필터"};
+
+    /** 카메라 아래쪽 모드 줄('사진 | 동영상 | 더보기')에서 그 모드를 눌러 바꿈. 눌렀으면 이름, 못 찾으면 null */
+    private String tab(String[] names) {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return null;
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        AccessibilityNodeInfo best = null;
+        int bestScore = 0, seen = 0;
+        while (!q.isEmpty() && seen++ < 800) {
+            AccessibilityNodeInfo n = q.poll();
+            if (n == null) continue;
+            if (n.isVisibleToUser()) {
+                String d = n.getContentDescription() == null ? "" : n.getContentDescription().toString().trim().toLowerCase(),
+                        t = n.getText() == null ? "" : n.getText().toString().trim().toLowerCase();
+                int score = 0;
+                for (String w : names) {
+                    if (t.equals(w) || d.equals(w)) score = Math.max(score, 4);
+                    else if ((t.startsWith(w) && t.length() <= 14) || (d.startsWith(w) && d.length() <= 14)) score = Math.max(score, 2);
+                }
+                if (score > 0) for (String w : NOT_TAB) if (t.contains(w) || d.contains(w)) { score = 0; break; }
+                if (score > 0 && n.isClickable()) score++;
+                if (score > bestScore) { bestScore = score; best = n; }
+            }
+            for (int i = 0; i < n.getChildCount(); i++) q.add(n.getChild(i));
+        }
+        if (best == null) return null;
+        Rect b = new Rect(); best.getBoundsInScreen(b);
+        // 모드 줄은 글자를 직접 톡 눌러야 바뀌는 경우가 많아 자리 누르기를 먼저, 안 되면 클릭 동작
+        if (!b.isEmpty() && tap(b.centerX(), b.centerY())) return label(best);
+        AccessibilityNodeInfo t = best;
+        for (int i = 0; i < 3 && t != null && !t.isClickable(); i++) t = t.getParent();
+        if (t != null && t.isClickable() && t.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return label(best);
+        return null;
+    }
+
     private void videoToggle(Context app) {
         if (video != 0) {   // 녹화 끝
             String b = press(STOP, NOT_STOP);
             if (b == null && isCamera(pkg()) && tapShutterSpot()) b = "가운데 자리";
-            if (b == null) { reply(app, "녹화 끝 버튼을 못 눌렀어요 (" + pkg() + ") 화면: " + dump(), "끝내지 못했어요"); return; }
+            if (b == null) { video = 0; reply(app, "녹화 끝 버튼을 못 눌렀어요 (" + pkg() + ") 화면: " + dump(), "끝내지 못했어요"); return; }
             video = 0;
             reply(app, "녹화 끝 (버튼: " + b + ")", "녹화를 끝냈어요");
+            // 다음 사진 셔터가 다시 사진을 찍도록 사진 모드로 돌려놓음
+            MAIN.postDelayed(() -> { try { String t = tab(TAB_PHOTO); WatchLink.get(app).log("워치 셔터: 사진 모드로 " + (t == null ? "못 돌림" : "돌림 (" + t + ")")); } catch (Exception ignored) {} }, 1500);
             return;
         }
-        // 녹화 시작: 카메라를 동영상 모드로 연 다음 조금 기다렸다가 녹화 버튼
-        try {
-            startActivity(new Intent("android.media.action.VIDEO_CAMERA").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        } catch (Exception e) {
-            reply(app, "동영상 카메라를 열지 못했어요 (" + e.getClass().getSimpleName() + ")", "카메라를 못 열었어요");
-            return;
+        // 녹화 시작: (카메라가 닫혀 있으면 열고) 모드 줄에서 '동영상'을 눌러 바꾼 뒤 녹화 버튼
+        long wait = 0;
+        if (!isCamera(pkg())) {
+            try { startActivity(new Intent("android.media.action.STILL_IMAGE_CAMERA").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+            catch (Exception e) { reply(app, "카메라를 열지 못했어요 (" + e.getClass().getSimpleName() + ")", "카메라를 못 열었어요"); return; }
+            wait = 2200;
         }
         MAIN.postDelayed(() -> {
             try {
-                String p = pkg();
-                String b = press(REC, NOT_BTN);
-                if (b == null && isCamera(p) && tapShutterSpot()) b = "가운데 자리";
-                if (b == null) { reply(app, "녹화 버튼을 못 눌렀어요 (" + p + ") 화면: " + dump(), "녹화를 시작하지 못했어요"); return; }
-                video = 1;
-                reply(app, "녹화 시작 (버튼: " + b + ", " + p + ")", "녹화 중");
+                final String p = pkg();
+                if (!isCamera(p)) { reply(app, "카메라 화면이 아니에요 (" + p + ")", "폰에서 카메라를 열어 주세요"); return; }
+                final String t = tab(TAB_VIDEO);
+                if (t == null) { reply(app, "'동영상' 모드 글자를 못 찾았어요 (" + p + ") 화면: " + dump(), "동영상 모드로 못 바꿨어요"); return; }
+                MAIN.postDelayed(() -> {
+                    try {
+                        String b = press(REC, NOT_BTN);
+                        if (b == null && tapShutterSpot()) b = "가운데 자리";
+                        if (b == null) { reply(app, "녹화 버튼을 못 눌렀어요 (" + p + ") 화면: " + dump(), "녹화를 시작하지 못했어요"); return; }
+                        video = 1;
+                        final String bb = b;
+                        reply(app, "녹화 시작 (모드: " + t + ", 버튼: " + bb + ")", "녹화 중");
+                        // 확인용: 1.5초 뒤 화면의 버튼 이름을 기록 (끝·일시정지 버튼 이름을 알아내기 위해)
+                        MAIN.postDelayed(() -> { try { WatchLink.get(app).log("워치 셔터: 녹화 중 화면: " + dump()); } catch (Exception ignored) {} }, 1500);
+                    } catch (Exception e) { reply(app, "실패 " + e, "실패했어요"); }
+                }, 1300);
             } catch (Exception e) { reply(app, "실패 " + e, "실패했어요"); }
-        }, 2000);
+        }, wait);
     }
 
     private void pauseToggle(Context app) {
