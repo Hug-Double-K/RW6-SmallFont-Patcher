@@ -107,6 +107,20 @@
             android:exported="false"
             android:label="건강" />
 
+        <!-- 워치 셔터: 열려 있는 카메라 앱의 셔터를 대신 누름 -->
+        <service
+            android:name=".ShutterService"
+            android:exported="true"
+            android:label="Mi Manager 워치 셔터"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/shutter_service" />
+        </service>
+
         <!-- ===== 메모 (예전 RW6 메모 폰 앱) ===== -->
         <activity
             android:name=".memo.MainActivity"

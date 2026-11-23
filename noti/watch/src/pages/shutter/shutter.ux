@@ -1,0 +1,54 @@
+<template>
+  <div class="main" style="align-items: center; justify-content: center">
+    <text class="s-msg">{{ msg }}</text>
+    <text class="s-shot" @click="shoot(0)">{{ left > 0 ? left : '촬영' }}</text>
+    <div class="s-row">
+      <text class="s-timer" @click="shoot(3)">3초 뒤</text>
+      <text class="s-timer" style="margin-left: 10px" @click="shoot(10)">10초 뒤</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import interconnect from '@system.interconnect'
+import vibrator from '@system.vibrator'
+
+// 카메라 셔터: 폰(Mi Manager)에 {cam:1}을 보내면 폰이 열려 있는 카메라의 셔터를 대신 눌러 준다.
+// 폰 카메라가 닫혀 있으면 첫 번째에는 카메라를 열어 준다.
+let timer = null
+
+export default {
+  private: {
+    msg: '폰 카메라 셔터',
+    left: 0,
+  },
+
+  send() {
+    try { interconnect.instance().send({ data: { cam: 1 } }) } catch (e) { this.msg = '폰에 보내지 못했어요' ; return }
+    try { vibrator.vibrate({ mode: 'short' }) } catch (e) {}
+    this.msg = '보냈어요'
+  },
+
+  shoot(sec) {
+    const self = this
+    if (timer) { clearInterval(timer); timer = null; self.left = 0; self.msg = '취소했어요'; return }
+    if (!sec) { self.send(); return }
+    self.left = sec
+    self.msg = '기다리는 중 (다시 누르면 취소)'
+    timer = setInterval(() => {
+      self.left -= 1
+      if (self.left <= 0) { clearInterval(timer); timer = null; self.left = 0; self.send() }
+    }, 1000)
+  },
+
+  onDestroy() { if (timer) { clearInterval(timer); timer = null } },
+}
+</script>
+
+<style>
+  @import '../../common/common.css';
+  .s-msg { width: 100%; text-align: center; font-size: 24px; color: #9aa0aa; margin-bottom: 18px; }
+  .s-shot { width: 200px; height: 200px; border-radius: 100px; background-color: #f2f3f5; color: #101114; text-align: center; font-size: 44px; font-weight: bold; }
+  .s-row { margin-top: 24px; flex-direction: row; justify-content: center; }
+  .s-timer { width: 150px; height: 64px; border-radius: 32px; background-color: #2a2d35; text-align: center; font-size: 26px; }
+</style>

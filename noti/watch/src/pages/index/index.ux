@@ -30,7 +30,9 @@
           <text class="head-pill {{ notis ? 'head-pill-on' : '' }}">{{ notis ? (deleteOn ? "X" : "-") : "" }}</text>
         </div>
         <text class="head-title" @click="scrollToTop">알림 {{ notis }}</text>
-        <div class="head-hit"></div>
+        <div class="head-hit" @click="openShutter">
+          <text class="head-cam">셔터</text>
+        </div>
       </div>
       <!-- list = 화면에 보이는 칸만 그림 (사진이 많이 쌓여도 빨리 뜸) -->
       <text class="btn danger" if="{{ deleteOn && notis }}" @click="deleteAll">모두 지우기</text>
@@ -616,6 +618,9 @@ export default {
   removeFile(li) {
     try { file.delete({ uri: li.uri }) } catch (e) {}
   },
+
+  // 머리줄 오른쪽 '셔터': 폰 카메라 셔터 화면
+  openShutter() { router.push({ uri: '/pages/shutter' }) },
 
   openPopup(li) {
     if (this.deleteOn) return
