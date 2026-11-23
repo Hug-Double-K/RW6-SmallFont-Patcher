@@ -339,17 +339,39 @@ public class ShutterService extends AccessibilityService {
 
     private interface Done { void run(boolean ok, String path); }
 
-    /** 모드 줄을 한 칸씩 눌러 가며 원하는 모드(동영상/사진)까지 감. 모드 이름을 읽어 확인하므로 엉뚱한 데서 멈추지 않음 */
+    /** 모드 줄 순서에서의 자리: 싱글테이크 0 | 사진 1 | 동영상 2 | 그 밖(더보기 쪽) 3 */
+    private static int modeIndex(String m) {
+        String t = m.toLowerCase();
+        if (t.contains("싱글") || t.contains("single")) return 0;
+        if (isPhotoMode(m)) return 1;
+        if (isVideoMode(m)) return 2;
+        return 3;
+    }
+
+    /** 모드 줄의 칸 순서가 화면에서 거꾸로 놓였는지 (폰을 눕혀 쓰면 거꾸로일 수 있음). 잘못 간 걸 보면 뒤집어 기억함 */
+    private static volatile boolean modeFlip;
+
+    /** 모드 줄을 한 칸씩 눌러 가며 원하는 모드(동영상/사진)까지 감. 누를 때마다 모드 이름을 읽어 확인하고, 반대쪽으로 갔으면 방향을 뒤집어 다시 감 */
     private void goMode(boolean wantVideo, int step, String path, Done done) {
         String m = mode();
         String p2 = path + (path.isEmpty() ? "" : "→") + (m.isEmpty() ? "?" : m);
         if (wantVideo ? isVideoMode(m) : isPhotoMode(m)) { done.run(true, p2); return; }
-        if (step >= 4 || m.isEmpty()) { done.run(false, p2); return; }
-        // 삼성 모드 줄 순서: 싱글테이크 | 사진 | 동영상 | 더보기
-        boolean right = wantVideo ? (isPhotoMode(m) || m.contains("싱글") || m.toLowerCase().contains("single")) : !(isVideoMode(m) || m.contains("더보기"));
-        if (!wantVideo) right = !isVideoMode(m) && (m.contains("싱글") || m.toLowerCase().contains("single"));
-        if (!tapNeighbor(right)) { done.run(false, p2 + "(옆 칸 못 누름)"); return; }
-        MAIN.postDelayed(() -> { try { goMode(wantVideo, step + 1, p2, done); } catch (Exception e) { done.run(false, p2 + " " + e); } }, 1200);
+        if (step >= 7 || m.isEmpty()) { done.run(false, p2); return; }
+        final int from = modeIndex(m), target = wantVideo ? 2 : 1;
+        final boolean forward = target > from;          // 순서상 뒤쪽(동영상·더보기 쪽)으로 가야 하는지
+        boolean ok = tapNeighbor(forward != modeFlip);
+        if (!ok) { modeFlip = !modeFlip; ok = tapNeighbor(forward != modeFlip); }   // 그쪽에 칸이 없으면 반대쪽
+        if (!ok) { done.run(false, p2 + "(옆 칸 못 누름)"); return; }
+        MAIN.postDelayed(() -> {
+            try {
+                String now = mode();
+                if (!now.isEmpty()) {
+                    int to = modeIndex(now);
+                    if (to != from && (to > from) != forward) modeFlip = !modeFlip;   // 반대로 갔음 → 다음부터 방향 뒤집기
+                }
+                goMode(wantVideo, step + 1, p2, done);
+            } catch (Exception e) { done.run(false, p2 + " " + e); }
+        }, 1200);
     }
 
     /** 동영상 버튼: 녹화 중이면 끝냄 / 동영상 모드가 아니면 모드만 바꿈(녹화 안 함) / 동영상 모드면 녹화 시작(타이머가 있으면 워치가 센 뒤) */
@@ -402,7 +424,7 @@ public class ShutterService extends AccessibilityService {
             if (readState() != 0) { reply(app, "이미 녹화 중이에요", video == 2 ? "일시정지" : "녹화 중", false); return; }
             busyUntil = android.os.SystemClock.elapsedRealtime() + 9000;
             goMode(true, 0, "", (ok, path) -> {
-                if (ok) reply(app, "동영상 모드로 바꿈 (" + path + ")", "동영상", false);
+                if (ok) reply(app, "동영상 모드로 바꿈 (" + path + (modeFlip ? ", 칸 순서 거꾸로" : "") + ")", "동영상", false);
                 else reply(app, "동영상 모드로 못 바꿨어요 (" + path + ") 화면: " + dumpAll(), "동영상 모드로 못 바꿨어요", false);
             });
         });
