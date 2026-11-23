@@ -345,10 +345,6 @@ public final class WatchSender {
                     if (am.find()) { Runnable r = ACK.remove(am.group()); if (r != null) new Handler(Looper.getMainLooper()).post(r); }
                     return;
                 }
-                if (s.contains("\"cam\"")) { // 워치 셔터 화면에서 촬영을 누름
-                    io.github.hugdoublek.rw6hub.ShutterService.trigger(app);
-                    return;
-                }
                 if (s.contains("ready")) { // 워치 앱 준비됨 → 기다리던 전송 시작
                     Runnable r = readyWaiter;
                     if (r != null) new Handler(Looper.getMainLooper()).post(r);

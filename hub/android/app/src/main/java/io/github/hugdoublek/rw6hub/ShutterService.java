@@ -17,7 +17,7 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.ArrayDeque;
 
 /**
- * 워치 셔터 (워치의 메신저 알림 앱 '셔터' 화면 → {cam:1}) → 폰에 열려 있는 카메라 앱의 셔터를 대신 누른다.
+ * 워치 셔터 (워치 퀵앱 '카메라 셔터' io.github.hugdoublek.rw6cam → {cam:1}) → 폰에 열려 있는 카메라 앱의 셔터를 대신 누른다.
  * 워치 기본 카메라 앱은 블루투스 HID 방식인데 중국판 펌웨어가 HID 켜기(2/8)에 답하지 않아 못 씀 → 접근성으로 대신함.
  *  1) 화면에서 '셔터/촬영' 버튼을 찾아 누름  2) 못 찾았는데 카메라 앱이면 셔터 자리(아래 가운데)를 톡 누름
  *  3) 카메라 앱이 아니면 카메라를 열어 줌 (한 번 더 누르면 찍힘)
@@ -25,6 +25,7 @@ import java.util.ArrayDeque;
  */
 public class ShutterService extends AccessibilityService {
 
+    public static final String WATCH_PACKAGE = "io.github.hugdoublek.rw6cam";
     private static volatile ShutterService inst;
     private static final String[] WORDS = {"shutter", "셔터", "촬영", "take picture", "take photo", "capture", "사진 찍기"};
 
@@ -41,10 +42,17 @@ public class ShutterService extends AccessibilityService {
         final Context app = c.getApplicationContext();
         new Handler(Looper.getMainLooper()).post(() -> {
             ShutterService s = inst;
-            if (s == null) { WatchLink.get(app).log("워치 셔터: 접근성 권한이 꺼져 있어요 (Mi Manager 첫 화면 → 카메라 셔터)"); return; }
-            String r;
-            try { r = s.shoot(); } catch (Exception e) { r = "실패 " + e; }
+            String r, watch;
+            if (s == null) { r = "접근성 권한이 꺼져 있어요 (Mi Manager 첫 화면 → 카메라 셔터)"; watch = "폰에서 권한을 켜 주세요"; }
+            else {
+                try { r = s.shoot(); } catch (Exception e) { r = "실패 " + e; }
+                watch = r.startsWith("찍음") ? "찍었어요" : r.startsWith("카메라를 열었어요") ? "카메라를 열었어요\n한 번 더 누르세요" : r.startsWith("셔터 버튼을 못 찾아") ? "셔터 자리를 눌렀어요" : "못 찍었어요";
+            }
             WatchLink.get(app).log("워치 셔터: " + r);
+            try {
+                String json = new org.json.JSONObject().put("r", watch).toString();
+                QuickApps.get(app).sendMessage(WATCH_PACKAGE, json.getBytes(java.nio.charset.StandardCharsets.UTF_8), err -> {});
+            } catch (Exception ignored) {}
         });
     }
 

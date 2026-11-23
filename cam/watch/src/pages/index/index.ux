@@ -1,5 +1,5 @@
 <template>
-  <div class="main" style="align-items: center; justify-content: center">
+  <div class="main">
     <text class="s-msg">{{ msg }}</text>
     <text class="s-shot" @click="shoot(0)">{{ left > 0 ? left : '촬영' }}</text>
     <div class="s-row">
@@ -14,8 +14,9 @@ import interconnect from '@system.interconnect'
 import vibrator from '@system.vibrator'
 
 // 카메라 셔터: 폰(Mi Manager)에 {cam:1}을 보내면 폰이 열려 있는 카메라의 셔터를 대신 눌러 준다.
-// 폰 카메라가 닫혀 있으면 첫 번째에는 카메라를 열어 준다.
+// 폰 카메라가 닫혀 있으면 첫 번째에는 카메라를 열어 준다. 폰이 결과를 {r:"…"}로 알려 주면 위에 보여 줌.
 let timer = null
+let conn = null
 
 export default {
   private: {
@@ -23,8 +24,21 @@ export default {
     left: 0,
   },
 
+  onInit() {
+    const self = this
+    try {
+      conn = interconnect.instance()
+      conn.onmessage = (m) => {
+        try {
+          const d = typeof m.data === 'string' ? JSON.parse(m.data) : m.data
+          if (d && d.r) self.msg = d.r
+        } catch (e) {}
+      }
+    } catch (e) { self.msg = '폰과 연결하지 못했어요' }
+  },
+
   send() {
-    try { interconnect.instance().send({ data: { cam: 1 } }) } catch (e) { this.msg = '폰에 보내지 못했어요' ; return }
+    try { conn.send({ data: { cam: 1 } }) } catch (e) { this.msg = '폰에 보내지 못했어요'; return }
     try { vibrator.vibrate({ mode: 'short' }) } catch (e) {}
     this.msg = '보냈어요'
   },
@@ -46,9 +60,9 @@ export default {
 </script>
 
 <style>
-  @import '../../common/common.css';
-  .s-msg { width: 100%; text-align: center; font-size: 24px; color: #9aa0aa; margin-bottom: 18px; }
+  .main { width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; background-color: #000000; }
+  .s-msg { width: 90%; text-align: center; font-size: 24px; color: #9aa0aa; margin-bottom: 18px; }
   .s-shot { width: 200px; height: 200px; border-radius: 100px; background-color: #f2f3f5; color: #101114; text-align: center; font-size: 44px; font-weight: bold; }
   .s-row { margin-top: 24px; flex-direction: row; justify-content: center; }
-  .s-timer { width: 150px; height: 64px; border-radius: 32px; background-color: #2a2d35; text-align: center; font-size: 26px; }
+  .s-timer { width: 150px; height: 64px; border-radius: 32px; background-color: #2a2d35; color: #ffffff; text-align: center; font-size: 26px; }
 </style>

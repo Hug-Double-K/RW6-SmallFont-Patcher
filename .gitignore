@@ -16,3 +16,5 @@ ai/watch/build/
 ai/android/.gradle/
 ai/android/app/build/
 ai/android/build/
+cam/watch/node_modules/
+cam/watch/dist/

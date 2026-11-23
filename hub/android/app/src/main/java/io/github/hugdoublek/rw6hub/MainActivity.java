@@ -177,7 +177,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         row(c, "건강", "걸음·심박 실시간 보기 · 워치의 건강 기록 받기", v -> startActivity(new Intent(this, HealthActivity.class)));
         line(c);
         shutterSub = row(c, "카메라 셔터", "", v -> {
-            if (ShutterService.enabled(this)) toast("켜져 있어요. 폰 카메라를 열고, 워치의 메신저 알림 → 셔터에서 촬영을 누르세요");
+            if (ShutterService.enabled(this)) toast("켜져 있어요. 폰 카메라를 열고, 워치의 '카메라 셔터' 앱에서 촬영을 누르세요");
             else {
                 toast("목록에서 'Mi Manager 워치 셔터'를 찾아 켜 주세요");
                 try { startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)); } catch (Exception e) { toast("접근성 설정을 열지 못했어요"); }
@@ -290,7 +290,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
 
     private void refresh() {
         updating = true;
-        if (shutterSub != null) shutterSub.setText(ShutterService.enabled(this) ? "켜짐 · 워치의 메신저 알림 → 셔터에서 촬영" : "꺼짐 · 눌러서 접근성 권한 켜기");
+        if (shutterSub != null) shutterSub.setText(ShutterService.enabled(this) ? "켜짐 · 워치의 '카메라 셔터' 앱에서 촬영" : "꺼짐 · 눌러서 접근성 권한 켜기");
         // 연결 상태
         String state = link.state();
         boolean ready = link.isReady();

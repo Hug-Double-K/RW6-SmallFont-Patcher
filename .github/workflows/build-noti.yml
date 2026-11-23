@@ -12,6 +12,7 @@ on:
       - 'ai/android/**'
       - 'ai/watch/**'
       - 'hub/android/**'
+      - 'cam/watch/**'
       - '.github/workflows/build-noti.yml'
   workflow_dispatch:
 
@@ -86,6 +87,14 @@ jobs:
           npm install --no-audit --no-fund 2>&1 | tail -20
           npx aiot release 2>&1 | tee ../../build-ai-watch.log
 
+      # ---------- 카메라 셔터 (워치 앱만) ----------
+      - name: Build cam rpk
+        if: always()
+        working-directory: cam/watch
+        run: |
+          npm install --no-audit --no-fund 2>&1 | tail -20
+          npx aiot release 2>&1 | tee ../../build-cam-watch.log
+
       # ---------- Mi Manager (가칭, Mi Fitness 대체) ----------
       - name: Build hub apk
         if: always()
@@ -117,7 +126,10 @@ jobs:
           mkdir -p hub/release
           cp hub/android/app/build/outputs/apk/release/*.apk hub/release/MiManager.apk 2>/dev/null || true
           tail -60 build-hub-android.log > hub/release/build-android.log 2>/dev/null || true
-          git add noti/release memo/release ai/release hub/release
+          mkdir -p cam/release
+          cp cam/watch/dist/*.rpk cam/release/RW6Cam.rpk 2>/dev/null || true
+          tail -60 build-cam-watch.log > cam/release/build-watch.log 2>/dev/null || true
+          git add noti/release memo/release ai/release hub/release cam/release
           git commit -m "Build outputs ${GITHUB_SHA::7} [skip ci]" || echo "nothing to commit"
           git pull --rebase origin main || true
           git push
