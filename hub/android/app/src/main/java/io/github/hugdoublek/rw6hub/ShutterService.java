@@ -50,7 +50,7 @@ public class ShutterService extends AccessibilityService {
 
     private static volatile long busyUntil;
 
-    /** 워치가 버튼을 눌렀을 때 (아무 스레드). what: 1 사진, 2 동영상 버튼, 3 일시정지/다시 촬영, 5 (타이머가 끝남) 지금 녹화 시작. timer: 워치 타이머 초 */
+    /** 워치가 버튼을 눌렀을 때 (아무 스레드). what: 1 사진, 5 녹화 시작, 8 녹화 끝, 3 일시정지/다시 촬영, 6 동영상 모드로, 7 사진 모드로 (2 = 예전 워치 앱의 동영상 버튼). timer: 워치 타이머 초 */
     public static void trigger(Context c, int what, int timer) {
         final Context app = c.getApplicationContext();
         MAIN.post(() -> {
@@ -60,9 +60,12 @@ public class ShutterService extends AccessibilityService {
             if (now < busyUntil) { WatchLink.get(app).log("워치 셔터: 앞의 일을 하는 중이라 이번 누름은 넘김"); return; }
             busyUntil = now + 6000;
             try {
-                if (what == 2) s.videoPress(app, timer);
-                else if (what == 5) s.record(app);
+                if (what == 2) s.videoPress(app, timer);          // 예전 워치 앱(1.4)
+                else if (what == 5) s.recordStart(app);
+                else if (what == 8) s.recordStop(app);
                 else if (what == 3) s.pauseToggle(app);
+                else if (what == 6) s.videoMode(app);
+                else if (what == 7) s.photoMode(app);
                 else s.photo(app);
             } catch (Exception e) { reply(app, "실패 " + e, "실패했어요", false); }
         });
@@ -74,6 +77,12 @@ public class ShutterService extends AccessibilityService {
         WatchLink.get(app).log("워치 셔터: " + log);
         try {
             org.json.JSONObject o = new org.json.JSONObject().put("r", watch).put("v", video);
+            // m = 지금 카메라 모드(0 사진, 1 동영상) — 알 수 있을 때만 보냄
+            try {
+                ShutterService me = inst;
+                if (video != 0) o.put("m", 1);
+                else if (me != null) { String md = me.mode(); if (isVideoMode(md)) o.put("m", 1); else if (isPhotoMode(md)) o.put("m", 0); }
+            } catch (Exception ignored) {}
             if (countdown) o.put("w", 1);
             QuickApps.get(app).sendMessage(WATCH_PACKAGE, o.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8), err -> {});
         } catch (Exception ignored) {}
@@ -371,6 +380,72 @@ public class ShutterService extends AccessibilityService {
             return;
         }
         toVideoMode(app);
+    }
+
+    /** 카메라가 닫혀 있으면 열고 조금 기다린 뒤 then 실행 */
+    private void withCamera(Context app, Runnable then) {
+        if (isCamera(pkg())) { then.run(); return; }
+        try { startActivity(new Intent("android.media.action.STILL_IMAGE_CAMERA").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+        catch (Exception e) { reply(app, "카메라를 열지 못했어요 (" + e.getClass().getSimpleName() + ")", "카메라를 못 열었어요", false); return; }
+        busyUntil = android.os.SystemClock.elapsedRealtime() + 12000;
+        MAIN.postDelayed(() -> {
+            try {
+                if (!isCamera(pkg())) { reply(app, "카메라 화면이 아니에요 (" + pkg() + ")", "폰에서 카메라를 열어 주세요", false); return; }
+                then.run();
+            } catch (Exception e) { reply(app, "실패 " + e, "실패했어요", false); }
+        }, 2200);
+    }
+
+    /** 워치 '동영상' 글자: 동영상 모드로만 바꿈 */
+    private void videoMode(Context app) {
+        withCamera(app, () -> {
+            if (readState() != 0) { reply(app, "이미 녹화 중이에요", video == 2 ? "일시정지" : "녹화 중", false); return; }
+            busyUntil = android.os.SystemClock.elapsedRealtime() + 9000;
+            goMode(true, 0, "", (ok, path) -> {
+                if (ok) reply(app, "동영상 모드로 바꿈 (" + path + ")", "동영상", false);
+                else reply(app, "동영상 모드로 못 바꿨어요 (" + path + ") 화면: " + dumpAll(), "동영상 모드로 못 바꿨어요", false);
+            });
+        });
+    }
+
+    /** 워치 '사진' 글자: 사진 모드로만 바꿈 */
+    private void photoMode(Context app) {
+        withCamera(app, () -> {
+            if (readState() != 0) { reply(app, "녹화 중이라 모드를 안 바꿈", video == 2 ? "일시정지" : "녹화 중", false); return; }
+            busyUntil = android.os.SystemClock.elapsedRealtime() + 9000;
+            goMode(false, 0, "", (ok, path) -> {
+                if (ok) reply(app, "사진 모드로 바꿈 (" + path + ")", "사진", false);
+                else reply(app, "사진 모드로 못 바꿨어요 (" + path + ") 화면: " + dumpAll(), "사진 모드로 못 바꿨어요", false);
+            });
+        });
+    }
+
+    /** 워치 빨간 원: 녹화 시작 (동영상 모드가 아니면 먼저 바꿈) */
+    private void recordStart(Context app) {
+        withCamera(app, () -> {
+            if (readState() != 0) { reply(app, "이미 녹화 중이에요", video == 2 ? "일시정지" : "녹화 중", false); return; }
+            if (isVideoMode(mode())) { record(app); return; }
+            busyUntil = android.os.SystemClock.elapsedRealtime() + 12000;
+            goMode(true, 0, "", (ok, path) -> {
+                if (!ok) { reply(app, "동영상 모드로 못 바꿨어요 (" + path + ") 화면: " + dumpAll(), "동영상 모드로 못 바꿨어요", false); return; }
+                MAIN.postDelayed(() -> { try { record(app); } catch (Exception e) { reply(app, "실패 " + e, "실패했어요", false); } }, 300);
+            });
+        });
+    }
+
+    /** 워치 빨간 네모: 녹화 끝 */
+    private void recordStop(Context app) {
+        if (readState() == 0) { reply(app, "녹화 중이 아니에요", "녹화 중이 아니에요", false); return; }
+        java.util.ArrayList<AccessibilityNodeInfo> st = byId("stop_button");
+        String b = !st.isEmpty() && clickNode(st.get(0)) ? label(st.get(0)) : press(STOP, NOT_STOP);
+        if (b == null) { reply(app, "녹화 끝 버튼을 못 눌렀어요 화면: " + dumpAll(), "끝내지 못했어요", false); return; }
+        final String bb = b;
+        MAIN.postDelayed(() -> {
+            try {
+                if (readState() == 0) reply(app, "녹화 끝 (버튼: " + bb + ")", "녹화를 끝냈어요", false);
+                else reply(app, "녹화 끝 버튼을 눌렀는데 아직 녹화 중이에요 화면: " + dumpAll(), "끝내지 못했어요", false);
+            } catch (Exception e) { reply(app, "실패 " + e, "실패했어요", false); }
+        }, 1200);
     }
 
     private void toVideoMode(Context app) {
