@@ -162,18 +162,116 @@ public class ShutterService extends AccessibilityService {
         return null;
     }
 
+    /** 가운데 셔터 버튼(삼성: normal_center_button 등 …center_button)과 그 설명. 없으면 null */
+    private AccessibilityNodeInfo center() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return null;
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        int seen = 0;
+        while (!q.isEmpty() && seen++ < 800) {
+            AccessibilityNodeInfo n = q.poll();
+            if (n == null) continue;
+            String id = n.getViewIdResourceName();
+            if (id != null && id.contains("center_button") && n.isVisibleToUser()) return n;
+            for (int i = 0; i < n.getChildCount(); i++) q.add(n.getChild(i));
+        }
+        return null;
+    }
+
+    private String centerDesc() {
+        AccessibilityNodeInfo n = center();
+        return n == null ? "" : label(n).toLowerCase();
+    }
+
+    private static boolean videoWords(String d) { return d.contains("동영상") || d.contains("녹화") || d.contains("video") || d.contains("record"); }
+
+    /** 미리보기 화면을 옆으로 밀어 모드 바꾸기 (next: 사진→동영상 쪽) */
+    private boolean swipe(boolean next) {
+        DisplayMetrics m = getResources().getDisplayMetrics();
+        int w = m.widthPixels, h = m.heightPixels;
+        Path p = new Path();
+        if (w < h) { p.moveTo(w * (next ? 0.78f : 0.22f), h * 0.45f); p.lineTo(w * (next ? 0.22f : 0.78f), h * 0.45f); }
+        else { p.moveTo(w * 0.45f, h * (next ? 0.22f : 0.78f)); p.lineTo(w * 0.45f, h * (next ? 0.78f : 0.22f)); }
+        return dispatchGesture(new GestureDescription.Builder().addStroke(new GestureDescription.StrokeDescription(p, 0, 160)).build(), null, null);
+    }
+
+    /** 기록용: 화면에 보이는 모든 글자·설명 (누를 수 없는 것 포함) */
+    private String dumpAll() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return "(화면을 읽지 못함)";
+        StringBuilder sb = new StringBuilder();
+        ArrayDeque<AccessibilityNodeInfo> q = new ArrayDeque<>();
+        q.add(root);
+        int seen = 0, got = 0;
+        while (!q.isEmpty() && seen++ < 800 && got < 45) {
+            AccessibilityNodeInfo n = q.poll();
+            if (n == null) continue;
+            if (n.isVisibleToUser()) {
+                String t = n.getText() == null ? "" : n.getText().toString().trim();
+                String l = (t.isEmpty() ? "" : "'" + t + "' ") + label(n).trim();
+                if (!l.trim().isEmpty()) sb.append(got++ == 0 ? "" : " / ").append(l.trim()).append(n.isClickable() ? "" : "(x)");
+            }
+            for (int i = 0; i < n.getChildCount(); i++) q.add(n.getChild(i));
+        }
+        return sb.length() == 0 ? "(글자 없음)" : sb.toString();
+    }
+
+    private boolean clickCenter() {
+        AccessibilityNodeInfo n = center();
+        if (n != null) {
+            if (n.isClickable() && n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
+            Rect b = new Rect(); n.getBoundsInScreen(b);
+            if (!b.isEmpty() && tap(b.centerX(), b.centerY())) return true;
+        }
+        return tapShutterSpot();
+    }
+
+    private void startRecord(Context app, String how) {
+        if (!clickCenter()) { reply(app, "녹화 버튼을 못 눌렀어요 화면: " + dump(), "녹화를 시작하지 못했어요"); return; }
+        video = 1;
+        reply(app, "녹화 시작 (모드 바꾼 방법: " + how + ")", "녹화 중");
+        // 확인용: 1.5초 뒤 화면의 버튼 이름을 기록 (끝·일시정지 버튼 이름을 알아내기 위해)
+        MAIN.postDelayed(() -> { try { WatchLink.get(app).log("워치 셔터: 녹화 중 화면: " + dumpAll()); } catch (Exception ignored) {} }, 1500);
+    }
+
+    /** 동영상 모드로 바꾸기를 차례로 시도: step 0 = 모드 글자 누르기 또는 옆으로 밀기, 1 = 반대로 두 번 밀기, 2 = 포기 */
+    private void toVideo(Context app, int step, String how) {
+        String d = centerDesc();
+        if (videoWords(d)) { startRecord(app, how); return; }
+        if (step == 0) {
+            String t = tab(TAB_VIDEO);
+            final String h = t != null ? "글자 '" + t + "'" : "옆으로 밀기";
+            if (t == null) swipe(true);
+            MAIN.postDelayed(() -> { try { toVideo(app, 1, h); } catch (Exception e) { reply(app, "실패 " + e, "실패했어요"); } }, 1400);
+        } else if (step == 1) {
+            swipe(false);
+            MAIN.postDelayed(() -> { try { if (!videoWords(centerDesc())) swipe(false); } catch (Exception ignored) {} }, 900);
+            MAIN.postDelayed(() -> { try { toVideo(app, 2, "반대로 밀기"); } catch (Exception e) { reply(app, "실패 " + e, "실패했어요"); } }, 2300);
+        } else {
+            reply(app, "동영상 모드로 못 바꿨어요 (가운데 버튼: " + d + ") 화면: " + dumpAll(), "동영상 모드로 못 바꿨어요");
+        }
+    }
+
+    /** 사진 모드로 되돌리기 (녹화를 끝낸 뒤) */
+    private void toPhoto(Context app, int step) {
+        String d = centerDesc();
+        if (!videoWords(d)) { if (step > 0) WatchLink.get(app).log("워치 셔터: 사진 모드로 돌림"); return; }
+        if (step >= 2) { WatchLink.get(app).log("워치 셔터: 사진 모드로 못 돌림 (가운데 버튼: " + d + ")"); return; }
+        if (tab(TAB_PHOTO) == null) swipe(step != 0);   // 처음엔 사진 쪽으로, 안 되면 반대로
+        MAIN.postDelayed(() -> { try { toPhoto(app, step + 1); } catch (Exception ignored) {} }, 1400);
+    }
+
     private void videoToggle(Context app) {
         if (video != 0) {   // 녹화 끝
             String b = press(STOP, NOT_STOP);
-            if (b == null && isCamera(pkg()) && tapShutterSpot()) b = "가운데 자리";
-            if (b == null) { video = 0; reply(app, "녹화 끝 버튼을 못 눌렀어요 (" + pkg() + ") 화면: " + dump(), "끝내지 못했어요"); return; }
+            if (b == null && isCamera(pkg()) && clickCenter()) b = "가운데 버튼";
             video = 0;
+            if (b == null) { reply(app, "녹화 끝 버튼을 못 눌렀어요 (" + pkg() + ") 화면: " + dumpAll(), "끝내지 못했어요"); return; }
             reply(app, "녹화 끝 (버튼: " + b + ")", "녹화를 끝냈어요");
-            // 다음 사진 셔터가 다시 사진을 찍도록 사진 모드로 돌려놓음
-            MAIN.postDelayed(() -> { try { String t = tab(TAB_PHOTO); WatchLink.get(app).log("워치 셔터: 사진 모드로 " + (t == null ? "못 돌림" : "돌림 (" + t + ")")); } catch (Exception ignored) {} }, 1500);
+            MAIN.postDelayed(() -> { try { toPhoto(app, 0); } catch (Exception ignored) {} }, 1800);
             return;
         }
-        // 녹화 시작: (카메라가 닫혀 있으면 열고) 모드 줄에서 '동영상'을 눌러 바꾼 뒤 녹화 버튼
         long wait = 0;
         if (!isCamera(pkg())) {
             try { startActivity(new Intent("android.media.action.STILL_IMAGE_CAMERA").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
@@ -182,22 +280,9 @@ public class ShutterService extends AccessibilityService {
         }
         MAIN.postDelayed(() -> {
             try {
-                final String p = pkg();
+                String p = pkg();
                 if (!isCamera(p)) { reply(app, "카메라 화면이 아니에요 (" + p + ")", "폰에서 카메라를 열어 주세요"); return; }
-                final String t = tab(TAB_VIDEO);
-                if (t == null) { reply(app, "'동영상' 모드 글자를 못 찾았어요 (" + p + ") 화면: " + dump(), "동영상 모드로 못 바꿨어요"); return; }
-                MAIN.postDelayed(() -> {
-                    try {
-                        String b = press(REC, NOT_BTN);
-                        if (b == null && tapShutterSpot()) b = "가운데 자리";
-                        if (b == null) { reply(app, "녹화 버튼을 못 눌렀어요 (" + p + ") 화면: " + dump(), "녹화를 시작하지 못했어요"); return; }
-                        video = 1;
-                        final String bb = b;
-                        reply(app, "녹화 시작 (모드: " + t + ", 버튼: " + bb + ")", "녹화 중");
-                        // 확인용: 1.5초 뒤 화면의 버튼 이름을 기록 (끝·일시정지 버튼 이름을 알아내기 위해)
-                        MAIN.postDelayed(() -> { try { WatchLink.get(app).log("워치 셔터: 녹화 중 화면: " + dump()); } catch (Exception ignored) {} }, 1500);
-                    } catch (Exception e) { reply(app, "실패 " + e, "실패했어요"); }
-                }, 1300);
+                toVideo(app, 0, "이미 동영상 모드");
             } catch (Exception e) { reply(app, "실패 " + e, "실패했어요"); }
         }, wait);
     }
@@ -207,7 +292,7 @@ public class ShutterService extends AccessibilityService {
         boolean toPause = video == 1;
         String b = press(toPause ? PAUSE : RESUME, NOT_BTN);
         if (b == null) b = press(toPause ? RESUME : PAUSE, NOT_BTN);   // 버튼 이름이 안 바뀌는 카메라 대비
-        if (b == null) { reply(app, (toPause ? "일시정지" : "다시 촬영") + " 버튼을 못 찾았어요 (" + pkg() + ") 화면: " + dump(), "버튼을 못 찾았어요"); return; }
+        if (b == null) { reply(app, (toPause ? "일시정지" : "다시 촬영") + " 버튼을 못 찾았어요 (" + pkg() + ") 화면: " + dumpAll(), "버튼을 못 찾았어요"); return; }
         video = toPause ? 2 : 1;
         reply(app, (toPause ? "일시정지" : "다시 촬영") + " (버튼: " + b + ")", toPause ? "일시정지" : "녹화 중");
     }
