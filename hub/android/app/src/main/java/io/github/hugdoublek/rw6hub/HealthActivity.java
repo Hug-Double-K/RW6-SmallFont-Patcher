@@ -29,6 +29,7 @@ public class HealthActivity extends Activity implements Health.Listener {
     private final Handler h = new Handler(Looper.getMainLooper());
     private TextView stepsV, hrV, calV, standV, liveNote, syncStatus, daysV, filesV;
     private Button syncBtn, autoBtn;
+    private HourChart chart;
     private static final int[] AUTO_MIN = {0, 1, 3, 5, 10, 15, 30, 60, 180, 360, 720};
     private boolean daysDirty = true;
 
@@ -64,6 +65,10 @@ public class HealthActivity extends Activity implements Health.Listener {
         autoBtn = button("", v -> pickAuto());
         c.addView(autoBtn);
         c.addView(label("워치가 연결돼 있을 때, 정한 주기마다 자동으로 받아요. 주기가 짧을수록 워치와 폰의 배터리를 더 써요.", 13, SUB, false));
+
+        c = card(root, "오늘 시간대별 걸음");
+        chart = new HourChart(this);
+        c.addView(chart, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(150)));
 
         c = card(root, "날짜별 요약");
         daysV = label("", 14, TEXT, false);
@@ -138,19 +143,37 @@ public class HealthActivity extends Activity implements Health.Listener {
             daysDirty = false;
             List<Health.Day> days = Health.Days.load(health);
             StringBuilder sb = new StringBuilder();
-            SimpleDateFormat in = new SimpleDateFormat("yyyy-MM-dd", Locale.US), out = new SimpleDateFormat("M/d (E)", Locale.KOREA);
+            SimpleDateFormat in = new SimpleDateFormat("yyyy-MM-dd", Locale.US), out = new SimpleDateFormat("M/d (E)", Locale.KOREA), hm = new SimpleDateFormat("HH:mm", Locale.KOREA);
+            String today = in.format(new Date());
             int n = 0;
+            Health.Day todayDay = null;
             for (Health.Day d : days) {
+                if (d.date.equals(today)) todayDay = d;
                 if (n++ >= 30) break;
                 String date = d.date;
                 try { date = out.format(in.parse(d.date)); } catch (Exception ignored) {}
                 sb.append(date).append("  걸음 ").append(String.format(Locale.KOREA, "%,d", d.steps));
-                if (d.hrMax > 0) sb.append(" · 심박 ").append(d.hrMin).append("~").append(d.hrMax).append(" (평균 ").append(d.hrAvg()).append(")");
-                if (d.spo2Avg() > 0) sb.append(" · 산소 ").append(d.spo2Avg()).append("%");
-                if (d.stressAvg() > 0) sb.append(" · 스트레스 ").append(d.stressAvg());
+                if (!d.fromSummary) sb.append(" (받은 구간만)");
+                if (d.calories > 0) sb.append(" · ").append(d.calories).append("kcal");
                 sb.append('\n');
+                if (d.hrMax > 0) {
+                    sb.append("      심박 ").append(d.hrMin).append("~").append(d.hrMax).append(" · 평균 ").append(d.hrAvg());
+                    if (d.hrRest > 0) sb.append(" · 안정 ").append(d.hrRest);
+                    sb.append('\n');
+                }
+                StringBuilder ex = new StringBuilder();
+                if (d.standHours >= 0) ex.append("서 있기 ").append(d.standHours).append("시간");
+                if (d.spo2Avg() > 0) ex.append(ex.length() > 0 ? " · " : "").append("산소 ").append(d.spo2Avg()).append("%");
+                if (d.stressAvg() > 0) ex.append(ex.length() > 0 ? " · " : "").append("스트레스 ").append(d.stressAvg());
+                if (ex.length() > 0) sb.append("      ").append(ex).append('\n');
+                for (Health.Sleep sl : d.sleeps) {
+                    int m = sl.minutes();
+                    sb.append("      수면 ").append(hm.format(new Date(sl.bed * 1000L))).append("~").append(hm.format(new Date(sl.wake * 1000L)))
+                            .append(" (").append(m / 60).append("시간 ").append(m % 60).append("분)\n");
+                }
             }
-            daysV.setText(sb.length() == 0 ? "아직 보여 줄 기록이 없어요. '기록 받기'를 눌러 보세요.\n(파일은 받았는데 여기가 비어 있으면, 이 워치의 기록 형식을 아직 해석하지 못한 거예요.)" : sb.toString().trim());
+            daysV.setText(sb.length() == 0 ? "아직 보여 줄 기록이 없어요. '지금 동기화'를 눌러 보세요." : sb.toString().trim());
+            chart.setData(todayDay == null ? new int[24] : todayDay.hourSteps);
             filesV.setText(health.fileSummary());
         }
     }
@@ -169,6 +192,36 @@ public class HealthActivity extends Activity implements Health.Listener {
                 .setSingleChoiceItems(names, cur, (d, w) -> { health.setAutoMinutes(AUTO_MIN[w]); d.dismiss(); refresh(); })
                 .setNegativeButton("취소", null)
                 .show();
+    }
+
+    /** 0~23시 막대 그래프 */
+    static final class HourChart extends View {
+        private int[] data = new int[24];
+        private final android.graphics.Paint bar = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Paint txt = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        HourChart(android.content.Context c) { super(c); bar.setColor(ACCENT); txt.setColor(SUB); }
+        void setData(int[] d) { data = d; invalidate(); }
+        @Override protected void onDraw(android.graphics.Canvas cv) {
+            float den = getResources().getDisplayMetrics().density;
+            float w = getWidth(), h = getHeight(), bottom = h - 18 * den, top = 16 * den;
+            txt.setTextSize(11 * den);
+            int max = 1, maxHour = -1;
+            for (int i = 0; i < 24; i++) if (data[i] > max) { max = data[i]; maxHour = i; }
+            float slot = w / 24f, bw = slot * 0.62f;
+            for (int i = 0; i < 24; i++) {
+                float x = i * slot + (slot - bw) / 2;
+                float bh = data[i] <= 0 ? 0 : Math.max(2 * den, (bottom - top) * data[i] / max);
+                bar.setAlpha(data[i] <= 0 ? 40 : 255);
+                float y = data[i] <= 0 ? bottom - 2 * den : bottom - bh;
+                cv.drawRoundRect(x, y, x + bw, bottom, 3 * den, 3 * den, bar);
+                if (i % 6 == 0) cv.drawText(i + "시", i * slot, h - 4 * den, txt);
+            }
+            if (maxHour >= 0) {
+                String s = String.format(Locale.KOREA, "%,d", max);
+                float tx = Math.min(w - txt.measureText(s), Math.max(0, maxHour * slot + slot / 2 - txt.measureText(s) / 2));
+                cv.drawText(s, tx, top - 4 * den, txt);
+            }
+        }
     }
 
     // ---------------------------------------------------------------- 화면 도우미

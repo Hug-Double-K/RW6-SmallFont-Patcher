@@ -205,10 +205,6 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
             if (link.isReady()) { WatchWeather.get(this).sendNow(); toast("날씨를 보내는 중"); } else toast("워치가 연결되어 있지 않아요");
         });
         line(c);
-        row(c, "카메라 리모컨 켜기 (시험)", "워치의 카메라 앱으로 폰 셔터 누르기", v -> {
-            if (link.setCameraRemote(true)) toast("워치에 보냈어요. 폰 카메라를 연 뒤 워치의 카메라 앱을 눌러 보세요"); else toast("워치가 연결되어 있지 않아요");
-        });
-        line(c);
         row(c, "시간 다시 맞추기", "연결할 때마다 자동으로 맞춰요", v -> {
             if (link.isReady()) { link.syncTime(); toast("시간을 맞췄어요"); } else toast("워치가 연결되어 있지 않아요");
         });

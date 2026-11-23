@@ -286,7 +286,8 @@ public final class Health {
         for (File f : rawFiles()) {
             byte[] id = FileId.fromName(f.getName());
             if (id == null) continue;
-            String k = FileId.kind(id) + " v" + (id[5] & 0xff) + (Days.canParse(id) ? "" : " (아직 해석 못 함)");
+            boolean sleepV5 = FileId.type(id) == 0 && FileId.subtype(id) == 8 && FileId.version(id) == 5;
+            String k = FileId.kind(id) + " v" + (id[5] & 0xff) + (Days.canParse(id) ? "" : sleepV5 ? " (잠든·깬 시각만)" : " (아직 해석 못 함)");
             Integer n = m.get(k);
             m.put(k, n == null ? 1 : n + 1);
         }
@@ -356,7 +357,7 @@ public final class Health {
                 case 0: return "하루 활동 " + tail;
                 case 3: return "수면 단계 " + tail;
                 case 6: return "직접 측정 " + tail;
-                case 8: return "수면 " + tail;
+                case 8: return "수면";
                 default: return "활동(" + st + ") " + tail;
             }
         }
@@ -368,85 +369,160 @@ public final class Health {
 
     // ------------------------------------------------------------------ 하루 요약 (받은 파일에서 계산)
 
+    public static final class Sleep {
+        public long bed, wake;       // 초
+        public int minutes() { return (int) ((wake - bed) / 60); }
+    }
+
     public static final class Day {
         public String date;          // yyyy-MM-dd
         public int steps, calories;
-        public int hrMin = 999, hrMax = 0; long hrSum; int hrN;
+        public boolean fromSummary;  // 걸음·칼로리가 워치의 하루 요약 값인가 (아니면 분 단위 합계)
+        public int hrMin = 999, hrMax = 0, hrRest = 0, hrAvgSum = 0, standHours = -1;
+        long hrSum; int hrN;
         long spo2Sum; int spo2N; long stressSum; int stressN;
-        public int hrAvg() { return hrN == 0 ? 0 : (int) (hrSum / hrN); }
+        public final int[] hourSteps = new int[24];
+        public final List<Sleep> sleeps = new ArrayList<>();
+        public int hrAvg() { return hrAvgSum > 0 ? hrAvgSum : hrN == 0 ? 0 : (int) (hrSum / hrN); }
         public int spo2Avg() { return spo2N == 0 ? 0 : (int) (spo2Sum / spo2N); }
         public int stressAvg() { return stressN == 0 ? 0 : (int) (stressSum / stressN); }
     }
 
-    /** 하루 활동 상세 파일(분 단위)을 읽어 날짜별로 더함. 형식을 아는 버전(1~4)만 */
+    /**
+     * 받은 파일을 날짜별로 정리.
+     *  - 하루 활동 상세(분 단위, 버전 1~4): 워치는 동기화할 때마다 '지난번 이후' 조각을 새 파일로 주고,
+     *    앞 파일의 마지막 1분(아직 진행 중이던 분)이 다음 파일 첫 줄에 다시 나온다 → 분 단위로 모아 나중 것이 이김.
+     *  - 하루 활동 요약(v5): 워치가 계산한 그날 합계(걸음·칼로리·심박·서 있기). 있으면 이쪽이 정확.
+     *  - 수면(v5): 잠든 시각·깬 시각만 읽음 (단계는 아직).
+     */
     public static final class Days {
         private Days() {}
 
         public static boolean canParse(byte[] id) {
-            return FileId.type(id) == 0 && FileId.subtype(id) == 0 && FileId.detail(id) == 0 && headerSize(FileId.version(id)) > 0;
+            if (FileId.type(id) != 0) return false;
+            int st = FileId.subtype(id), d = FileId.detail(id), v = FileId.version(id);
+            if (st == 0 && d == 0) return headerSize(v) > 0;
+            if (st == 0 && d == 1) return v == 5;
+            return false;
         }
 
         private static int headerSize(int version) {
             switch (version) { case 1: case 2: return 4; case 3: return 5; case 4: return 6; default: return 0; }
         }
 
+        private static byte[] read(File f) throws java.io.IOException {
+            byte[] d = new byte[(int) f.length()];
+            try (FileInputStream in = new FileInputStream(f)) { int o = 0, n; while (o < d.length && (n = in.read(d, o, d.length - o)) > 0) o += n; }
+            return d;
+        }
+
         public static List<Day> load(Health hh) {
             TreeMap<String, Day> days = new TreeMap<>(Collections.reverseOrder());
             SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
-            for (File f : hh.rawFiles()) {
+            java.util.Calendar cal = java.util.Calendar.getInstance();
+            long oldest = System.currentTimeMillis() / 1000 - 31L * 86400;
+            // 분(초 단위 시각) → {걸음, 칼로리, 심박, 산소, 스트레스}
+            TreeMap<Long, int[]> minutes = new TreeMap<>();
+            List<File> files = hh.rawFiles();
+            for (File f : files) {
                 byte[] id = FileId.fromName(f.getName());
-                if (id == null || !canParse(id)) continue;
+                if (id == null || FileId.type(id) != 0 || FileId.ts(id) < oldest) continue;
                 try {
-                    byte[] d = new byte[(int) f.length()];
-                    try (FileInputStream in = new FileInputStream(f)) { int o = 0, n; while (o < d.length && (n = in.read(d, o, d.length - o)) > 0) o += n; }
-                    parse(id, d, days, df);
+                    if (FileId.subtype(id) == 0 && FileId.detail(id) == 0 && headerSize(FileId.version(id)) > 0) parseMinutes(id, read(f), minutes);
+                } catch (Exception ignored) {}
+            }
+            for (java.util.Map.Entry<Long, int[]> e : minutes.entrySet()) {
+                long t = e.getKey() * 1000L; int[] v = e.getValue();
+                Day day = day(days, df.format(new Date(t)));
+                cal.setTimeInMillis(t);
+                day.steps += v[0]; day.calories += v[1]; day.hourSteps[cal.get(java.util.Calendar.HOUR_OF_DAY)] += v[0];
+                if (v[2] > 0 && v[2] < 255) { day.hrSum += v[2]; day.hrN++; if (v[2] < day.hrMin) day.hrMin = v[2]; if (v[2] > day.hrMax) day.hrMax = v[2]; }
+                if (v[3] > 0 && v[3] <= 100) { day.spo2Sum += v[3]; day.spo2N++; }
+                if (v[4] > 0 && v[4] < 255) { day.stressSum += v[4]; day.stressN++; }
+            }
+            for (File f : files) {
+                byte[] id = FileId.fromName(f.getName());
+                if (id == null || FileId.type(id) != 0 || FileId.ts(id) < oldest) continue;
+                try {
+                    int st = FileId.subtype(id), dt = FileId.detail(id), v = FileId.version(id);
+                    if (st == 0 && dt == 1 && v == 5) parseSummary(id, read(f), day(days, df.format(new Date(FileId.ts(id) * 1000L))));
+                    else if (st == 8 && v == 5) parseSleep(read(f), days, df);
                 } catch (Exception ignored) {}
             }
             return new ArrayList<>(days.values());
         }
 
+        private static Day day(TreeMap<String, Day> days, String key) {
+            Day d = days.get(key);
+            if (d == null) { d = new Day(); d.date = key; days.put(key, d); }
+            return d;
+        }
+
+        private static long u32(byte[] d, int p) { return (d[p] & 0xffL) | (d[p + 1] & 0xffL) << 8 | (d[p + 2] & 0xffL) << 16 | (d[p + 3] & 0xffL) << 24; }
+
+        // 하루 요약 v5: 머리말 4B | 걸음 LE32 | 3B | 안정 심박 | 최고 심박+시각 | 최저 심박+시각 | 평균 심박 | 스트레스 3B | 서 있기(시간별 비트 3B) | 칼로리 LE16 …
+        private static void parseSummary(byte[] id, byte[] d, Day day) {
+            int p = 8 + 4;
+            if (d.length < p + 26 + 4) return;
+            day.steps = (int) u32(d, p);
+            day.hrRest = d[p + 7] & 0xff;
+            int max = d[p + 8] & 0xff, min = d[p + 13] & 0xff, avg = d[p + 18] & 0xff;
+            if (max > 0 && max < 255) day.hrMax = max;
+            if (min > 0 && min < 255) day.hrMin = min;
+            if (avg > 0 && avg < 255) day.hrAvgSum = avg;
+            int stand = (d[p + 22] & 0xff) | (d[p + 23] & 0xff) << 8 | (d[p + 24] & 0xff) << 16;
+            day.standHours = Integer.bitCount(stand);
+            day.calories = (d[p + 25] & 0xff) | (d[p + 26] & 0xff) << 8;
+            day.fromSummary = true;
+        }
+
+        // 수면 v5: 머리말 3B | 잠든 시각 LE32 | 깬 시각 LE32 | … (단계 정보는 아직 해석 못 함)
+        private static void parseSleep(byte[] d, TreeMap<String, Day> days, SimpleDateFormat df) {
+            if (d.length < 8 + 3 + 8 + 4) return;
+            long bed = u32(d, 11), wake = u32(d, 15);
+            if (bed < 1_000_000_000L || wake <= bed || wake - bed > 20 * 3600) return;
+            Day day = day(days, df.format(new Date(wake * 1000L)));
+            for (Sleep s : day.sleeps) if (s.bed == bed) { if (wake > s.wake) s.wake = wake; return; }
+            Sleep s = new Sleep(); s.bed = bed; s.wake = wake;
+            day.sleeps.add(s);
+        }
+
         // 분마다: 머리말의 4비트 묶음이 '이 항목이 있는가'를 알려 주고, 있으면 8/16비트 값을 읽는다
-        private static void parse(byte[] id, byte[] d, TreeMap<String, Day> days, SimpleDateFormat df) {
+        private static void parseMinutes(byte[] id, byte[] d, TreeMap<Long, int[]> out) {
             int version = FileId.version(id), hs = headerSize(version);
             int end = d.length - 4, pos = 8;
             if (pos + hs > end) return;
             byte[] header = Arrays.copyOfRange(d, pos, pos + hs);
             pos += hs;
-            long t = FileId.ts(id) * 1000L;
+            long t = FileId.ts(id);
             int[] p = {pos};
             while (p[0] < end) {
                 int[] g = {-1};
-                Day day = null;
-                String key = df.format(new Date(t));
-                day = days.get(key);
-                if (day == null) { day = new Day(); day.date = key; days.put(key, day); }
+                int[] m = new int[5];
                 int extra = 0;
                 int v = group(header, g, d, p, end, 16);
                 if (v >= 0) {
                     if (has(header, g[0], 1)) extra = bits(v, 16, 1, 1);
-                    if (has(header, g[0], 2)) day.steps += bits(v, 16, 2, 14);
+                    if (has(header, g[0], 2)) m[0] = bits(v, 16, 2, 14);
                 }
                 v = group(header, g, d, p, end, 8);
-                if (v >= 0 && has(header, g[0], 1)) day.calories += bits(v, 8, 2, 6);
+                if (v >= 0 && has(header, g[0], 1)) m[1] = bits(v, 8, 2, 6);
                 group(header, g, d, p, end, 8);
                 group(header, g, d, p, end, 16);
                 v = group(header, g, d, p, end, 8);
-                if (v >= 0 && has(header, g[0], 0) && v > 0 && v < 255) {
-                    day.hrSum += v; day.hrN++;
-                    if (v < day.hrMin) day.hrMin = v;
-                    if (v > day.hrMax) day.hrMax = v;
-                }
+                if (v >= 0 && has(header, g[0], 0)) m[2] = v;
                 group(header, g, d, p, end, 8);
                 group(header, g, d, p, end, 16);
                 if (version >= 3) {
                     v = group(header, g, d, p, end, 8);
-                    if (v > 0 && v <= 100 && has(header, g[0], 0)) { day.spo2Sum += v; day.spo2N++; }
+                    if (v >= 0 && has(header, g[0], 0)) m[3] = v;
                     v = group(header, g, d, p, end, 8);
-                    if (v > 0 && v < 255 && has(header, g[0], 0)) { day.stressSum += v; day.stressN++; }
+                    if (v >= 0 && has(header, g[0], 0)) m[4] = v;
                 }
                 if (extra == 1) group(header, g, d, p, end, 8);
                 if (version >= 4) { group(header, g, d, p, end, 16); group(header, g, d, p, end, 16); }
-                t += 60_000L;
+                out.put(t, m);
+                t += 60;
             }
         }
 
