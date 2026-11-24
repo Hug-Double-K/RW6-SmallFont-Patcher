@@ -463,7 +463,7 @@ public class ShutterService extends AccessibilityService {
     /** 동영상 버튼: 녹화 중이면 끝냄 / 동영상 모드가 아니면 모드만 바꿈(녹화 안 함) / 동영상 모드면 녹화 시작(타이머가 있으면 워치가 센 뒤) */
     private void videoPress(Context app, int timer) {
         if (!isCamera(pkg())) {
-            try { startActivity(new Intent("android.media.action.STILL_IMAGE_CAMERA").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+            try { openCamera(); }
             catch (Exception e) { reply(app, "카메라를 열지 못했어요 (" + e.getClass().getSimpleName() + ")", "카메라를 못 열었어요", false); return; }
             busyUntil = android.os.SystemClock.elapsedRealtime() + 9000;
             MAIN.postDelayed(() -> { try { toVideoMode(app); } catch (Exception e) { reply(app, "실패 " + e, "실패했어요", false); } }, 2200);
@@ -490,10 +490,23 @@ public class ShutterService extends AccessibilityService {
         toVideoMode(app);
     }
 
+    /** 방금 연 카메라가 '꺼진/잠긴 화면에서' 연 것인지 (그러면 뜨는 데 더 오래 걸림) */
+    private static volatile boolean wasAsleep;
+
+    /** 카메라 열기. 폰 화면이 꺼져 있거나 잠겨 있으면 화면을 켜고 잠금화면 위 카메라로 엶(잠금은 안 풀림) */
+    private void openCamera() {
+        boolean off = false, locked = false;
+        try { off = !((android.os.PowerManager) getSystemService(POWER_SERVICE)).isInteractive(); } catch (Exception ignored) {}
+        try { locked = ((android.app.KeyguardManager) getSystemService(KEYGUARD_SERVICE)).isKeyguardLocked(); } catch (Exception ignored) {}
+        wasAsleep = off || locked;
+        if (wasAsleep) startActivity(new Intent(this, WakeCameraActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
+        else startActivity(new Intent("android.media.action.STILL_IMAGE_CAMERA").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+    }
+
     /** 카메라가 닫혀 있으면 열고 조금 기다린 뒤 then 실행 */
     private void withCamera(Context app, Runnable then) {
         if (isCamera(pkg())) { then.run(); return; }
-        try { startActivity(new Intent("android.media.action.STILL_IMAGE_CAMERA").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+        try { openCamera(); }
         catch (Exception e) { reply(app, "카메라를 열지 못했어요 (" + e.getClass().getSimpleName() + ")", "카메라를 못 열었어요", false); return; }
         busyUntil = android.os.SystemClock.elapsedRealtime() + 12000;
         MAIN.postDelayed(() -> {
@@ -501,7 +514,7 @@ public class ShutterService extends AccessibilityService {
                 if (!isCamera(pkg())) { reply(app, "카메라 화면이 아니에요 (" + pkg() + ")", "폰에서 카메라를 열어 주세요", false); return; }
                 then.run();
             } catch (Exception e) { reply(app, "실패 " + e, "실패했어요", false); }
-        }, 2200);
+        }, wasAsleep ? 4200 : 2200);
     }
 
     /** 워치 '동영상' 글자: 동영상 모드로만 바꿈 */
@@ -617,7 +630,7 @@ public class ShutterService extends AccessibilityService {
             return tapShutterSpot() ? "셔터 버튼을 못 찾아 셔터 자리를 눌렀어요 (" + pkg + ")" : "셔터를 누르지 못했어요 (" + pkg + ")";
         }
         try {
-            startActivity(new Intent("android.media.action.STILL_IMAGE_CAMERA").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            openCamera();
             return "카메라를 열었어요. 한 번 더 누르면 찍어요";
         } catch (Exception e) {
             return "폰에서 카메라를 먼저 열어 주세요 (" + e.getClass().getSimpleName() + ")";
