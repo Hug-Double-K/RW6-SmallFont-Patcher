@@ -309,6 +309,22 @@ public final class WatchSender {
         } catch (Throwable t) { return false; }
     }
 
+    /** 워치 기본 알림 센터에 알림 하나를 그 앱의 이름으로 올린다 (화면을 아래로 내리면 보이는 목록). */
+    public static boolean notifyNative(Context ctx, String pkg, String appName, String title, String body) {
+        try {
+            String b = plain(body);
+            if (b.length() > 200) b = b.substring(0, 200) + "..";
+            return io.github.hugdoublek.rw6hub.QuickApps.get(ctx.getApplicationContext())
+                    .notify(pkg == null || pkg.isEmpty() ? Wearable.WATCH_PACKAGE : pkg, appName, plain(title), b);
+        } catch (Throwable t) { return false; }
+    }
+
+    /** 워치 글꼴이 못 그리는 그림 문자(두 칸짜리 글자)를 빼고 줄바꿈을 빈칸으로 */
+    private static String plain(String s) {
+        if (s == null) return "";
+        return s.replaceAll("[\\uD800-\\uDFFF]", "").replaceAll("\\s+", " ").trim();
+    }
+
     public static void notify(Context ctx, String title, String message) {
         Context app = ctx.getApplicationContext();
         Wearable.getNodeApi(app).getConnectedNodes().addOnSuccessListener(nodes -> {

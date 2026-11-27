@@ -101,6 +101,9 @@ public class MainActivity extends Activity {
         root.addView(check("워치 목록에서 같은 대화방 알림 묶어 보기 (누르면 그 방 메시지 전부)", prefs.group(), prefs::setGroup));
         // 워치 알림 센터에 올린 줄은 누르면 '무시'만 있고 앱이 열리지 않음 (샤오미 개발 도구의 한계)
         root.addView(check("워치 알림 목록에 'OO 알림 - N건' 한 줄 표시 (알림만, 눌러도 앱은 안 열림)", prefs.watchList(), prefs::setWatchList));
+        // 0.86: 화면을 아래로 내리면 나오는 워치 기본 알림 센터에 알림마다 한 줄씩 (그 앱의 이름·아이콘으로)
+        root.addView(check("워치 기본 알림 센터에 알림마다 한 줄 (아래로 내리면 보임: 앱 이름·보낸 사람·내용)", prefs.nativeLine(), prefs::setNativeLine));
+        root.addView(check("  └ 기본 알림 센터로만 보내기 (RW6 알림 앱은 안 띄움 — 사진·이모티콘·고정 없음. 위 항목이 켜져 있을 때만)", prefs.nativeOnly(), prefs::setNativeOnly));
 
         root.addView(section("4. 최대 수신 알림 갯수"));
         final TextView maxLabel = text("워치에 보관할 최근 알림: " + prefs.maxSave() + "개 (바꾸면 다음 알림부터 적용)");

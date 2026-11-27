@@ -60,6 +60,12 @@ public final class Prefs {
     /** 워치 알림 목록(위→아래 스와이프)에 'OO 알림 - N건' 표시 */
     public boolean watchList() { return sp.getBoolean("watchList", false); }
     public void setWatchList(boolean v) { sp.edit().putBoolean("watchList", v).apply(); }
+    /** 워치 기본 알림 센터(화면을 아래로 내리면 나오는 목록)에 알림마다 한 줄씩 올림 */
+    public boolean nativeLine() { return sp.getBoolean("nativeLine", false); }
+    public void setNativeLine(boolean v) { sp.edit().putBoolean("nativeLine", v).apply(); }
+    /** 기본 알림 센터로만 보냄 (RW6 알림 앱은 띄우지 않음) */
+    public boolean nativeOnly() { return sp.getBoolean("nativeOnly", false); }
+    public void setNativeOnly(boolean v) { sp.edit().putBoolean("nativeOnly", v).apply(); }
     /** 워치에 쌓인(아직 안 지운) 사진 알림 수 */
     /** 워치 목록에서 같은 대화방 알림을 한 카드로 묶음 (기본 켜짐) */
     public boolean group() { return sp.getBoolean("group", true); }

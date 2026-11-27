@@ -178,6 +178,25 @@ public class NotiListener extends NotificationListenerService {
         final String fApp = appName, fConv = conv;
         final Drawable fIcon = icon;
         final int fs = prefs.fontSize();
+        PKG_OF.put(appName, pkg);
+
+        // 0.86 '기본 알림 센터로만': RW6 알림 앱을 띄우지 않고 워치 기본 알림으로만 보냄 (폰이 방해금지면 예전처럼 앱으로 조용히)
+        if (prefs.nativeLine() && prefs.nativeOnly() && !WatchSender.quiet(this)) {
+            final boolean group = !conv.isEmpty() && !conv.equals(sender);
+            for (String[] mm : missed) {
+                boolean ok = WatchSender.notifyNative(this, pkg, appName, group ? conv : mm[0], group ? mm[0] + ": " + mm[1] : mm[1]);
+                prefs.addHistory(now() + " " + mm[0] + " → 기본 알림 센터 " + (ok ? "✔" : "✘ 워치 연결 안 됨"));
+            }
+            String body = !text.isEmpty() ? text : (photos.isEmpty() ? "" : "사진");
+            if (body.isEmpty()) return;
+            String sig = "N|" + sender + "|" + body;
+            if (sig.equals(lastSent.get(sbn.getKey()))) return;
+            lastSent.put(sbn.getKey(), sig);
+            boolean ok = WatchSender.notifyNative(this, pkg, appName, group ? conv : sender, group ? sender + ": " + body : body);
+            prefs.setLastLog(now() + " " + sender + " → 기본 알림 센터 " + (ok ? "✔" : "✘"));
+            prefs.addHistory(now() + " " + sender + " → 기본 알림 센터 " + (ok ? "✔" : "✘ 워치 연결 안 됨"));
+            return;
+        }
 
         // 놓친 글 메시지를 먼저 (시간 순서대로) 보냄. 이름(시각)은 지금보다 조금 앞으로 → 목록에서도 순서가 맞음
         if (!missed.isEmpty() && !prefs.photoOnly()) {
@@ -344,16 +363,25 @@ public class NotiListener extends NotificationListenerService {
         final int kb = b64.length() / 1024;
         final String app = appName;
         final String line = sender + ": " + (picture == null ? text : emoticon ? "이모티콘" : "사진");
+        final boolean nGroup = conv != null && !conv.isEmpty() && !conv.equals(sender);
+        final String nBody = picture == null ? text : emoticon ? "이모티콘" : "사진";
+        final String nTitle = nGroup ? conv : sender, nText = nGroup ? sender + ": " + nBody : nBody;
         WatchSender.sendKeep(this, b64, stamp, (ok, msg) -> {
             prefs.setLastLog(now() + " " + summary + " → " + msg);
             prefs.addHistory(now() + " " + summary + " " + kb + "KB → " + (ok ? "✔ " : "✘ ") + msg);
-            if (ok && prefs.watchList() && !quiet) { // 방해금지 중엔 워치 알림 목록 표시도 안 함 (진동·화면 켜짐 방지)
+            if (ok && prefs.nativeLine() && !quiet) { // 0.86: 기본 알림 센터에도 이 알림을 한 줄 (그 앱의 이름으로)
+                boolean nOk = WatchSender.notifyNative(NotiListener.this, PKG_OF.get(app), app, nTitle, nText);
+                if (!nOk) prefs.addHistory(now() + " 기본 알림 센터에 올리기 ✘");
+            } else if (ok && prefs.watchList() && !quiet) { // 방해금지 중엔 워치 알림 목록 표시도 안 함 (진동·화면 켜짐 방지)
                 prefs.setUnread(prefs.unread() + 1);
                 // 워치가 실제 개수를 알려줄 시간을 조금 준 뒤 표시
                 worker.postDelayed(() -> WatchSender.notify(this, app + " 알림 - " + prefs.unread() + "건", line), 3000);
             }
         });
     }
+
+    /** 앱 이름 → 패키지 (기본 알림 센터에 올릴 때 그 앱의 아이콘이 나오게) */
+    private static final java.util.concurrent.ConcurrentHashMap<String, String> PKG_OF = new java.util.concurrent.ConcurrentHashMap<>();
 
     private static int SEQ = 0;
     static final int MAX_TEXT = 6000;
