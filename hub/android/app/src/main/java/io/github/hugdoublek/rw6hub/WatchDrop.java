@@ -23,6 +23,9 @@ import java.util.Map;
  */
 public final class WatchDrop {
     public interface Sink { void log(String line); }
+    /** 워치가 폰에 시키는 일 (예: /do/launch-noti). 돌려준 글이 워치로 감 ("ok …" 이면 성공) */
+    public interface Command { String run(String name); }
+    public static volatile Command command;
 
     static final int MAX_BYTES = 512 * 1024;
 
@@ -34,6 +37,7 @@ public final class WatchDrop {
     private final Map<String, ByteArrayOutputStream> parts = new HashMap<>();
     private volatile String lastName = "";
     private volatile String lastText = "";
+    private final java.util.LinkedHashMap<String, String> texts = new java.util.LinkedHashMap<>();
     private volatile Sink sink;
 
     public static synchronized WatchDrop get() throws IOException {
@@ -55,6 +59,17 @@ public final class WatchDrop {
     public void setSink(Sink s) { sink = s; }
     public String lastName() { return lastName; }
     public String lastText() { return lastText; }
+    /** 이번에 받은 글 전부 (이름별 최신, 받은 순서) */
+    public String allText() {
+        StringBuilder b = new StringBuilder();
+        synchronized (texts) {
+            for (Map.Entry<String, String> e : texts.entrySet()) {
+                if (b.length() > 400000) break;
+                b.append("\n=== 워치 보고: ").append(e.getKey()).append(" ===\n").append(e.getValue()).append("\n");
+            }
+        }
+        return b.toString();
+    }
 
     private void acceptLoop() {
         while (!server.isClosed()) {
@@ -169,6 +184,12 @@ public final class WatchDrop {
                 }
                 if (all != null) done(name, all);
                 answer(os, 200, "ok " + total + "\n");
+            } else if (method.equals("GET") && path.startsWith("/do/")) {
+                Command c = command;
+                String result;
+                try { result = c == null ? "err no handler" : c.run(path.substring(4)); }
+                catch (RuntimeException e) { result = "err " + e; }
+                answer(os, 200, result + "\n");
             } else if (method.equals("GET") && path.equals("/ping")) {
                 answer(os, 200, "ok 0\n");
             } else {
@@ -207,6 +228,7 @@ public final class WatchDrop {
         if (name.isEmpty()) name = "report";
         lastName = name;
         lastText = new String(body, StandardCharsets.UTF_8);
+        synchronized (texts) { texts.remove(name); texts.put(name, lastText); }
         File d = dir;
         boolean saved = false;
         if (d != null) {

@@ -8,6 +8,17 @@ public class HubApp extends Application {
     public void onCreate() {
         super.onCreate();
         WatchDrop.dir = getFilesDir();   // 워치가 올린 보고 글을 파일로도 남김
+        // 워치(Lua 워치페이스)가 폰에 시키는 일: /do/launch-noti = 워치에서 RW6 알림 열기
+        WatchDrop.command = name -> {
+            if (name.equals("launch-noti")) {
+                QuickApps q = QuickApps.get(this);
+                String pkg = q.target(io.github.hugdoublek.rw6hub.noti.Wearable.WATCH_PACKAGE);
+                q.launch(pkg, "/index", err -> WatchLink.get(this).log(err == null
+                        ? "워치 요청: RW6 알림 열기 보냄 (" + pkg + ")" : "워치 요청: RW6 알림 열기 실패 — " + err));
+                return "ok " + pkg;
+            }
+            return "err unknown " + name;
+        };
         // 알림·메모 기능이 워치 메시지를 받을 수 있게 미리 등록
         io.github.hugdoublek.rw6hub.noti.Wearable.client(this);
         io.github.hugdoublek.rw6hub.memo.Wearable.client(this);

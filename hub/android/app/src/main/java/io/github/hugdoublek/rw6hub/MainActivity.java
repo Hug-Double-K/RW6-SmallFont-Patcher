@@ -885,8 +885,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
     private String logWithReport() {
         String text = link.logText();
         WatchDrop drop = WatchDrop.peek();
-        if (drop != null && !drop.lastText().isEmpty())
-            text += "\n=== 워치 보고: " + drop.lastName() + " ===\n" + drop.lastText() + "\n";
+        if (drop != null) text += drop.allText();
         return text;
     }
 }
