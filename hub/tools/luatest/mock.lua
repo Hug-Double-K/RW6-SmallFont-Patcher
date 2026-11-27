@@ -7,6 +7,7 @@ local function obj(kind, parent, props)
     function o:set(p) for k, v in pairs(p) do self.props[k] = v end end
     function o:add_flag(f) assert(f ~= nil, "nil flag") self.flags[f] = true end
     function o:clear_flag(f) assert(f ~= nil, "nil flag") self.flags[f] = nil end
+    function o:Image(p) if M.imageFails then error('no Image') end local c = obj('Image', self, p) c.parent = self return c end
     function o:onevent(code, fn) assert(code ~= nil, "nil event code") assert(type(fn) == "function") self.handlers[#self.handlers + 1] = { code = code, fn = fn } end
     function o:fire(code, passCode)
         for _, h in ipairs(self.handlers) do

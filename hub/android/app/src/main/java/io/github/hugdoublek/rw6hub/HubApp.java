@@ -13,9 +13,19 @@ public class HubApp extends Application {
             if (name.equals("launch-noti")) {
                 QuickApps q = QuickApps.get(this);
                 String pkg = q.target(io.github.hugdoublek.rw6hub.noti.Wearable.WATCH_PACKAGE);
-                q.launch(pkg, "/index", err -> WatchLink.get(this).log(err == null
-                        ? "워치 요청: RW6 알림 열기 보냄 (" + pkg + ")" : "워치 요청: RW6 알림 열기 실패 — " + err));
+                // 답을 먼저 돌려주고 0.4초 뒤에 연다: 워치페이스가 답을 기다리며 멈춰 있는 동안 앱이 뜨면 워치가 재시작된 적이 있음(2026-11-27)
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() ->
+                        q.launch(pkg, "/index", err -> WatchLink.get(this).log(err == null
+                                ? "워치 요청: RW6 알림 열기 보냄 (" + pkg + ")" : "워치 요청: RW6 알림 열기 실패 — " + err)), 400);
                 return "ok " + pkg;
+            }
+            if (name.equals("weather")) {   // 워치페이스용: 지금 기온(정수). 없으면 "none"
+                try {
+                    String w = getSharedPreferences("hub", MODE_PRIVATE).getString("wxCache", "");
+                    if (w.isEmpty()) return "none";
+                    double t = new org.json.JSONObject(w).getJSONObject("current").optDouble("temperature_2m", Double.NaN);
+                    return Double.isNaN(t) ? "none" : "temp " + Math.round(t);
+                } catch (Exception e) { return "none"; }
             }
             return "err unknown " + name;
         };

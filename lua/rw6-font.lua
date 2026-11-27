@@ -72,6 +72,8 @@ local logView = lvgl.Textarea(root, {
     pad_all = 12, pad_bottom = 50,
 })
 logView:add_flag(lvgl.FLAG.SCROLLABLE)
+-- 길게 누르기 같은 신호를 워치 쪽으로 넘김(워치페이스 바꾸기가 되도록). 버튼·목록에도 같은 표시를 붙임.
+logView:add_flag(lvgl.FLAG.EVENT_BUBBLE)
 
 function newButton(index, text, color)
     local object = lvgl.Object(root, {
@@ -82,6 +84,7 @@ function newButton(index, text, color)
     })
     object:clear_flag(lvgl.FLAG.SCROLLABLE)
     object:add_flag(lvgl.FLAG.CLICKABLE)
+    object:add_flag(lvgl.FLAG.EVENT_BUBBLE)
     local label = lvgl.Label(object, {
         text = text, align = lvgl.ALIGN.CENTER, border_width = 0,
         bg_opa = 0, text_color = color,
@@ -382,6 +385,7 @@ function showFonts()
         pad_all = 0, border_width = 0, bg_opa = 0,
     })
     listView:add_flag(lvgl.FLAG.SCROLLABLE)
+    listView:add_flag(lvgl.FLAG.EVENT_BUBBLE)
     table.insert(fonts, 1, "취소")
     for index, name in ipairs(fonts) do
         local button = lvgl.Object(listView, {
@@ -391,6 +395,7 @@ function showFonts()
         })
         button:clear_flag(lvgl.FLAG.SCROLLABLE)
         button:add_flag(lvgl.FLAG.CLICKABLE)
+        button:add_flag(lvgl.FLAG.EVENT_BUBBLE)
         lvgl.Label(button, {
             text = name, align = lvgl.ALIGN.CENTER,
             text_color = "#e2e5eb", text_font = lvgl.Font("MiSans-Medium", 18),

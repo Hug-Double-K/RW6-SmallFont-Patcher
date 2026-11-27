@@ -228,7 +228,7 @@ local function finish()
         setStatus(1, "Mi Manager 기록의 '복사'를 눌러 보내 주세요" .. (sent > 0 and (" (참고 파일 " .. sent .. "개 포함)") or ""))
         setStatus(2, "아래 전용 신호: " .. (#down > 0 and table.concat(down, " ") or "없음") .. " / 위 전용: "
             .. (#up > 0 and table.concat(up, " ") or "없음"))
-        setStatus(3, "① '알림 열기'를 눌러 RW6 알림이 뜨는지" .. (autoName and "\n② '자동'을 켜고 용두를 아래로" or ""))
+        setStatus(3, "1) 알림 열기를 눌러 RW6 알림이 뜨는지" .. (autoName and "\n2) 자동을 켜고 용두를 아래로" or ""))
         openButton:clear_flag(lvgl.FLAG.HIDDEN)
         if autoName then autoButton:clear_flag(lvgl.FLAG.HIDDEN) end
     end }
