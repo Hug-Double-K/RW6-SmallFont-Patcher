@@ -161,7 +161,18 @@ public final class WatchSender {
                     // 방금 전(3초 안)에 워치가 받았다고 답했다면 앱이 아직 켜져 있음 → 앱 열기를 기다리지 않고 바로 보냄
                     // (사진 알림의 '사진 먼저 알림' 바로 뒤에 오는 사진이 1.5초 빨라짐)
                     if (ackSeen && System.currentTimeMillis() - lastOk < 3000) main.post(sendAll);
-                    nodeApi.launchWearApp(node.id, "/index")
+                    // 0.90: 알림 때문에 여는 것임을 실행 주소에 표시(워치 앱 5.2 가 켜지는 순간 알아봄 → 직접 누른 때는 기다림 없이 목록).
+                    // 표시 붙인 주소로 앱이 안 뜨면(0.7초 안에 상태 물음·준비·받음 확인이 없음) 보통 주소로 다시 열고, 3번 그러면 표시를 그만 붙임.
+                    final Prefs lp = new Prefs(app);
+                    final boolean marked = atLeast(lp.watchVer(), 5.2) && lp.paramFail() < 3;
+                    final long launchT0 = System.currentTimeMillis();
+                    if (marked) main.postDelayed(() -> {
+                        if (gen != GEN || acked.get() || askAt >= launchT0 || readyAt >= launchT0) return;
+                        lp.setParamFail(lp.paramFail() + 1);
+                        io.github.hugdoublek.rw6hub.WatchLink.get(app).log("워치 앱 열기: 표시 붙인 주소로는 0.7초 안에 안 뜸 → 보통 주소로 다시 엶 (" + lp.paramFail() + "/3)");
+                        nodeApi.launchWearApp(node.id, "/index");
+                    }, 700);
+                    nodeApi.launchWearApp(node.id, marked ? "/index?from=phone" : "/index")
                             .addOnSuccessListener(v -> {
                                 long[] times = text ? TEXT_RETRY : IMG_RETRY;
                                 for (long t : times) main.postDelayed(sendAll, t);
@@ -411,6 +422,7 @@ public final class WatchSender {
                         if (askAt > 0 && now - askAt < 20000) extra += " / 상태 물음 뒤 " + (now - askAt) + "ms";
                         if (readyAt > 0 && now - readyAt < 20000) extra += " / 준비 신호 뒤 " + (now - readyAt) + "ms";
                         io.github.hugdoublek.rw6hub.WatchLink.get(app).log("워치 앱 켜짐 시간(ms): " + tm.group(1) + extra);
+                        if (tm.group(1).contains("from=phone")) { Prefs fp = new Prefs(app); if (fp.paramFail() != 0) fp.setParamFail(0); }
                     }
                     return;
                 }

@@ -102,6 +102,7 @@ let waitTimer = null
 // 켜지는 데 걸린 시간 재기 (폰 기록에 남김): 스크립트 시작 / 화면 준비 / 폰의 '없음' 답 / 목록 그림
 const T0 = Date.now()
 let tInit = 0, tNone = 0, tSent = false
+let fromSeen = '', srcInfo = '', pgInfo = '' // 진단: 실행 주소 표시, 앱을 연 곳, 화면 정보
 let how = '' // 첫 화면이 무엇으로 정해졌나: N(폰의 없음 답) / T(0.7초 지남) / A(알림 도착)
 let closeTimer = null // 도착 화면을 닫는 타이머 (한 번에 하나만)
 let arrivedAt = 0 // 마지막 알림이 도착한 시각
@@ -152,11 +153,27 @@ function fmtTime(w) {
 }
 
 // 같은 대화방 키: 앱 + (단톡방 이름 또는 1:1 상대)
+// 켜진 시간 보고 (한 번만): 준비,없음 답,첫 화면 정함,그린 뒤 (스크립트 시작부터 ms; 0 = 없었음),알림 수,첫 화면을 정한 것(N 폰의 없음 답/T 시간 지남/A 알림 도착/P 표시 없음=직접 누름)
+// 뒤에 진단: from=실행 주소 표시, src=앱을 연 곳, pg=화면 정보. 폰으로는 시작 1.5초 뒤에 보냄(그 전엔 워치→폰 길이 안 열려 있음)
+function reportTm() {
+  if (tSent) return
+  tSent = true
+  const tList = Date.now()
+  setTimeout(() => {
+    const tDrawn = Date.now()
+    const clean = (x) => String(x || '').replace(/"/g, "'").replace(/\\/g, '/').substr(0, 80)
+    const msg = `${tInit - T0},${tNone ? tNone - T0 : 0},${tList - T0},${tDrawn - T0},${(IDX || []).length},${how} from=${clean(fromSeen)} src=${clean(srcInfo)} pg=${clean(pgInfo)}`
+    setTimeout(() => { try { if (conn) conn.send({ data: { tm: msg } }) } catch (e) {} }, Math.max(0, 1500 - (tDrawn - T0)))
+  }, 0)
+}
+
 function roomKey(m) { return `${m.a || ''}|${m.c || m.s || ''}` }
 
 function preview(body) { return body.length > 120 ? body.substr(0, 120) + '…' : body }
 
 export default {
+  // 5.2: 폰이 알림 때문에 앱을 열 때 실행 주소에 붙이는 표시(/index?from=phone)를 받는 칸 (전달되는지는 기기에서 확인)
+  protected: { from: '' },
   private: {
     mode: 'wait', // wait(검은 화면) → arrive(알림) / list(목록)
     cur: { name: '', img: '', icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0, sf: '', sw: 0, sh: 0, hf: '', hw: 0, hh: 0 },
@@ -193,6 +210,23 @@ export default {
     // 그동안 파일을 미리 읽어 둠(한 번씩만). N 이 안 오면 예전처럼 0.7초 뒤 목록.
     self.pinsLoad(() => self.idxLoad(() => {}))
     waitTimer = setTimeout(() => { if (self.mode === 'wait') { if (!how) how = 'T'; self.showList() } }, WAIT_MS)
+    // 5.2: 실행 주소의 표시로 '폰이 알림 때문에 열었는지'를 켜지는 순간 알아냄
+    //  - 표시가 있으면: 알림을 기다림(목록 안 띄움) + '표시가 전달되는 워치'라고 적어 둠
+    //  - 표시가 없고, 예전에 표시가 전달된 적이 있으면: 직접 누른 것 → 기다리지 않고 바로 목록
+    //  - 표시가 전달된 적이 없으면(모름): 5.1 처럼 폰의 답(N/A)이나 0.7초를 기다림
+    try { fromSeen = String(self.from || '') } catch (e) { fromSeen = '' }
+    try { srcInfo = JSON.stringify((app.getInfo() || {}).source || '') } catch (e) { srcInfo = 'err' }
+    try { pgInfo = Object.keys(self.$page || {}).join('.') + '/' + JSON.stringify((self.$page || {}).query || '') } catch (e) { pgInfo = 'err' }
+    if (fromSeen === 'phone') {
+      if (waitTimer) clearTimeout(waitTimer)
+      waitTimer = setTimeout(() => { if (self.mode === 'wait') { if (!how) how = 'T'; self.showList() } }, 3000)
+      storage.set({ key: 'pOK', value: '1' })
+    } else {
+      storage.get({
+        key: 'pOK',
+        success(v) { if (v === '1' && self.mode === 'wait' && !how) { how = 'P'; self.showList() } },
+      })
+    }
   },
 
   onShow() {
@@ -353,6 +387,7 @@ export default {
     this.cur = cur
     if (!how) how = 'A'
     this.mode = 'arrive'
+    reportTm()
   },
 
   showList() {
@@ -596,17 +631,7 @@ export default {
     this.notis = (IDX || []).length // 개수는 늘 '메시지 수' (카드 수가 아님)
     this.loaded = true
     this.report()
-    if (!tSent) {
-      tSent = true
-      const tList = Date.now()
-      // 화면에 그려진 뒤의 시각을 재 두고, 폰으로 보내는 것은 시작 1.5초 뒤(그 전엔 워치→폰 연결이 안 열려 있어 안 닿음 — 5.0 기록)
-      // 준비,없음 답,목록 만듦,그린 뒤 (스크립트 시작부터 ms; 0 = 없었음),알림 수,첫 화면을 정한 것(N/T/A)
-      setTimeout(() => {
-        const tDrawn = Date.now()
-        const msg = `${tInit - T0},${tNone ? tNone - T0 : 0},${tList - T0},${tDrawn - T0},${(IDX || []).length},${how}`
-        setTimeout(() => { try { if (conn) conn.send({ data: { tm: msg } }) } catch (e) {} }, Math.max(0, 1500 - (tDrawn - T0)))
-      }, 0)
-    }
+    reportTm()
   },
 
   scrollToTop() {
