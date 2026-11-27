@@ -2,7 +2,7 @@
 -- 하는 일: 그림 묶음을 한 번 받아 풀고, 시간·날짜를 그리고, 용두를 돌리면(어느 쪽이든) 폰을 거쳐 RW6 알림을 연다.
 -- 워치에서 이미 돈 기능만 씀: 화면 물체·그림(Image, 깔려 있는 Lua 워치페이스와 같은 꼴)·신호 듣기·타이머·파일·curl.
 -- 아직 워치에서 안 돌려 본 것은 사용자가 버튼을 누를 때만, 한 번에 하나씩, 부르기 직전에 기록을 남기고 부른다:
---   '값 시험' = dataman.subscribe(키, 물체, 함수) 한 가지 키 / '나가기' = navigator.finish()
+--   '값 시험' = dataman.subscribe(키, 물체, 함수) 한 가지 키. 나가기는 화면 길게 누르기(워치페이스 바꾸기)로 — 사용자 확인 2026-11-27
 local lvgl, root, log = ...
 local W, H = 432, 514
 local font = lvgl.Font("MiSans-Medium", 18)
@@ -339,9 +339,8 @@ local function buildFace()
     f.steps = slots("st", 248, 370, 29, 5)
     face = f
     statusLabel = lvgl.Label(panel, { x = 190, y = 30, w = 222, h = 26, text = "", text_color = "#ffd166", text_font = font })
-    local keyButton, keyLabel = button(70, "값 시험", "#78d99b")
-    local crownButton, crownLabel = button(170, "용두 켬", "#71b7ff")
-    local exitButton = button(270, "나가기", "#ff9a91")
+    local keyButton, keyLabel = button(116, "값 시험", "#78d99b")
+    local crownButton, crownLabel = button(224, "용두 켬", "#71b7ff")
     keyButton:onevent(lvgl.EVENT.CLICKED, function()
         if not pressOnce() then return end
         local key = nextKey()
@@ -356,19 +355,6 @@ local function buildFace()
         crownOn = not crownOn
         crownLabel:set { text = crownOn and "용두 켬" or "용두 끔" }
         note("용두 열기 " .. (crownOn and "켬" or "끔"))
-    end)
-    exitButton:onevent(lvgl.EVENT.CLICKED, function()
-        if not pressOnce() then return end
-        -- 시험: navigator.finish() — 워치에서 처음 부르는 기능. 부르기 전에 기록을 폰으로 올려 둔다.
-        local navigator = safe(require, "navigator")
-        if type(navigator) ~= "table" or type(navigator.finish) ~= "function" then setStatus("나가기 기능 없음") return end
-        -- 인자 없이 부르면 "bad argument (should be table.)" 오류였음(2026-11-27) → 빈 표를 넘겨 봄
-        note("지금 navigator.finish({}) 를 부름")
-        safe(uploadReport)
-        local ok, err = pcall(navigator.finish, {})
-        note("navigator.finish 결과 " .. (ok and "O" or ("X " .. tostring(err))))
-        setStatus(ok and "나가기 불렀음" or "나가기 X")
-        uploadAt = now() + 3
     end)
     pcall(drawClock, true)
     pcall(drawValues)

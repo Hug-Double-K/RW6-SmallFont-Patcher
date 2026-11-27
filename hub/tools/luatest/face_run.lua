@@ -66,7 +66,7 @@ end
 if SCEN == "C" then assert(string.find(labels(), "잘림 X", 1, true), labels()) assert(not io.open(DIR .. "ver.txt")) print("C 통과: " .. labels()) return end
 local buttons = {}
 for i = before + 1, #mock.created do local o = mock.created[i] if o.kind == "Object" and o.props.h == 40 then buttons[#buttons + 1] = o end end
-assert(#buttons == 3, "버튼 수 " .. #buttons .. " / " .. labels())
+assert(#buttons == 2, "버튼 수 " .. #buttons .. " / " .. labels())
 if SCEN == "E" then step(6) assert(string.find(uploads[#uploads], "그림 오류 1%d", 1) or string.find(uploads[#uploads], "그림 오류 %d+"), uploads[#uploads]) print("E 통과(그림 기능이 없어도 안 죽음)") return end
 local E = mock.EVENT
 assert(io.open(DIR .. "ver.txt")):close()
@@ -132,11 +132,6 @@ elseif SCEN == "D" then
 elseif SCEN == "B" then
     assert(string.find(labels(), "심박 X", 1, true), labels())
 end
--- 나가기
-step(3) buttons[3]:fire(E.CLICKED) step(4)
-if SCEN == "D" then assert(finished == 0 and string.find(labels(), "나가기 기능 없음", 1, true))
-else assert(finished == 1) end
-if SCEN == "A" then assert(string.find(uploads[#uploads], "navigator.finish 결과 O", 1, true)) end
 if SCEN == "D" then
     local seen = false
     for _, c in ipairs(curls) do if string.find(c, "^curl http://10.1.10.1/do/") then seen = true end end
