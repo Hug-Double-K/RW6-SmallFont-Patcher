@@ -143,6 +143,49 @@ os.remove(helpPath)
 help = string.gsub(help, "%s+", " ")
 addLine("[명령 목록] " .. #help .. "자")
 addLine(help)
+addLine("")
+
+-- 워치 안 둘러보기 (모두 보기만 하는 명령: ls·mount·ps·getprop). 결과가 길면 앞부분만.
+local function sh(command, limit)
+    os.remove(helpPath)
+    safe(os.execute, command .. " > " .. helpPath)
+    local text = readAll(helpPath) or ""
+    os.remove(helpPath)
+    text = string.gsub(text, "%s+", " ")
+    if #text > limit then text = string.sub(text, 1, limit) .. " …(" .. #text .. "자)" end
+    return text
+end
+local function look(title, command, limit)
+    addLine("[" .. title .. "]")
+    addLine(sh(command, limit))
+    addLine("")
+end
+addLine("[시각] " .. tostring(safe(os.date, "%Y-%m-%d %H:%M:%S")) .. " / " .. tostring(safe(os.time)))
+addLine("")
+local mounts = readAll("/proc/mounts")              -- 붙어 있는 저장 공간
+if not mounts or #mounts == 0 then
+    os.remove(helpPath)
+    safe(os.execute, "mount > " .. helpPath)
+    mounts = readAll(helpPath) or ""
+    os.remove(helpPath)
+end
+addLine("[mount]")
+addLine((string.gsub(string.sub(mounts, 1, 500), "%s+", " ")))
+addLine("")
+look("ls /", "ls /", 300)
+look("ls /dev", "ls /dev", 700)
+look("ls /dev/uorb", "ls /dev/uorb", 900)
+local seen = { ["/"] = 1, ["/dev"] = 1, ["/proc"] = 1, ["/tmp"] = 1 }
+local count = 0
+for path in string.gmatch(mounts, "(/[%w_%-%./]*)") do   -- mount 결과에 나온 폴더마다 한 번씩
+    if not seen[path] and not string.find(path, "^/dev/") and not string.find(path, "^/proc") and count < 8 then
+        seen[path] = 1
+        count = count + 1
+        look("ls " .. path, "ls " .. path, 400)
+    end
+end
+look("ps", "ps", 1200)
+look("getprop", "getprop", 900)
 
 ---------------------------------------------------------------- 화면
 local panel = lvgl.Object(root, {
