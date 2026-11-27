@@ -102,6 +102,7 @@ let waitTimer = null
 // 켜지는 데 걸린 시간 재기 (폰 기록에 남김): 스크립트 시작 / 화면 준비 / 폰의 '없음' 답 / 목록 그림
 const T0 = Date.now()
 let tInit = 0, tNone = 0, tSent = false
+let how = '' // 첫 화면이 무엇으로 정해졌나: N(폰의 없음 답) / T(0.7초 지남) / A(알림 도착)
 let closeTimer = null // 도착 화면을 닫는 타이머 (한 번에 하나만)
 let arrivedAt = 0 // 마지막 알림이 도착한 시각
 let shownOnce = false
@@ -157,7 +158,7 @@ function preview(body) { return body.length > 120 ? body.substr(0, 120) + '…' 
 
 export default {
   private: {
-    mode: 'list', // 5.0: 처음부터 목록(머리줄이 바로 보임) → 알림이 오면 arrive
+    mode: 'wait', // wait(검은 화면) → arrive(알림) / list(목록)
     cur: { name: '', img: '', icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0, sf: '', sw: 0, sh: 0, hf: '', hw: 0, hh: 0 },
     list: [],
     notis: 0,
@@ -187,10 +188,11 @@ export default {
     })
     self.ready()
     pinsLoaded = false
-    // 5.0: 기다리지 않고 곧바로 목록 화면(머리줄 먼저, 내용은 읽는 대로 — 파일은 한 번씩만 읽음).
-    // 폰이 알림을 보내려고 연 것이면 알림이 도착하는 순간 도착 화면으로 바뀜 (예전엔 그걸 가리려고 0.7초 검은 화면으로 기다렸음)
-    self.mode = 'list'
-    self.pinsLoad(() => self.idxLoad(() => self.applyList()))
+    // 5.1: 검은 화면으로 잠깐 기다리되(폰이 알림을 띄우려고 연 것이면 목록이 깜빡 보이지 않게),
+    // 폰이 '보낼 알림 없음'(N)을 보내면 그 즉시 목록. 폰은 앱이 켜지는 순간(상태 물음)에 N 을 미리 보냄(Mi Manager 0.87부터).
+    // 그동안 파일을 미리 읽어 둠(한 번씩만). N 이 안 오면 예전처럼 0.7초 뒤 목록.
+    self.pinsLoad(() => self.idxLoad(() => {}))
+    waitTimer = setTimeout(() => { if (self.mode === 'wait') { if (!how) how = 'T'; self.showList() } }, WAIT_MS)
   },
 
   onShow() {
@@ -244,7 +246,15 @@ export default {
       }
       if (k === 'Q') { self.ready(); return }
       // 폰: 보낼 알림 없음 → 기다리지 않고 바로 목록 (직접 열었을 때 빨리 뜨게)
-      if (k === 'N') { if (!tNone) tNone = Date.now(); if (self.mode === 'wait') { if (waitTimer) { clearTimeout(waitTimer); waitTimer = null } self.showList() } return }
+      // 폰: 곧 알림을 보냄(알림 때문에 앱을 연 것) → 목록을 띄우지 말고 더 기다림 (5.1; 3초 안에 안 오면 목록)
+      if (k === 'A') {
+        if (self.mode === 'wait') {
+          if (waitTimer) clearTimeout(waitTimer)
+          waitTimer = setTimeout(() => { if (self.mode === 'wait') { if (!how) how = 'T'; self.showList() } }, 3000)
+        }
+        return
+      }
+      if (k === 'N') { if (!tNone) tNone = Date.now(); if (self.mode === 'wait') { if (!how) how = 'N'; if (waitTimer) { clearTimeout(waitTimer); waitTimer = null } self.showList() } return }
       // 순번(2) + 구분(1) + 이름(13) + 데이터.  구분: D/E 글, f/g JPEG, d/e PNG (소문자 d·f = 중간 조각)
       const flag = d.substr(2, 1)
       const kind = (flag === 'D' || flag === 'E') ? 'json' : (flag === 'f' || flag === 'g') ? 'jpg' : 'png'
@@ -341,6 +351,7 @@ export default {
   show(cur) {
     if (waitTimer) { clearTimeout(waitTimer); waitTimer = null }
     this.cur = cur
+    if (!how) how = 'A'
     this.mode = 'arrive'
   },
 
@@ -588,8 +599,13 @@ export default {
     if (!tSent) {
       tSent = true
       const tList = Date.now()
-      // 화면에 그려진 뒤(다음 차례)에 폰으로: 준비,없음 답,목록 만듦,그린 뒤 (모두 스크립트 시작부터 ms; 0 = 없었음),알림 수
-      setTimeout(() => { try { if (conn) conn.send({ data: { tm: `${tInit - T0},${tNone ? tNone - T0 : 0},${tList - T0},${Date.now() - T0},${(IDX || []).length}` } }) } catch (e) {} }, 0)
+      // 화면에 그려진 뒤의 시각을 재 두고, 폰으로 보내는 것은 시작 1.5초 뒤(그 전엔 워치→폰 연결이 안 열려 있어 안 닿음 — 5.0 기록)
+      // 준비,없음 답,목록 만듦,그린 뒤 (스크립트 시작부터 ms; 0 = 없었음),알림 수,첫 화면을 정한 것(N/T/A)
+      setTimeout(() => {
+        const tDrawn = Date.now()
+        const msg = `${tInit - T0},${tNone ? tNone - T0 : 0},${tList - T0},${tDrawn - T0},${(IDX || []).length},${how}`
+        setTimeout(() => { try { if (conn) conn.send({ data: { tm: msg } }) } catch (e) {} }, Math.max(0, 1500 - (tDrawn - T0)))
+      }, 0)
     }
   },
 

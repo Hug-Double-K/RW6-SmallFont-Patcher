@@ -270,8 +270,20 @@ public final class WatchSender {
     /** 워치 앱이 막 켜져 폰 앱 상태를 물었을 때: 보낼 것이 없으면 준비 신호를 기다리지 않고 미리 '없음'을 답함. */
     static void onAsked(Context app, String nodeId) {
         askAt = System.currentTimeMillis();
-        if (readyWaiter != null || !PENDING.isEmpty()) return;
-        if (!atLeast(new Prefs(app).watchVer(), 4.8)) return;
+        String ver = new Prefs(app).watchVer();
+        if (readyWaiter != null || !PENDING.isEmpty()) {
+            // 알림을 띄우려고 연 것 → '곧 알림이 감'(A)을 미리 알려 워치 앱이 목록을 띄우지 않고 기다리게 함 (워치 앱 5.1부터 알아들음)
+            if (atLeast(ver, 5.1)) {
+                final long t0 = System.currentTimeMillis();
+                final io.github.hugdoublek.rw6hub.WatchLink link = io.github.hugdoublek.rw6hub.WatchLink.get(app);
+                try {
+                    Wearable.getMessageApi(app).sendMessage(nodeId, "A".getBytes(StandardCharsets.UTF_8))
+                            .addOnSuccessListener(v -> link.log("워치 앱 상태 물음 받음: '곧 알림' 답 보냄 → 워치가 받음 " + (System.currentTimeMillis() - t0) + "ms"));
+                } catch (Exception ignored) {}
+            }
+            return;
+        }
+        if (!atLeast(ver, 4.8)) return;
         sendNone(app, nodeId, "상태 물음 받음");
     }
 
