@@ -251,6 +251,10 @@ public final class WatchSender {
     }
 
     /** 밀린 알림이 있으면 곧바로 다시 시도 (워치가 응답했거나 다른 알림이 잘 갔을 때) */
+    private static boolean atLeast(String version, double min) {
+        try { return Double.parseDouble(version.trim()) >= min - 1e-9; } catch (Exception e) { return false; }
+    }
+
     static void kick() {
         if (PENDING.isEmpty() || retrying) return;
         new Handler(Looper.getMainLooper()).postDelayed(WatchSender::retry, 300);
@@ -347,9 +351,14 @@ public final class WatchSender {
                 }
                 if (s.contains("ready")) { // 워치 앱 준비됨 → 기다리던 전송 시작
                     Runnable r = readyWaiter;
+                    java.util.regex.Matcher vm = java.util.regex.Pattern.compile("\"v\"\\s*:\\s*\"([^\"]*)\"").matcher(s);
+                    // 보낼 알림이 하나도 없으면 바로 "N"(없음)이라고 답함 → 워치 앱이 0.7초 기다리지 않고 곧바로 목록을 띄움 (워치 앱 4.8부터 알아들음)
+                    if (r == null && PENDING.isEmpty() && vm.find() && atLeast(vm.group(1), 4.8)) {
+                        Wearable.getMessageApi(app).sendMessage(nodeId, "N".getBytes(StandardCharsets.UTF_8));
+                    }
+                    vm.reset();
                     if (r != null) new Handler(Looper.getMainLooper()).post(r);
                     else new Handler(Looper.getMainLooper()).post(WatchSender::kick); // 워치를 직접 열었으면 밀린 알림도
-                    java.util.regex.Matcher vm = java.util.regex.Pattern.compile("\"v\"\\s*:\\s*\"([^\"]*)\"").matcher(s);
                     if (vm.find() && !vm.group(1).isEmpty()) { Prefs vp = new Prefs(app); if (!vm.group(1).equals(vp.watchVer())) vp.setWatchVer(vm.group(1)); }
                     return;
                 }

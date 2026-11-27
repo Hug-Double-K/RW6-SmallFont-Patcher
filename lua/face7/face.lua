@@ -4,7 +4,7 @@
 -- 아직 워치에서 안 돌려 본 것은 사용자가 버튼을 누를 때만, 한 번에 하나씩, 부르기 직전에 기록을 남기고 부른다:
 --   '값 시험' = dataman.subscribe(키, 물체, 함수) 한 가지 키. 나가기는 화면 길게 누르기(워치페이스 바꾸기)로 — 사용자 확인 2026-11-27
 local lvgl, root, log, mode = ...
-local FACE_VER = 1
+local FACE_VER = 2
 -- 같은 파일을 두 가지로 씀: 패처 목록의 Test-Face(시험 버튼 있음) / 정식 워치페이스(lua/face7/main.lua 가 "face" 로 부름: 버튼 없음, 스스로 새 판 확인)
 local isFace = (mode == "face")
 local FACE_BASE = "https://raw.githubusercontent.com/Hug-Double-K/RW6-SmallFont-Patcher/main/lua/face7/"
@@ -275,15 +275,18 @@ local function requestLaunch(why)
     armed = false
     note("열기 요청 (" .. why .. ") 직전 신호: " .. table.concat(events, " ", math.max(1, #events - 5)))
     uploadAt = t + 20
-    __rw6FaceLaunch = lvgl.Timer { period = 150, repeat_count = 1, cb = function() __rw6FaceLaunch = nil launchNow() end }
+    __rw6FaceLaunch = lvgl.Timer { period = 40, repeat_count = 1, cb = function() __rw6FaceLaunch = nil launchNow() end }
 end
+local EV_PRESSED, EV_RELEASED = lvgl.EVENT.PRESSED, lvgl.EVENT.RELEASED
 local eventNames = {}
 pcall(function() for k, v in pairs(lvgl.EVENT) do eventNames[v] = tostring(k) end end)
 local function onEvent(code)
-    if code ~= 62 and code ~= 63 and code ~= 145 and code ~= 149 then return end
+    -- 누름(P)·뗌(R)도 기록만 함: 터치와 용두를 62·63 만으로 가를 수 있는지 알아보려고(더 빨리 열기 위한 조사)
+    local shown = (code == EV_PRESSED and "P") or (code == EV_RELEASED and "R") or nil
+    if not shown and code ~= 62 and code ~= 63 and code ~= 145 and code ~= 149 then return end
     local t = now()
     lastNoiseTick = tickCount
-    local stamp = code .. "@" .. (t - startTime)
+    local stamp = (shown or code) .. "@" .. (t - startTime)
     if lastStamp == stamp then
         lastStampCount = lastStampCount + 1
         events[#events] = stamp .. "x" .. lastStampCount
