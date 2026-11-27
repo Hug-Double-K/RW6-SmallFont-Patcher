@@ -106,7 +106,7 @@ local function change(target, label)
         local good = after == target
         note(label .. ": " .. tostring(before) .. " → " .. tostring(after) .. " (명령 결과 " .. tostring(ok) .. "/" .. tostring(a) .. "/"
             .. tostring(b) .. "/" .. tostring(c) .. ")" .. (good and " 성공" or " 안 바뀜"))
-        lastResult = good and (label .. " ✓ 시계 화면에서\n아래 버튼을 눌러 보세요") or (label .. " ✗ 값이 안 바뀜")
+        lastResult = good and (label .. " : O 성공\n시계 화면에서\n아래 버튼을 눌러 보세요") or (label .. " : X 실패(값이 안 바뀜)")
         show()
         -- 결과를 폰으로 (안 올라가도 상관없음)
         local file = io.open(tmp .. ".report", "wb")

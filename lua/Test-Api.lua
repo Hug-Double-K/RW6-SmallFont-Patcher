@@ -355,9 +355,9 @@ local function upload()
     if answer("curl " .. phone .. "/ping") == nil then
         return "폰으로 못 올림(Mi Manager 0.81 연결 아님). 쪽을 넘겨 찍어 주세요 (" .. pageCount .. "쪽)"
     end
-    if answer("curl -T " .. reportPath .. " " .. phone .. "/r/api.txt") == size then return "폰으로 올림 ✓ (" .. size .. "바이트, 방법 1)" end
+    if answer("curl -T " .. reportPath .. " " .. phone .. "/r/api.txt") == size then return "O 폰으로 올림 (" .. size .. "바이트, 방법 1)" end
     if answer("curl --data-binary @" .. reportPath .. " " .. phone .. "/r/api.txt") == size then
-        return "폰으로 올림 ✓ (" .. size .. "바이트, 방법 2)"
+        return "O 폰으로 올림 (" .. size .. "바이트, 방법 2)"
     end
     local step, index, sent = 150, 0, 0
     local limit = math.min(size, step * 260)
@@ -369,7 +369,7 @@ local function upload()
         sent = sent + #piece
         index = index + 1
     end
-    return "폰으로 올림 ✓ (" .. sent .. "/" .. size .. "바이트, 방법 3)"
+    return "O 폰으로 올림 (" .. sent .. "/" .. size .. "바이트, 방법 3)"
 end
 __rw6ApiTimer = lvgl.Timer {
     period = 400, repeat_count = 1,

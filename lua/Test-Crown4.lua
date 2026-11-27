@@ -224,7 +224,7 @@ local function finish()
         local down = everyTime("아래1", "아래2", "아래3", { "준비", "가만1", "위1", "위2", "위3", "터치" })
         local up = everyTime("위1", "위2", "위3", { "준비", "가만1", "아래1", "아래2", "아래3", "터치" })
         autoName = down[1]
-        big:set { text = okUpload and "폰으로 올렸습니다 ✓" or "폰으로 못 올렸습니다" }
+        big:set { text = okUpload and "O 폰으로 올렸습니다" or "폰으로 못 올렸습니다" }
         setStatus(1, "Mi Manager 기록의 '복사'를 눌러 보내 주세요" .. (sent > 0 and (" (참고 파일 " .. sent .. "개 포함)") or ""))
         setStatus(2, "아래 전용 신호: " .. (#down > 0 and table.concat(down, " ") or "없음") .. " / 위 전용: "
             .. (#up > 0 and table.concat(up, " ") or "없음"))

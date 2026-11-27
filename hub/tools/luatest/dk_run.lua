@@ -38,8 +38,8 @@ buttons[1]:fire(E.CLICKED) buttons[1]:fire(E.CLICKED)        -- 두 번 눌려�
 mock.pump()
 print("-- 바꾼 뒤\n" .. body.props.text)
 assert(#sets <= 1, "두 번 바뀜")
-if SCEN == "A" or SCEN == "B" then assert(prop == "com.tencent.wechatrtos") assert(string.find(body.props.text, "✓", 1, true)) end
-if SCEN == "C" then assert(string.find(body.props.text, "✗", 1, true)) end
+if SCEN == "A" or SCEN == "B" then assert(prop == "com.tencent.wechatrtos") assert(string.find(body.props.text, "O 성공", 1, true)) end
+if SCEN == "C" then assert(string.find(body.props.text, "X 실패", 1, true)) end
 buttons[2]:fire(E.CLICKED) mock.pump()
 print("-- 되돌린 뒤\n" .. body.props.text)
 if SCEN ~= "E" and SCEN ~= "C" then assert(prop == "com.xiaomi.miwear.sports", "원래대로 안 돌아감: " .. prop) end
