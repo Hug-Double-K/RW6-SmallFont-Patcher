@@ -95,7 +95,14 @@ assert(string.find(curls[#curls], "launch-noti", 1, true), "열기 요청 뒤에
 step(4) root:fire(145) step(1) root:fire(62) root:fire(63) root:fire(145) step(1)
 assert(launchCurls() == want, "되풀이해서 엶")
 step(20)
-if SCEN ~= "B" then assert(#uploads >= 1 and string.find(uploads[#uploads], "열기 요청 (용두)", 1, true)) end
+-- 다시 열 준비가 된 뒤에는 또 열림 / 앱에서 돌아온 직후(쉬었다 옴)의 신호로는 안 엶
+root:fire(62) root:fire(63) root:fire(145) mock.pump() clock = clock + 1
+assert(launchCurls() == 2 * want, "조용해진 뒤 다시 돌렸는데 안 엶 " .. launchCurls())
+clock = clock + 40 mock.pump()                         -- 앱이 40초 떠 있다가 돌아옴
+root:fire(62) root:fire(63) root:fire(145) root:fire(145) step(2)
+assert(launchCurls() == 2 * want, "돌아온 직후 신호로 다시 엶")
+step(8) want = 2 * want
+if SCEN ~= "B" then assert(#uploads >= 1 and string.find(uploads[#uploads], "열기 요청 (용두)", 1, true) and string.find(uploads[#uploads], "쉬었다 옴 4", 1, true) and string.find(uploads[#uploads], "145@%d+x2"), uploads[#uploads]) end
 -- 용두 끔
 buttons[2]:fire(E.CLICKED) buttons[2]:fire(E.CLICKED)        -- 같은 누름이 두 번 와도 한 번만
 assert(string.find(labels(), "용두 끔", 1, true))
@@ -108,18 +115,18 @@ local keys = io.open(DIR .. "keys.txt"):read("*a")
 if SCEN == "A" then
     assert(subs.systemStatusBattery and subs.healthStepCount and subs.healthHeartRate)
     assert(keys == "systemStatusBattery=ok\nhealthStepCount=ok\nhealthHeartRate=ok\n", keys)
-    subs.systemStatusBattery(25600) subs.healthStepCount(6240) subs.healthHeartRate(2147483647)
+    subs.systemStatusBattery(25600) subs.healthStepCount(6240 * 256) subs.healthHeartRate(2147483647)
     assert(shownAt(40, 30) == "bi_100" and shownAt(94, 27) == "bat_1" and shownAt(126, 27) == "bat_0")
     local pct = false
     for i = before + 1, #mock.created do local o = mock.created[i] if o.props.src and string.find(o.props.src, "bpct_3", 1, true) then pct = true end end
     assert(pct, "% 자리")
     assert(shownAt(262, 370) == "st_6" and shownAt(349, 370) == "st_0", "걸음 4자리 가운데")
     assert(shownAt(288, 272) == nil)
-    subs.systemStatusBattery(7 * 256) subs.healthHeartRate(75) subs.healthStepCount(12345)
+    subs.systemStatusBattery(7 * 256) subs.healthHeartRate(19712 - 512) subs.healthStepCount(12345 * 256)
     assert(shownAt(40, 30) == "bi_10" and shownAt(94, 27) == "bat_7" and shownAt(110, 27) == nil)
     assert(shownAt(288, 272) == "val_7" and shownAt(308, 272) == "val_5" and shownAt(248, 370) == "st_1")
     step(6)
-    assert(string.find(uploads[#uploads], "healthStepCount = ok / 받은 횟수 2 / 받은 값 6240 12345", 1, true), uploads[#uploads])
+    assert(string.find(uploads[#uploads], "healthStepCount = ok / 받은 횟수 2 / 받은 값 1597440 3160320", 1, true), uploads[#uploads])
 elseif SCEN == "D" then
     assert(string.find(keys, "systemStatusBattery=error", 1, true) and string.find(labels(), "X", 1, true))
 elseif SCEN == "B" then

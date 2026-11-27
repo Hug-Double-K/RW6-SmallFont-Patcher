@@ -237,7 +237,7 @@ local function onValue(key, raw)
     if type(raw) ~= "number" then return end
     local value = raw
     if raw == 2147483647 then value = nil                                  -- 값 없음
-    elseif raw >= 256 and raw % 256 == 0 then value = raw // 256 end      -- 256배로 오는 꼴(밴드 사례) — 받은 값은 기록에 그대로 남김
+    else value = raw // 256 end      -- 값은 256배로 옴 (워치 확인 2026-11-27: 배터리 24064 = 94)
     values[valueName[key]] = value
     pcall(drawValues)
 end
@@ -257,6 +257,8 @@ end
 ---------------------------------------------------------------- 용두 → RW6 알림 (폰을 거쳐서)
 local crownOn = true
 local lastPair, lastLaunch = -100, -100        -- 62·63 한 쌍이 온 때 / 마지막으로 연 때
+local armed, tickCount, lastNoiseTick, lastTickTime = true, 0, 0, nil
+local lastStamp, lastStampCount = nil, 0
 local function launchNow()
     -- '열어 줘'는 이 함수의 맨 마지막 일. 이 뒤에 오래 걸리는 일을 하면 워치가 재시작됨(2026-11-27 사고).
     lastAnswer = string.gsub(askPhone("/do/launch-noti"), "%s+", " ")
@@ -265,7 +267,8 @@ local function requestLaunch(why)
     local t = now()
     if t - lastLaunch < 8 then return end
     lastLaunch = t
-    note("열기 요청 (" .. why .. ")")
+    armed = false
+    note("열기 요청 (" .. why .. ") 직전 신호: " .. table.concat(events, " ", math.max(1, #events - 5)))
     uploadAt = t + 20
     __rw6FaceLaunch = lvgl.Timer { period = 150, repeat_count = 1, cb = function() __rw6FaceLaunch = nil launchNow() end }
 end
@@ -274,11 +277,20 @@ pcall(function() for k, v in pairs(lvgl.EVENT) do eventNames[v] = tostring(k) en
 local function onEvent(code)
     if code ~= 62 and code ~= 63 and code ~= 145 and code ~= 149 then return end
     local t = now()
-    if #events >= 60 then table.remove(events, 1) end
-    events[#events + 1] = code .. "@" .. (t - startTime)
+    lastNoiseTick = tickCount
+    local stamp = code .. "@" .. (t - startTime)
+    if lastStamp == stamp then
+        lastStampCount = lastStampCount + 1
+        events[#events] = stamp .. "x" .. lastStampCount
+    else
+        if #events >= 80 then table.remove(events, 1) end
+        events[#events + 1] = stamp
+        lastStamp, lastStampCount = stamp, 1
+    end
     if code == 62 or code == 63 then lastPair = t return end
-    -- 145 = 용두를 돌린 뒤에만 옴. 터치(62·63뿐)나, 기본 알림 목록이 닫힐 때 혼자 오는 145 와 가리려고 '62·63 뒤 2초 안의 145'만 침.
-    if code == 145 and crownOn and face and t - lastPair <= 2 then requestLaunch("용두") end
+    -- 145 = 용두를 돌린 뒤에 옴. 터치(62·63뿐)나, 기본 알림 목록이 닫힐 때 혼자 오는 145 와 가리려고 '62·63 뒤 2초 안의 145'만 침.
+    -- armed: 한 번 연 뒤에는 화면이 4초쯤 조용해질 때까지 다시 열지 않음(앱에서 돌아올 때 오는 신호로 되풀이해 여는 것 막기).
+    if code == 145 and crownOn and armed and face and t - lastPair <= 2 then requestLaunch("용두") end
 end
 local all = safe(function() return lvgl.EVENT.ALL end)
 if all ~= nil then pcall(function() root:onevent(all, function(_, code) if type(code) == "number" then onEvent(code) end end) end) end
@@ -350,9 +362,10 @@ local function buildFace()
         -- 시험: navigator.finish() — 워치에서 처음 부르는 기능. 부르기 전에 기록을 폰으로 올려 둔다.
         local navigator = safe(require, "navigator")
         if type(navigator) ~= "table" or type(navigator.finish) ~= "function" then setStatus("나가기 기능 없음") return end
-        note("지금 navigator.finish() 를 부름")
+        -- 인자 없이 부르면 "bad argument (should be table.)" 오류였음(2026-11-27) → 빈 표를 넘겨 봄
+        note("지금 navigator.finish({}) 를 부름")
         safe(uploadReport)
-        local ok, err = pcall(navigator.finish)
+        local ok, err = pcall(navigator.finish, {})
         note("navigator.finish 결과 " .. (ok and "O" or ("X " .. tostring(err))))
         setStatus(ok and "나가기 불렀음" or "나가기 X")
         uploadAt = now() + 3
@@ -371,6 +384,15 @@ end
 local weatherAt = 0           -- 다음에 기온을 물어볼 때
 tick = function()
     local t = now()
+    tickCount = tickCount + 1
+    -- 1초마다 도는 이 일이 3초 넘게 건너뛰었으면 = 화면이 가려져 있었음(앱이 떠 있었거나 화면 꺼짐) → 기록하고, 조용해질 때까지 열지 않음
+    if lastTickTime and t - lastTickTime >= 3 then
+        note("쉬었다 옴 " .. (t - lastTickTime) .. "초")
+        armed = false
+        lastNoiseTick = tickCount
+    end
+    lastTickTime = t
+    if not armed and tickCount - lastNoiseTick >= 4 and t - lastLaunch >= 8 then armed = true note("다시 열 준비 됨") end
     pcall(drawClock, false)
     if face and t >= weatherAt and t - lastLaunch > 6 then
         weatherAt = t + 1800
