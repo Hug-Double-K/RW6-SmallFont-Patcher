@@ -60,6 +60,23 @@ public final class WatchSession implements SarLink.Listener {
                     if (l != null) { try { sendL2Ch(7, OP_WRITE, ipPacket); } catch (RuntimeException ignored) {} }
                 }
                 @Override public void log(String line) { cb.onLog(line); }
+            }, new NetRelay.AddressMap() {
+                // 워치가 폰(10.1.10.1)의 80번으로 올리는 글은 앱 안의 보고함(WatchDrop)으로
+                @Override public java.net.InetSocketAddress tcp(java.net.InetAddress addr, int port) {
+                    if (port == 80 && "10.1.10.1".equals(addr.getHostAddress())) {
+                        try {
+                            WatchDrop drop = WatchDrop.get();
+                            drop.setSink(line -> cb.onLog(line));
+                            return new java.net.InetSocketAddress("127.0.0.1", drop.port());
+                        } catch (java.io.IOException e) {
+                            cb.onLog("워치 보고: 보고함을 열지 못함 (" + e.getMessage() + ")");
+                        }
+                    }
+                    return new java.net.InetSocketAddress(addr, port);
+                }
+                @Override public java.net.InetSocketAddress udp(java.net.InetAddress addr, int port) {
+                    return new java.net.InetSocketAddress(addr, port);
+                }
             });
         }
         return relay;

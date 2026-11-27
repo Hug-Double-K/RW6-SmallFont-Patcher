@@ -7,6 +7,7 @@ public class HubApp extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        WatchDrop.dir = getFilesDir();   // 워치가 올린 보고 글을 파일로도 남김
         // 알림·메모 기능이 워치 메시지를 받을 수 있게 미리 등록
         io.github.hugdoublek.rw6hub.noti.Wearable.client(this);
         io.github.hugdoublek.rw6hub.memo.Wearable.client(this);

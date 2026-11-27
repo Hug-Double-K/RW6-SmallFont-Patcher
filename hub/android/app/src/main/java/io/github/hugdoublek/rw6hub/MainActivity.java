@@ -270,7 +270,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         c.addView(logView);
         LinearLayout lb = new LinearLayout(this);
         logToggle = pill("전체 보기", false, v -> { logFull = !logFull; refresh(); });
-        Button copyBtn = pill("복사", false, v -> { copy("기록", link.logText()); toast("기록을 복사했어요"); });
+        Button copyBtn = pill("복사", false, v -> { copy("기록", logWithReport()); toast("기록을 복사했어요"); });
         Button clearBtn = pill("지우기", false, v -> link.clearLog());
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
         lp.rightMargin = dp(8);
@@ -880,4 +880,13 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
     }
 
     private static String nz(String s) { return s == null ? "" : s; }
+
+    /** 기록 + (있으면) 워치가 올린 보고 글 */
+    private String logWithReport() {
+        String text = link.logText();
+        WatchDrop drop = WatchDrop.peek();
+        if (drop != null && !drop.lastText().isEmpty())
+            text += "\n=== 워치 보고: " + drop.lastName() + " ===\n" + drop.lastText() + "\n";
+        return text;
+    }
 }

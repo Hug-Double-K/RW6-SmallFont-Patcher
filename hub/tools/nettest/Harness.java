@@ -1,4 +1,5 @@
 import io.github.hugdoublek.rw6hub.NetRelay;
+import io.github.hugdoublek.rw6hub.WatchDrop;
 import java.io.*;
 import java.net.*;
 
@@ -21,6 +22,10 @@ public class Harness {
         }, new NetRelay.AddressMap() {
             public InetSocketAddress tcp(InetAddress x, int p) {
                 String h = x.getHostAddress();
+                if (h.equals("10.1.10.1") && p == 80) {
+                    try { WatchDrop d = WatchDrop.get(); WatchDrop.dir = new File("drop"); d.setSink(l -> { System.out.println("[기록] " + l); System.out.flush(); }); return new InetSocketAddress("127.0.0.1", d.port()); }
+                    catch (IOException e) { throw new RuntimeException(e); }
+                }
                 if (h.equals("10.1.10.50")) return new InetSocketAddress("127.0.0.1", p);
                 if (h.equals("10.1.10.59")) return new InetSocketAddress("10.255.255.1", p);   // 닿지 않는 곳
                 return new InetSocketAddress(x, p);

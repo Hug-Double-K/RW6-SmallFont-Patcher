@@ -19,6 +19,18 @@ ok "동시에 4개" "$(for i in 1 2 3 4; do sha dl/p$i.bin; done | sort -u)" "$(
 ok "1MB 올리기" "$($C --data-binary @up.bin -H 'Expect:' http://10.1.10.50:8099/up)" "$(sha up.bin) 1000000"
 $C --limit-rate 30k -o dl/slow.bin http://10.1.10.50:8099/mid.bin; ok "천천히 읽는 상대(창 닫힘)" "$(sha dl/slow.bin)" "$(sha www/mid.bin)"
 fi
+python3 -c "
+import random; random.seed(3); open('rep.txt','w',encoding='utf-8').write(''.join(random.choice('가나다라 navigator.x() abc\n') for _ in range(40000)))"
+rm -rf drop
+ok "보고함: 통째로 올리기(PUT)" "$($C -T rep.txt http://10.1.10.1/r/a.txt)" "ok $(stat -c %s rep.txt)"
+ok "보고함: PUT 내용 일치" "$(sha drop/watchreport/a.txt)" "$(sha rep.txt)"
+ok "보고함: POST" "$($C --data-binary @rep.txt http://10.1.10.1/r/b.txt)" "ok $(stat -c %s rep.txt)"
+ok "보고함: POST 내용 일치" "$(sha drop/watchreport/b.txt)" "$(sha rep.txt)"
+head -c 1000 rep.txt > rs.txt; hx=$(od -An -v -tx1 rs.txt | tr -d ' \n'); i=0; last=""
+while [ -n "$hx" ]; do piece=${hx:0:300}; hx=${hx:300}; e=""; [ -z "$hx" ] && e="&end=1"; last=$($C "http://10.1.10.1/g?n=c.txt&i=$i&d=$piece$e"); i=$((i+1)); done
+ok "보고함: 조각으로 올리기" "$last" "ok 1000"
+ok "보고함: 조각 내용 일치" "$(sha drop/watchreport/c.txt)" "$(sha rs.txt)"
+ok "보고함: 없는 주소" "$($C http://10.1.10.1/zzz)" "not found"
 r=$($C -o /dev/null -w "%{exitcode}" http://10.1.10.50:1/ 2>/dev/null); ok "닫힌 포트는 바로 거절" "$r" "7"
 r=$($C -o dl/cut.bin -w "%{exitcode}" http://10.1.10.50:8099/cut 2>/dev/null); ok "서버가 중간에 끊음 → 오류로 끝남(멈추지 않음)" "$r" "18"
 ok "DNS 넘겨주기" "$(python3 dnsq.py 10.1.10.53 test.example)" "(1, 0, '10.1.10.50')"
