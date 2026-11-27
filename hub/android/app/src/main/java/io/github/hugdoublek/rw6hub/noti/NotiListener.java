@@ -102,6 +102,8 @@ public class NotiListener extends NotificationListenerService {
         // 메신저형 알림: 최근 메시지들 중 아직 안 보낸 사진을 모두 찾는다
         // (사진 뒤에 글이 바로 오거나, 여러 장을 한 번에 보내는 경우 대비)
         List<PhotoMsg> photos = new ArrayList<>();
+        boolean lastAlready = false; // 마지막 메시지가 이미 그림으로 보낸 바로 그 메시지인가 (알림이 갱신돼 다시 온 것)
+        String lastWhy = "메시지 묶음 없음"; // 마지막 메시지에 그림이 왜 없는지 (이모티콘이 글로만 갈 때 기록용)
         // 알림 하나에 메시지가 여러 개 쌓여 오면(연달아 왔을 때) 마지막 것만 보내던 문제 → 놓친 글 메시지도 찾아 보냄
         List<String[]> missed = new ArrayList<>(); // {보낸 사람, 글, 시각}
         Parcelable[] msgs = ex.getParcelableArray(Notification.EXTRA_MESSAGES);
@@ -140,12 +142,20 @@ public class NotiListener extends NotificationListenerService {
                     if (fresh && i != msgs.length - 1 && mt >= STARTED && lastT > 0 && lastT - mt < 10 * 60 * 1000L)
                         missed.add(0, new String[]{who, mtxt.toString(), String.valueOf(mt)});
                 }
-                if (isImg && uri instanceof Uri && !stale && !sentUris.contains(uri.toString())) {
+                // 0.92: '이미 보낸 그림'을 그림 주소만으로 가리면, 같은 이모티콘을 또 받았을 때(주소가 같음) 그림을 안 보내고
+                // '이모티콘을 보냈습니다' 글만 가던 문제 → 주소 + 메시지 시각으로 가림 (같은 메시지가 알림 갱신으로 다시 오는 것만 거름)
+                String picKey = uri instanceof Uri ? uri + "|" + mt : null;
+                if (i == msgs.length - 1) {
+                    lastAlready = isImg && picKey != null && sentUris.contains(picKey);
+                    lastWhy = "그림 종류=" + type + ", 그림 주소 " + (uri instanceof Uri ? "있음" : "없음")
+                            + (picKey != null && sentUris.contains(picKey) ? ", 이미 보낸 메시지" : "") + (stale ? ", 오래된 메시지" : "");
+                }
+                if (isImg && uri instanceof Uri && !stale && !sentUris.contains(picKey)) {
                     CharSequence t = m.getCharSequence("text");
                     String ts = t == null ? "" : t.toString();
                     // 카톡 이모티콘: '이모티콘을 보냈습니다.' + 그림 → 사진보다 작게 보냄
                     boolean emo = ts.contains(EMOTICON) || (i == msgs.length - 1 && text.contains(EMOTICON));
-                    photos.add(0, new PhotoMsg(who, ts, (Uri) uri, m.getLong("time", sbn.getPostTime()), emo));
+                    photos.add(0, new PhotoMsg(who, ts, (Uri) uri, m.getLong("time", sbn.getPostTime()), emo, picKey));
                 }
             }
         }
@@ -212,7 +222,7 @@ public class NotiListener extends NotificationListenerService {
 
         if (prefs.pictures() && !photos.isEmpty()) {
             for (PhotoMsg ph : photos) {
-                sentUris.add(ph.uri.toString());
+                sentUris.add(ph.key);
                 // 사진은 받는 데 시간이 걸리니, 먼저 '보낸 사람: 사진' 글 알림을 즉시 보내고 같은 자리에 사진을 끼움
                 sendText(prefs, fIcon, fApp, fConv, ph.sender, ph.emoticon ? "이모티콘" : "사진", ph.time, ph.stamp, true);
                 // 카톡은 알림을 먼저 띄우고 사진을 나중에 내려받는 일이 있어, 실패하면 잠시 뒤 다시 읽는다
@@ -224,7 +234,14 @@ public class NotiListener extends NotificationListenerService {
             return;
         }
 
+        // 0.92: 이미 그림으로 보낸 메시지가 알림 갱신으로 다시 온 것이면 끝 — 예전엔 여기서 '이모티콘을 보냈습니다' 글 알림이 한 번 더 갔음
+        if (lastAlready && prefs.pictures()) return;
+
         Bitmap picture = prefs.pictures() ? bigPicture(ex) : null;
+        if (picture == null && text.contains(EMOTICON)) {
+            // 이모티콘인데 그림 없이 글로만 감 → 이유를 남김 (알림에 그림이 안 실려 온 것인지 등)
+            prefs.addHistory(now() + " " + sender + ": 이모티콘이 글로만 감 — " + lastWhy + (prefs.pictures() ? "" : ", 사진 보내기 꺼짐"));
+        }
         if (picture == null && text.contains("사진")) {
             prefs.addHistory(now() + " " + sender + ": '" + text + "' — 알림에 사진 정보가 없음");
         }
@@ -392,7 +409,8 @@ public class NotiListener extends NotificationListenerService {
         /** 워치에서 쓰는 이름 (글 알림 먼저 → 사진이 같은 이름으로 대체) */
         final String stamp = String.valueOf(System.currentTimeMillis() + (SEQ++ % 1000));
         final boolean emoticon;
-        PhotoMsg(String s, String t, Uri u, long w, boolean e) { sender = s; text = t; uri = u; time = w; emoticon = e; }
+        final String key; // 이미 보냈는지 가리는 열쇠 (그림 주소 + 메시지 시각)
+        PhotoMsg(String s, String t, Uri u, long w, boolean e, String k) { sender = s; text = t; uri = u; time = w; emoticon = e; key = k; }
     }
 
     private String diagnose(StatusBarNotification sbn) {
