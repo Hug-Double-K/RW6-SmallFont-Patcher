@@ -14,9 +14,10 @@ public class HubApp extends Application {
                 QuickApps q = QuickApps.get(this);
                 String pkg = q.target(io.github.hugdoublek.rw6hub.noti.Wearable.WATCH_PACKAGE);
                 // 답을 먼저 돌려주고 0.1초 뒤에 연다(0.83 은 0.4초 — 빨리 뜨게 줄임): 워치페이스가 답을 기다리며 멈춰 있는 동안 앱이 뜨면 워치가 재시작된 적이 있음(2026-11-27)
-                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() ->
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        io.github.hugdoublek.rw6hub.noti.WatchSender.launchAt = System.currentTimeMillis();
                         q.launch(pkg, "/index", err -> WatchLink.get(this).log(err == null
-                                ? "워치 요청: RW6 알림 열기 보냄 (" + pkg + ")" : "워치 요청: RW6 알림 열기 실패 — " + err)), 100);
+                                ? "워치 요청: RW6 알림 열기 보냄 (" + pkg + ")" : "워치 요청: RW6 알림 열기 실패 — " + err)); }, 100);
                 return "ok " + pkg;
             }
             if (name.equals("weather")) {   // 워치페이스용: 지금 기온(정수). 없으면 "none"

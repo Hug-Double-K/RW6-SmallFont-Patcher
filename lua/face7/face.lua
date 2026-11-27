@@ -4,7 +4,7 @@
 -- 아직 워치에서 안 돌려 본 것은 사용자가 버튼을 누를 때만, 한 번에 하나씩, 부르기 직전에 기록을 남기고 부른다:
 --   '값 시험' = dataman.subscribe(키, 물체, 함수) 한 가지 키. 나가기는 화면 길게 누르기(워치페이스 바꾸기)로 — 사용자 확인 2026-11-27
 local lvgl, root, log, mode = ...
-local FACE_VER = 2
+local FACE_VER = 3
 -- 같은 파일을 두 가지로 씀: 패처 목록의 Test-Face(시험 버튼 있음) / 정식 워치페이스(lua/face7/main.lua 가 "face" 로 부름: 버튼 없음, 스스로 새 판 확인)
 local isFace = (mode == "face")
 local FACE_BASE = "https://raw.githubusercontent.com/Hug-Double-K/RW6-SmallFont-Patcher/main/lua/face7/"
@@ -403,6 +403,43 @@ local function checkUpdate()
     uploadAt = uploadAt or (now() + 3)
 end
 
+---------------------------------------------------------------- 조사(한 번만, 읽기만): RW6 알림 앱이 알림 목록을 워치 어디에 두는지
+-- 워치페이스가 그 파일을 직접 읽을 수 있으면 앱을 켜지 않고 바로 목록을 보여 줄 수 있음(초저지연 후보). 알림 내용은 올리지 않고 자리·크기·칸 이름만 기록.
+local function sh(command, limit)
+    local out = tmp .. "rw6-face-sh.txt"
+    os.remove(out)
+    safe(os.execute, command .. " > " .. out)
+    local text = readAll(out, limit or 3000) or ""
+    os.remove(out)
+    return (string.gsub(text, "%s+", " "))
+end
+local probed = readAll(dir .. "probe1.txt", 4) ~= nil
+local function probeNoti()
+    writeAll(dir .. "probe1.txt", "1")
+    for _, base in ipairs({ "/data/quickapp/mass", "/data/quickapp/files" }) do
+        local top = sh("ls " .. base)
+        note("조사 " .. base .. ": " .. string.sub(top, 1, 500))
+        for name in string.gmatch(top, "%S+") do
+            name = string.gsub(name, "/$", "")
+            if string.find(name, "wechat", 1, true) or string.find(name, "rw6noti", 1, true) then
+                local d = base .. "/" .. name
+                note("조사 " .. d .. ": " .. string.sub(sh("ls " .. d), 1, 300))
+                local text = readAll(d .. "/rw6noti_meta/index.json", 200000)
+                if text then
+                    local keys, seen = {}, {}
+                    for key in string.gmatch(string.sub(text, 1, 1500), '"(%a+)":') do
+                        if not seen[key] then seen[key] = true keys[#keys + 1] = key end
+                    end
+                    note("조사 목록 파일 O " .. d .. "/rw6noti_meta/index.json " .. #text .. "바이트, 칸: " .. table.concat(keys, " "))
+                else
+                    note("조사 목록 파일 X " .. d .. "/rw6noti_meta/index.json")
+                end
+            end
+        end
+    end
+    uploadAt = uploadAt or (now() + 3)
+end
+
 ---------------------------------------------------------------- 1초마다
 local weatherAt = 0           -- 다음에 기온을 물어볼 때
 local updateAt = now() + 40   -- 다음에 새 판을 확인할 때
@@ -426,6 +463,9 @@ tick = function()
         if temp then values.temp = tonumber(temp) pcall(drawValues) elseif #got == 0 then weatherAt = t + 600 end
         note("기온 물음: " .. phoneSeen)
         if not uploadAt then uploadAt = t + 3 end
+    elseif face and not probed and t - startTime >= 60 and t - lastLaunch > 6 then
+        probed = true
+        safe(probeNoti)
     elseif isFace and face and t >= updateAt and t - lastLaunch > 6 then
         updateAt = t + 6 * 3600
         safe(checkUpdate)

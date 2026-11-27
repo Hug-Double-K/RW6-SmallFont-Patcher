@@ -251,6 +251,9 @@ public final class WatchSender {
     }
 
     /** 밀린 알림이 있으면 곧바로 다시 시도 (워치가 응답했거나 다른 알림이 잘 갔을 때) */
+    /** 워치페이스(용두·말풍선)가 시켜서 앱을 연 시각 — 앱이 준비됐다고 할 때까지 걸린 시간을 기록하려고 */
+    public static volatile long launchAt = 0;
+
     private static boolean atLeast(String version, double min) {
         try { return Double.parseDouble(version.trim()) >= min - 1e-9; } catch (Exception e) { return false; }
     }
@@ -349,7 +352,18 @@ public final class WatchSender {
                     if (am.find()) { Runnable r = ACK.remove(am.group()); if (r != null) new Handler(Looper.getMainLooper()).post(r); }
                     return;
                 }
+                if (s.contains("\"tm\"")) { // 워치 앱이 켜지는 데 걸린 시간(4.9부터): 스크립트 시작부터 화면 준비·폰 답·목록 그림까지 ms
+                    java.util.regex.Matcher tm = java.util.regex.Pattern.compile("\"tm\"\\s*:\\s*\"([^\"]*)\"").matcher(s);
+                    if (tm.find()) io.github.hugdoublek.rw6hub.WatchLink.get(app).log("워치 앱 켜짐 시간(ms): " + tm.group(1));
+                    return;
+                }
                 if (s.contains("ready")) { // 워치 앱 준비됨 → 기다리던 전송 시작
+                    long la = launchAt;
+                    if (la > 0) {
+                        launchAt = 0;
+                        long took = System.currentTimeMillis() - la;
+                        if (took < 15000) io.github.hugdoublek.rw6hub.WatchLink.get(app).log("RW6 알림 열기: 보낸 뒤 " + took + "ms 만에 앱이 준비됨");
+                    }
                     Runnable r = readyWaiter;
                     java.util.regex.Matcher vm = java.util.regex.Pattern.compile("\"v\"\\s*:\\s*\"([^\"]*)\"").matcher(s);
                     // 보낼 알림이 하나도 없으면 바로 "N"(없음)이라고 답함 → 워치 앱이 0.7초 기다리지 않고 곧바로 목록을 띄움 (워치 앱 4.8부터 알아들음)

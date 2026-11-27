@@ -99,6 +99,9 @@ let maxSave = 40  // 폰에서 설정(20~80). 설정이 오기 전 기본 40
 const WAIT_MS = 700
 let conn = null
 let waitTimer = null
+// 켜지는 데 걸린 시간 재기 (폰 기록에 남김): 스크립트 시작 / 화면 준비 / 폰의 '없음' 답 / 목록 그림
+const T0 = Date.now()
+let tInit = 0, tNone = 0, tSent = false
 let closeTimer = null // 도착 화면을 닫는 타이머 (한 번에 하나만)
 let arrivedAt = 0 // 마지막 알림이 도착한 시각
 let browsing = false // 목록을 직접 만지며 보는 중 (그동안엔 새 알림이 와도 화면을 바꾸거나 앱을 닫지 않음)
@@ -165,6 +168,7 @@ export default {
 
   onInit() {
     const self = this
+    tInit = Date.now()
     gotSetting = false
     browsing = false
     needS = false
@@ -237,7 +241,7 @@ export default {
       }
       if (k === 'Q') { self.ready(); return }
       // 폰: 보낼 알림 없음 → 기다리지 않고 바로 목록 (직접 열었을 때 빨리 뜨게)
-      if (k === 'N') { if (self.mode === 'wait') { if (waitTimer) { clearTimeout(waitTimer); waitTimer = null } self.showList() } return }
+      if (k === 'N') { if (!tNone) tNone = Date.now(); if (self.mode === 'wait') { if (waitTimer) { clearTimeout(waitTimer); waitTimer = null } self.showList() } return }
       // 순번(2) + 구분(1) + 이름(13) + 데이터.  구분: D/E 글, f/g JPEG, d/e PNG (소문자 d·f = 중간 조각)
       const flag = d.substr(2, 1)
       const kind = (flag === 'D' || flag === 'E') ? 'json' : (flag === 'f' || flag === 'g') ? 'jpg' : 'png'
@@ -340,8 +344,9 @@ export default {
   showList() {
     if (waitTimer) { clearTimeout(waitTimer); waitTimer = null }
     this.mode = 'list'
-    // 미리 읽어 둔 게 있으면 그대로 바로 (고정 목록도 읽은 뒤)
-    this.pinsLoad(() => { if (IDX) this.applyList(); else this.idxLoad(() => this.applyList()) })
+    // 미리 읽어 둔 게 있으면 파일을 다시 읽지 않고 바로 그림 (4.9: 고정 목록도 이미 읽었으면 다시 안 읽음)
+    const go = () => { if (IDX) this.applyList(); else this.idxLoad(() => this.applyList()) }
+    if (pinsLoaded) go(); else this.pinsLoad(go)
   },
 
   // 도착 화면에서 알림을 누르면 읽기 화면으로 ('끄기' = 지우고 앱 닫기, 뒤로 = 도착 화면)
@@ -577,6 +582,12 @@ export default {
     this.notis = (IDX || []).length // 개수는 늘 '메시지 수' (카드 수가 아님)
     this.loaded = true
     this.report()
+    if (!tSent) {
+      tSent = true
+      const tList = Date.now()
+      // 화면에 그려진 뒤(다음 차례)에 폰으로: 준비,없음 답,목록 만듦,그린 뒤 (모두 스크립트 시작부터 ms; 0 = 없었음),알림 수
+      setTimeout(() => { try { if (conn) conn.send({ data: { tm: `${tInit - T0},${tNone ? tNone - T0 : 0},${tList - T0},${Date.now() - T0},${(IDX || []).length}` } }) } catch (e) {} }, 0)
+    }
   },
 
   scrollToTop() {
