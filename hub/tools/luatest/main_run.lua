@@ -14,16 +14,17 @@ local function slurp(p) local f = io.open(p, "rb") if not f then return nil end 
 local function put(path, text) local f = assert(io.open(path, "wb")) f:write(text) f:close() end
 local curls, launches, uploads = {}, 0, {}
 os.execute = function(cmd)
+    if string.find(cmd, "^ls ") then return 1 end
     if not string.find(cmd, "^curl ") then return 0 end
     curls[#curls + 1] = cmd
     local out = assert(string.match(cmd, " %-o (%S+)$"), cmd)
     if string.find(cmd, "face7/face.lua", 1, true) then
         if SCEN == "M4" then return 1 end
         local text = slurp(REPO .. "face.lua")
-        if string.find(cmd, "-m 40", 1, true) then text = string.gsub(text, "local FACE_VER = 3\n", "local FACE_VER = 4\n") end   -- 새 판 받기
+        if string.find(cmd, "-m 40", 1, true) then text = string.gsub(text, "local FACE_VER = 4\n", "local FACE_VER = 5\n") end   -- 새 판 받기
         put(out, text)
     elseif string.find(cmd, "face7.pak", 1, true) then put(out, slurp(REPO .. "face7.pak"))
-    elseif string.find(cmd, "version.txt", 1, true) then put(out, "4\n")
+    elseif string.find(cmd, "version.txt", 1, true) then put(out, "5\n")
     elseif string.find(cmd, "/do/weather", 1, true) then put(out, "temp 9\n")
     elseif string.find(cmd, "/do/launch-noti", 1, true) then launches = launches + 1 put(out, "ok x\n")
     elseif string.find(cmd, "-T ", 1, true) then uploads[#uploads + 1] = slurp(string.match(cmd, "%-T (%S+)")) put(out, "ok 1\n")
@@ -54,22 +55,22 @@ end
 for _ = 1, 30 do mock.pump() end         -- 받기·그림 풀기
 assert(has("bg.png"), labels())
 assert(slurp(DIR .. "boot.txt") == "0", "무사히 떴으면 0: " .. tostring(slurp(DIR .. "boot.txt")))
-for _, o in ipairs(mock.created) do assert(not (o.kind == "Object" and o.props.h == 40), "정식판에 시험 버튼이 있음") end
+assert(not button("값 시험") and not button("값 상태"), "정식판에 시험 버튼이 있음")
 assert(subs.systemStatusBattery and subs.healthStepCount and subs.healthHeartRate, "값 세 가지를 스스로 들어야 함")
 subs.systemStatusBattery(24064) subs.healthStepCount(1493760) subs.healthHeartRate(19712)
 assert(has("bat_9.png") and has("bat_4.png") and has("st_5.png") and has("st_8.png") and has("val_7.png"))
 step(4) assert(has("val_9.png"), "기온 9")
 -- 용두 / 말풍선 터치
-root:fire(62) root:fire(63) root:fire(145) mock.pump()
-assert(launches == 1)
+root:fire(62) root:fire(63) root:fire(145) mock.pump() assert(launches == 0, "용두로는 안 엶")
+
 step(12)
 local tap
 for _, o in ipairs(mock.created) do if o.kind == "Object" and o.props.w == 96 then tap = o end end
 tap:fire(mock.EVENT.CLICKED) mock.pump()
-assert(launches == 2, "말풍선 터치로 열기")
+assert(launches == 1, "말풍선 터치로 열기")
 -- 새 판 확인(40초 뒤): 저장소 2 → 받아서 저장, 지금 화면은 그대로
 step(45)
-assert(string.find(slurp(DIR .. "face.lua"), "local FACE_VER = 4\n", 1, true), "새 판 저장")
-step(5) assert(string.find(uploads[#uploads], "새 판 4 받음", 1, true), uploads[#uploads])
+assert(string.find(slurp(DIR .. "face.lua"), "local FACE_VER = 5\n", 1, true), "새 판 저장")
+step(5) assert(string.find(uploads[#uploads], "새 판 5 받음", 1, true), uploads[#uploads])
 for _, c in ipairs(curls) do assert(string.find(c, "raw.githubusercontent", 1, true) or string.find(c, "connect-timeout", 1, true), "시간 제한 없는 폰 요청: " .. c) end
 print(SCEN .. " 통과 / curl " .. #curls .. "번")

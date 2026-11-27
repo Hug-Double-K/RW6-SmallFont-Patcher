@@ -19,8 +19,10 @@ if SCEN ~= "B" then
 end
 if SCEN ~= "D" then package.preload["navigator"] = function() return { finish = function() finished = finished + 1 end } end end
 local curls, uploads, launches = {}, {}, 0
+local realExec = os.execute
 local function put(path, text) local f = assert(io.open(path, "wb")) f:write(text) f:close() end
 os.execute = function(cmd)
+    if string.find(cmd, "^ls ") then return realExec(cmd .. " 2>/dev/null") end
     if not string.find(cmd, "^curl ") then return 0 end
     curls[#curls + 1] = cmd
     local out = string.match(cmd, " %-o (%S+)$")
@@ -64,11 +66,13 @@ if SCEN ~= "B" then
     for _ = 1, 30 do mock.pump() end           -- 받기 + 풀기(12장씩)
 end
 if SCEN == "C" then assert(string.find(labels(), "잘림 X", 1, true), labels()) assert(not io.open(DIR .. "ver.txt")) print("C 통과: " .. labels()) return end
-local buttons = {}
-for i = before + 1, #mock.created do local o = mock.created[i] if o.kind == "Object" and o.props.h == 40 then buttons[#buttons + 1] = o end end
-assert(#buttons == 2, "버튼 수 " .. #buttons .. " / " .. labels())
+local function button(text) for i = before + 1, #mock.created do local o = mock.created[i] if o.kind == "Label" and o.props.text == text then return mock.created[i - 1] end end end
+local function label(text) for i = before + 1, #mock.created do local o = mock.created[i] if o.kind == "Label" and o.props.text == text then return o end end end
+local buttons = { button("값 시험") or button("값 상태") }
+assert(buttons[1], "값 시험 버튼 / " .. labels())
 if SCEN == "E" then step(6) assert(string.find(uploads[#uploads], "그림 오류 1%d", 1) or string.find(uploads[#uploads], "그림 오류 %d+"), uploads[#uploads]) print("E 통과(그림 기능이 없어도 안 죽음)") return end
 local E = mock.EVENT
+local NOTI = os.getenv("NOTI_FILE")
 assert(io.open(DIR .. "ver.txt")):close()
 -- 시계·날짜
 assert(shownAt(0, 0) == "bg")
@@ -83,34 +87,38 @@ else
 end
 dateText = "2026 11 27 21 02" step(1)
 assert(shownAt(290, 122) == "time_2")
--- 터치만: 안 엶 / 용두(62 63 뒤 145 두 번): 한 번만 엶 / 혼자 온 145: 안 엶 / 8초 안 다시: 안 엶
-root:fire(62) root:fire(63) step(1)
+-- 틀: 시계 쪽은 y=0, 알림 쪽은 그 위(y=-514). 용두 신호로는 이제 안 엶.
+local scroller, facePage, listPage = mock.created[before + 1], mock.created[before + 2], mock.created[before + 3]
+assert(facePage.props.y == 0 and listPage.props.y == -514 and not scroller.flags[mock.FLAG.SCROLLABLE] == true)
 local base = #curls
-root:fire(62) root:fire(63) root:fire(145) root:fire(145) root:fire(21)
-mock.pump() clock = clock + 1
 local function launchCurls() local n = 0 for i = base + 1, #curls do if string.find(curls[i], "launch-noti", 1, true) then n = n + 1 end end return n end
-local want = (SCEN == "B") and 2 or 1          -- 폰이 없으면 두 가지 꼴을 다 해 봄(둘 다 답 없음)
-assert(launchCurls() == want, "열기 요청 " .. launchCurls())
-assert(string.find(curls[#curls], "launch-noti", 1, true), "열기 요청 뒤에 다른 일을 함: " .. curls[#curls])
-step(4) root:fire(145) step(1) root:fire(62) root:fire(63) root:fire(145) step(1)
-assert(launchCurls() == want, "되풀이해서 엶")
-step(20)
--- 다시 열 준비가 된 뒤에는 또 열림 / 앱에서 돌아온 직후(쉬었다 옴)의 신호로는 안 엶
-root:fire(62) root:fire(63) root:fire(145) mock.pump() clock = clock + 1
-assert(launchCurls() == 2 * want, "조용해진 뒤 다시 돌렸는데 안 엶 " .. launchCurls())
-clock = clock + 40 mock.pump()                         -- 앱이 40초 떠 있다가 돌아옴
 root:fire(62) root:fire(63) root:fire(145) root:fire(145) step(2)
-assert(launchCurls() == 2 * want, "돌아온 직후 신호로 다시 엶")
-step(8) want = 2 * want
-if SCEN ~= "B" then assert(#uploads >= 1 and string.find(uploads[#uploads], "열기 요청 (용두)", 1, true) and string.find(uploads[#uploads], "쉬었다 옴 4", 1, true) and string.find(uploads[#uploads], "145@%d+x2"), uploads[#uploads]) end
--- 용두 끔
-buttons[2]:fire(E.CLICKED) buttons[2]:fire(E.CLICKED)        -- 같은 누름이 두 번 와도 한 번만
-assert(string.find(labels(), "용두 끔", 1, true))
-root:fire(62) root:fire(63) root:fire(145) step(2)
-assert(launchCurls() == want)
+assert(launchCurls() == 0, "용두 신호로 열면 안 됨")
+local want = (SCEN == "B") and 2 or 1
+if NOTI then
+    -- 알림 쪽: 최신 2개가 보이고(그림 문자는 빠짐, 긴 글은 잘림), 누르면 앱을 엶
+    assert(label("알림 3"), labels())
+    assert(label("카카오톡  " .. os.date("%H:%M", 1795000000)) or label("카카오톡  " .. os.date("%m/%d %H:%M", 1795000000)), labels())
+    assert(label("홍길동") and label("안녕 하세요 줄바꿈 뒤") and label("사진 알림"), labels())
+    assert(label("가나다라마바사아자차카타파하가나다라마바사아자차.."), labels())
+    local row = mock.created[before + 1] for i = before + 1, #mock.created do local o = mock.created[i] if o.kind == "Object" and o.props.h == 96 then row = o break end end
+    row:fire(E.CLICKED) mock.pump() clock = clock + 1
+    assert(launchCurls() == want, "목록을 눌러 열기 " .. launchCurls())
+    assert(string.find(curls[#curls], "launch-noti", 1, true), "열기 요청 뒤에 다른 일을 함")
+    -- 새 알림이 오면(파일이 바뀌면) 밀기 시작 때 새로 그림, 지워지면 줄이 숨겨짐
+    local f = io.open(NOTI, "wb") f:write('[{"name":"1795000300000","kind":"text","a":"문자","s":"새 사람","b":"새 글","w":1795000300000}]') f:close()
+    step(3) scroller:fire(mock.EVENT.SCROLL_BEGIN)
+    assert(label("알림 1") and label("새 사람") and not label("홍길동"), labels())
+    local hidden = 0 for i = before + 1, #mock.created do local o = mock.created[i] if o.kind == "Object" and o.props.h == 96 and o.flags[mock.FLAG.HIDDEN] then hidden = hidden + 1 end end
+    assert(hidden == 2, "남은 줄 숨김 " .. hidden)
+    button("시계로"):fire(E.CLICKED) assert(scroller.scrolledTo and scroller.scrolledTo.y == 0)
+    step(12)
+else
+    assert(label("알림 목록을 못 찾음"), labels())
+end
 -- 값 시험: 누를 때마다 한 가지 키
 step(3)
-for i = 1, 4 do buttons[1]:fire(E.CLICKED) step(3) end
+for i = 1, 4 do (button("값 시험") or button("값 상태")):fire(E.CLICKED) step(3) end
 local keys = io.open(DIR .. "keys.txt"):read("*a")
 if SCEN == "A" then
     assert(subs.systemStatusBattery and subs.healthStepCount and subs.healthHeartRate)

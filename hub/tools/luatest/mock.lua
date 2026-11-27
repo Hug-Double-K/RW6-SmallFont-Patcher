@@ -8,6 +8,7 @@ local function obj(kind, parent, props)
     function o:add_flag(f) assert(f ~= nil, "nil flag") self.flags[f] = true end
     function o:clear_flag(f) assert(f ~= nil, "nil flag") self.flags[f] = nil end
     function o:Image(p) if M.imageFails then error('no Image') end local c = obj('Image', self, p) c.parent = self return c end
+    function o:scroll_to(t) assert(type(t) == 'table') self.scrolledTo = t end
     function o:onevent(code, fn) assert(code ~= nil, "nil event code") assert(type(fn) == "function") self.handlers[#self.handlers + 1] = { code = code, fn = fn } end
     function o:fire(code, passCode)
         for _, h in ipairs(self.handlers) do
@@ -28,7 +29,7 @@ M.HOR_RES = function() return 432 end
 M.VER_RES = function() return 514 end
 M.FLAG = { SCROLLABLE = 1, CLICKABLE = 2, HIDDEN = 3, EVENT_BUBBLE = 4 }
 M.ALIGN = { CENTER = 9 }
-M.EVENT = { CLICKED = 7, PRESSED = 1, RELEASED = 8, KEY = 13, GESTURE = 12, SCROLL = 11, DRAW_MAIN = 21, STYLE_CHANGED = 40, FOCUSED = 14 }
+M.EVENT = { CLICKED = 7, PRESSED = 1, RELEASED = 8, KEY = 13, GESTURE = 12, SCROLL = 11, SCROLL_BEGIN = 9, DRAW_MAIN = 21, STYLE_CHANGED = 40, FOCUSED = 14 }
 if SCEN == "A" or SCEN == "C" then
     M.EVENT.ALL = 0
     local function dev(t) return { get_type = function() return t end, get_key = function() return 19 end, get_gesture_dir = function() return 2 end } end

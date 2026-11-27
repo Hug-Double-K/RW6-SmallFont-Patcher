@@ -4,7 +4,7 @@
 -- 아직 워치에서 안 돌려 본 것은 사용자가 버튼을 누를 때만, 한 번에 하나씩, 부르기 직전에 기록을 남기고 부른다:
 --   '값 시험' = dataman.subscribe(키, 물체, 함수) 한 가지 키. 나가기는 화면 길게 누르기(워치페이스 바꾸기)로 — 사용자 확인 2026-11-27
 local lvgl, root, log, mode = ...
-local FACE_VER = 3
+local FACE_VER = 4
 -- 같은 파일을 두 가지로 씀: 패처 목록의 Test-Face(시험 버튼 있음) / 정식 워치페이스(lua/face7/main.lua 가 "face" 로 부름: 버튼 없음, 스스로 새 판 확인)
 local isFace = (mode == "face")
 local FACE_BASE = "https://raw.githubusercontent.com/Hug-Double-K/RW6-SmallFont-Patcher/main/lua/face7/"
@@ -121,9 +121,38 @@ end
 
 ---------------------------------------------------------------- 화면 바탕
 -- 화면 전체를 덮되(아래 깔린 패처 버튼이 눌리지 않게) 신호는 위로 넘긴다 → 길게 누르기 등 워치 기본 동작이 살아 있게.
-local panel = lvgl.Object(root, { x = 0, y = 0, w = W, h = H, border_width = 0, pad_all = 0, radius = 0, bg_color = "#071B33" })
+-- 2026-11-27 사용자 결정: 용두는 안 써도 됨. 화면을 위에서 아래로 내리면 기본 알림 센터처럼 우리 알림을 보여 주기.
+-- 방법: 시계 화면을 '위아래로 밀리는 틀' 안에 넣고 그 바로 위(y = -H)에 알림 쪽을 둔다 → 아래로 밀면 알림 쪽이 내려옴(앱을 켜지 않으니 바로 보임).
+-- 틀이 스스로 밀릴 수 있는 동안에는 그 밀기가 워치(기본 알림 목록)로 넘어가지 않을 것으로 기대 — 워치에서 확인 필요.
+local scroller = lvgl.Object(root, { x = 0, y = 0, w = W, h = H, border_width = 0, pad_all = 0, radius = 0, bg_color = "#071B33" })
+if lvgl.FLAG.EVENT_BUBBLE then scroller:add_flag(lvgl.FLAG.EVENT_BUBBLE) end
+local scrollNotes = {}
+local function constant(group, name)          -- lvgl.<group>.<name> 이 있으면 그 값 (없으면 nil)
+    return safe(function() return lvgl[group][name] end)
+end
+local function tryFlag(object, name, on)
+    local flag = constant("FLAG", name)
+    if flag == nil then scrollNotes[#scrollNotes + 1] = name .. " 없음" return end
+    local ok = pcall(function() if on then object:add_flag(flag) else object:clear_flag(flag) end end)
+    scrollNotes[#scrollNotes + 1] = name .. (ok and (on and " 켬" or " 끔") or " X")
+end
+local function trySet(object, key, group, name)
+    local value = constant(group, name)
+    if value == nil then scrollNotes[#scrollNotes + 1] = group .. "." .. name .. " 없음" return end
+    local ok = pcall(function() object:set { [key] = value } end)
+    scrollNotes[#scrollNotes + 1] = key .. (ok and " O" or " X")
+end
+tryFlag(scroller, "SCROLL_ELASTIC", false)       -- 끝에서 더 밀면 튕기지 않고 워치 쪽으로 넘어가게(시계에서 위로 밀기 등)
+tryFlag(scroller, "SCROLL_ONE", true)            -- 한 번에 한 쪽씩
+trySet(scroller, "scroll_snap_y", "SCROLL_SNAP", "START")
+trySet(scroller, "scrollbar_mode", "SCROLLBAR_MODE", "OFF")
+trySet(scroller, "scroll_dir", "DIR", "VER")
+local panel = lvgl.Object(scroller, { x = 0, y = 0, w = W, h = H, border_width = 0, pad_all = 0, radius = 0, bg_color = "#071B33" })
 panel:clear_flag(lvgl.FLAG.SCROLLABLE)
 if lvgl.FLAG.EVENT_BUBBLE then panel:add_flag(lvgl.FLAG.EVENT_BUBBLE) end
+local listPage = lvgl.Object(scroller, { x = 0, y = -H, w = W, h = H, border_width = 0, pad_all = 0, radius = 0, bg_color = "#101114" })
+listPage:clear_flag(lvgl.FLAG.SCROLLABLE)
+if lvgl.FLAG.EVENT_BUBBLE then listPage:add_flag(lvgl.FLAG.EVENT_BUBBLE) end
 local statusLabel
 local function setStatus(text)
     if statusLabel then statusLabel:set { text = text } end
@@ -298,7 +327,7 @@ local function onEvent(code)
     if code == 62 or code == 63 then lastPair = t return end
     -- 145 = 용두를 돌린 뒤에 옴. 터치(62·63뿐)나, 기본 알림 목록이 닫힐 때 혼자 오는 145 와 가리려고 '62·63 뒤 2초 안의 145'만 침.
     -- armed: 한 번 연 뒤에는 화면이 4초쯤 조용해질 때까지 다시 열지 않음(앱에서 돌아올 때 오는 신호로 되풀이해 여는 것 막기).
-    if code == 145 and crownOn and armed and face and t - lastPair <= 2 then requestLaunch("용두") end
+    -- (용두로 열기는 뺌 — 사용자 결정 2026-11-27. 신호 기록만 남김)
 end
 local all = safe(function() return lvgl.EVENT.ALL end)
 if all ~= nil then pcall(function() root:onevent(all, function(_, code) if type(code) == "number" then onEvent(code) end end) end) end
@@ -356,8 +385,7 @@ local function buildFace()
     if not isFace then
         statusLabel = lvgl.Label(panel, { x = 190, y = 30, w = 222, h = 26, text = "", text_color = "#ffd166", text_font = font })
         local keyButton
-        keyButton, keyLabel = button(116, "값 시험", "#78d99b")
-        local crownButton, crownLabel = button(224, "용두 켬", "#71b7ff")
+        keyButton, keyLabel = button(170, "값 시험", "#78d99b")
         keyButton:onevent(lvgl.EVENT.CLICKED, function()
             if not pressOnce() then return end
             local key = nextKey()
@@ -366,12 +394,6 @@ local function buildFace()
             setStatus(keyTitle[key] .. " 듣기 " .. result)
             if not nextKey() then keyLabel:set { text = "값 상태" } end
             uploadAt = now() + 5
-        end)
-        crownButton:onevent(lvgl.EVENT.CLICKED, function()
-            if not pressOnce() then return end
-            crownOn = not crownOn
-            crownLabel:set { text = crownOn and "용두 켬" or "용두 끔" }
-            note("용두 열기 " .. (crownOn and "켬" or "끔"))
         end)
     end
     pcall(drawClock, true)
@@ -403,8 +425,7 @@ local function checkUpdate()
     uploadAt = uploadAt or (now() + 3)
 end
 
----------------------------------------------------------------- 조사(한 번만, 읽기만): RW6 알림 앱이 알림 목록을 워치 어디에 두는지
--- 워치페이스가 그 파일을 직접 읽을 수 있으면 앱을 켜지 않고 바로 목록을 보여 줄 수 있음(초저지연 후보). 알림 내용은 올리지 않고 자리·크기·칸 이름만 기록.
+---------------------------------------------------------------- 알림 쪽: RW6 알림 앱이 워치에 적어 둔 목록 파일을 직접 읽어 그림 (앱을 안 켬)
 local function sh(command, limit)
     local out = tmp .. "rw6-face-sh.txt"
     os.remove(out)
@@ -413,32 +434,217 @@ local function sh(command, limit)
     os.remove(out)
     return (string.gsub(text, "%s+", " "))
 end
-local probed = readAll(dir .. "probe1.txt", 4) ~= nil
-local function probeNoti()
-    writeAll(dir .. "probe1.txt", "1")
-    for _, base in ipairs({ "/data/quickapp/mass", "/data/quickapp/files" }) do
+-- 작은 JSON 풀이 (목록 파일 = [{name, kind, a 앱, s 보낸 사람, b 내용, w 받은 시각(ms) …}], 최신이 앞)
+local function encodeUtf8(code)          -- (워치의 Lua 에 utf8 묶음이 없을 수도 있어 직접 만듦)
+    if code < 0x80 then return string.char(code) end
+    if code < 0x800 then return string.char(0xC0 + code // 64, 0x80 + code % 64) end
+    if code < 0x10000 then return string.char(0xE0 + code // 4096, 0x80 + (code // 64) % 64, 0x80 + code % 64) end
+    return string.char(0xF0 + code // 262144, 0x80 + (code // 4096) % 64, 0x80 + (code // 64) % 64, 0x80 + code % 64)
+end
+local function decodeJson(text)
+    local pos = 1
+    local value
+    local function skip() pos = string.find(text, "%S", pos) or (#text + 1) end
+    local function str()
+        local out = {}
+        pos = pos + 1
+        while true do
+            local c = string.sub(text, pos, pos)
+            if c == "" then error("끝나지 않은 글") end
+            if c == '"' then pos = pos + 1 break end
+            if c == "\\" then
+                local n = string.sub(text, pos + 1, pos + 1)
+                if n == "u" then
+                    local code = tonumber(string.sub(text, pos + 2, pos + 5), 16) or 63
+                    pos = pos + 6
+                    if code >= 0xD800 and code <= 0xDBFF and string.sub(text, pos, pos + 1) == "\\u" then      -- 두 칸짜리 글자(그림 문자 등)
+                        local low = tonumber(string.sub(text, pos + 2, pos + 5), 16) or 0xDC00
+                        code = 0x10000 + (code - 0xD800) * 0x400 + (low - 0xDC00)
+                        pos = pos + 6
+                    end
+                    out[#out + 1] = encodeUtf8(code)
+                else
+                    out[#out + 1] = ({ n = "\n", t = " ", r = "", b = "", f = "" })[n] or n
+                    pos = pos + 2
+                end
+            else
+                local stop = string.find(text, '["\\]', pos) or (#text + 1)
+                out[#out + 1] = string.sub(text, pos, stop - 1)
+                pos = stop
+            end
+        end
+        return table.concat(out)
+    end
+    value = function()
+        skip()
+        local c = string.sub(text, pos, pos)
+        if c == "{" then
+            local t = {}
+            pos = pos + 1 skip()
+            if string.sub(text, pos, pos) == "}" then pos = pos + 1 return t end
+            while true do
+                skip()
+                if string.sub(text, pos, pos) ~= '"' then error("칸 이름 자리 " .. pos) end
+                local key = str()
+                skip()
+                if string.sub(text, pos, pos) ~= ":" then error(": 자리 " .. pos) end
+                pos = pos + 1
+                t[key] = value()
+                skip()
+                local d = string.sub(text, pos, pos)
+                pos = pos + 1
+                if d == "}" then return t elseif d ~= "," then error("} 자리 " .. pos) end
+            end
+        elseif c == "[" then
+            local t = {}
+            pos = pos + 1 skip()
+            if string.sub(text, pos, pos) == "]" then pos = pos + 1 return t end
+            while true do
+                t[#t + 1] = value()
+                skip()
+                local d = string.sub(text, pos, pos)
+                pos = pos + 1
+                if d == "]" then return t elseif d ~= "," then error("] 자리 " .. pos) end
+            end
+        elseif c == '"' then return str()
+        else
+            local word = string.match(text, "^[%w%.%-%+]+", pos)
+            if not word then error("모르는 글자 자리 " .. pos) end
+            pos = pos + #word
+            if word == "true" then return true elseif word == "false" then return false elseif word == "null" then return nil end
+            return tonumber(word)
+        end
+    end
+    return value()
+end
+-- 글자 수로 자르기 (워치 글꼴이 못 그리는 4바이트 글자 = 그림 문자는 뺌)
+local function cut(text, count)
+    local plain = string.gsub(tostring(text or ""), "[\240-\244][\128-\191]*", "")
+    plain = string.gsub(string.gsub(plain, "%s+", " "), "^ ", "")
+    local out, n = {}, 0
+    for ch in string.gmatch(plain, "[%z\1-\127\194-\239][\128-\191]*") do
+        n = n + 1
+        if n > count then out[#out + 1] = ".." break end
+        out[#out + 1] = ch
+    end
+    return table.concat(out)
+end
+local notiPath = readAll(dir .. "notipath.txt", 300)
+local searchedAt = -1000
+local function findIndex()
+    if notiPath and readAll(notiPath, 1) then return notiPath end
+    local t = now()
+    if t - searchedAt < 300 then return nil end           -- 못 찾았으면 5분에 한 번만 다시 찾음
+    searchedAt = t
+    notiPath = nil
+    for base in string.gmatch(safe(os.getenv, "RW6NOTI_BASES") or "/data/quickapp/mass /data/quickapp/files", "%S+") do
         local top = sh("ls " .. base)
-        note("조사 " .. base .. ": " .. string.sub(top, 1, 500))
+        note("찾기 " .. base .. ": " .. string.sub(top, 1, 400))
         for name in string.gmatch(top, "%S+") do
             name = string.gsub(name, "/$", "")
             if string.find(name, "wechat", 1, true) or string.find(name, "rw6noti", 1, true) then
-                local d = base .. "/" .. name
-                note("조사 " .. d .. ": " .. string.sub(sh("ls " .. d), 1, 300))
-                local text = readAll(d .. "/rw6noti_meta/index.json", 200000)
-                if text then
-                    local keys, seen = {}, {}
-                    for key in string.gmatch(string.sub(text, 1, 1500), '"(%a+)":') do
-                        if not seen[key] then seen[key] = true keys[#keys + 1] = key end
-                    end
-                    note("조사 목록 파일 O " .. d .. "/rw6noti_meta/index.json " .. #text .. "바이트, 칸: " .. table.concat(keys, " "))
-                else
-                    note("조사 목록 파일 X " .. d .. "/rw6noti_meta/index.json")
+                local path = base .. "/" .. name .. "/rw6noti_meta/index.json"
+                if readAll(path, 1) then
+                    notiPath = path
+                    writeAll(dir .. "notipath.txt", path)
+                    note("목록 파일 O " .. path)
+                    return path
                 end
+                note("찾기 " .. base .. "/" .. name .. ": " .. string.sub(sh("ls " .. base .. "/" .. name), 1, 300))
             end
         end
     end
+    note("목록 파일 X")
     uploadAt = uploadAt or (now() + 3)
+    return nil
 end
+local listTitle = lvgl.Label(listPage, { x = 60, y = 34, w = W - 120, h = 26, text = "알림", text_color = "#ffd166", text_font = font })
+local ROW_W, ROW_H, MAX_ROWS = W - 32, 104, 12
+local listBox = lvgl.Object(listPage, { x = 16, y = 70, w = ROW_W, h = H - 70 - 76, border_width = 0, pad_all = 0, radius = 0, bg_opa = 0 })
+tryFlag(listBox, "SCROLL_ELASTIC", false)        -- 목록 끝에서 더 밀면 바깥 틀로 넘어가 시계로 돌아가게
+trySet(listBox, "scrollbar_mode", "SCROLLBAR_MODE", "OFF")
+trySet(listBox, "scroll_dir", "DIR", "VER")
+local backButton = lvgl.Object(listPage, { x = 136, y = H - 66, w = W - 272, h = 40, radius = 10, border_width = 1, border_color = "#71b7ff",
+    bg_color = "#252830", pad_all = 0 })
+backButton:clear_flag(lvgl.FLAG.SCROLLABLE)
+backButton:add_flag(lvgl.FLAG.CLICKABLE)
+lvgl.Label(backButton, { text = "시계로", align = lvgl.ALIGN.CENTER, text_color = "#71b7ff", text_font = font })
+local scrollToNoted = false
+backButton:onevent(lvgl.EVENT.CLICKED, function()
+    local ok, err = pcall(function() scroller:scroll_to { y = 0, anim = true } end)
+    if not scrollToNoted then scrollToNoted = true note("시계로 버튼: scroll_to " .. (ok and "O" or ("X " .. tostring(err)))) uploadAt = uploadAt or (now() + 3) end
+end)
+local rows = {}
+local function rowAt(index)
+    local row = rows[index]
+    if row then return row end
+    local box = lvgl.Object(listBox, { x = 0, y = (index - 1) * ROW_H, w = ROW_W, h = ROW_H - 8, radius = 14, border_width = 0, bg_color = "#1C1E24", pad_all = 0 })
+    box:clear_flag(lvgl.FLAG.SCROLLABLE)
+    box:add_flag(lvgl.FLAG.CLICKABLE)
+    if lvgl.FLAG.EVENT_BUBBLE then box:add_flag(lvgl.FLAG.EVENT_BUBBLE) end
+    row = { box = box, shown = true,
+        head = lvgl.Label(box, { x = 14, y = 8, w = ROW_W - 28, h = 22, text = "", text_color = "#9aa0aa", text_font = font }),
+        sender = lvgl.Label(box, { x = 14, y = 34, w = ROW_W - 28, h = 24, text = "", text_color = "#ffffff", text_font = font }),
+        body = lvgl.Label(box, { x = 14, y = 62, w = ROW_W - 28, h = 24, text = "", text_color = "#c8ccd4", text_font = font }) }
+    box:onevent(lvgl.EVENT.CLICKED, function() requestLaunch("목록") end)       -- 누르면 RW6 알림 앱(자세히 보기)
+    rows[index] = row
+    return row
+end
+local function timeText(entry)
+    local ms = tonumber(entry.w) or 0
+    if ms <= 0 then ms = tonumber(entry.name) or 0 end
+    if ms <= 0 then return "" end
+    local secs = ms // 1000
+    local day, today = safe(os.date, "%m/%d", secs), safe(os.date, "%m/%d")
+    local clock = safe(os.date, "%H:%M", secs) or ""
+    return (day and day ~= today) and (day .. " " .. clock) or clock
+end
+local lastListText, listShown = nil, 0
+local function refreshList()
+    local path = findIndex()
+    if not path then listTitle:set { text = "알림 목록을 못 찾음" } return end
+    local text = readAll(path, 400000) or ""
+    if text == lastListText then return end
+    lastListText = text
+    local ok, list = pcall(decodeJson, text)
+    if not ok or type(list) ~= "table" then
+        listTitle:set { text = "알림 목록 읽기 X" }
+        note("목록 풀기 X " .. tostring(list))
+        uploadAt = uploadAt or (now() + 3)
+        return
+    end
+    listTitle:set { text = (#list > 0) and ("알림 " .. #list) or "수신된 알림이 없습니다" }
+    for index = 1, math.max(listShown, math.min(#list, MAX_ROWS)) do
+        local entry = (index <= MAX_ROWS) and list[index] or nil
+        if entry or rows[index] then
+            local row = rowAt(index)
+            if type(entry) == "table" then
+                local when = timeText(entry)
+                row.head:set { text = cut(entry.a ~= "" and entry.a or "알림", 16) .. (when ~= "" and ("  " .. when) or "") }
+                row.sender:set { text = cut(entry.kind == "img" and (entry.s ~= "" and entry.s or "사진 알림") or entry.s, 20) }
+                row.body:set { text = cut(entry.b, 24) }
+                if not row.shown then row.box:clear_flag(lvgl.FLAG.HIDDEN) row.shown = true end
+            elseif row.shown then
+                row.box:add_flag(lvgl.FLAG.HIDDEN)
+                row.shown = false
+            end
+        end
+    end
+    if listShown == 0 then note("목록 그림: " .. #list .. "개 / 틀 설정: " .. table.concat(scrollNotes, ", ")) uploadAt = uploadAt or (now() + 3) end
+    listShown = math.max(listShown, math.min(#list, MAX_ROWS))
+end
+-- 밀기 시작할 때마다 목록을 새로 읽음 (2초에 한 번까지). 밀기 신호가 없는 워치면 아래 1초 일에서 30초마다.
+local scrollBegin, lastRefresh = constant("EVENT", "SCROLL_BEGIN"), -100
+local sawScroll = false
+pcall(function()
+    scroller:onevent(lvgl.EVENT.ALL, function(_, code)
+        if scrollBegin ~= nil and code == scrollBegin and now() - lastRefresh >= 2 then
+            lastRefresh = now()
+            if not sawScroll then sawScroll = true note("밀기 신호 받음") end
+            pcall(refreshList)
+        end
+    end)
+end)
 
 ---------------------------------------------------------------- 1초마다
 local weatherAt = 0           -- 다음에 기온을 물어볼 때
@@ -463,9 +669,9 @@ tick = function()
         if temp then values.temp = tonumber(temp) pcall(drawValues) elseif #got == 0 then weatherAt = t + 600 end
         note("기온 물음: " .. phoneSeen)
         if not uploadAt then uploadAt = t + 3 end
-    elseif face and not probed and t - startTime >= 60 and t - lastLaunch > 6 then
-        probed = true
-        safe(probeNoti)
+    elseif face and t - lastRefresh >= 30 and t - lastLaunch > 6 then
+        lastRefresh = t
+        pcall(refreshList)
     elseif isFace and face and t >= updateAt and t - lastLaunch > 6 then
         updateAt = t + 6 * 3600
         safe(checkUpdate)
@@ -487,6 +693,7 @@ local function start()
         note("화면 만들기 X " .. tostring(err))
     end
     weatherAt = now() + 2
+    pcall(refreshList)
     tick()
 end
 local function ready()
