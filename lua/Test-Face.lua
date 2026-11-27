@@ -3,7 +3,11 @@
 -- 워치에서 이미 돈 기능만 씀: 화면 물체·그림(Image, 깔려 있는 Lua 워치페이스와 같은 꼴)·신호 듣기·타이머·파일·curl.
 -- 아직 워치에서 안 돌려 본 것은 사용자가 버튼을 누를 때만, 한 번에 하나씩, 부르기 직전에 기록을 남기고 부른다:
 --   '값 시험' = dataman.subscribe(키, 물체, 함수) 한 가지 키. 나가기는 화면 길게 누르기(워치페이스 바꾸기)로 — 사용자 확인 2026-11-27
-local lvgl, root, log = ...
+local lvgl, root, log, mode = ...
+local FACE_VER = 1
+-- 같은 파일을 두 가지로 씀: 패처 목록의 Test-Face(시험 버튼 있음) / 정식 워치페이스(lua/face7/main.lua 가 "face" 로 부름: 버튼 없음, 스스로 새 판 확인)
+local isFace = (mode == "face")
+local FACE_BASE = "https://raw.githubusercontent.com/Hug-Double-K/RW6-SmallFont-Patcher/main/lua/face7/"
 local W, H = 432, 514
 local font = lvgl.Font("MiSans-Medium", 18)
 local phone = "http://10.1.10.1"
@@ -69,6 +73,7 @@ local function saveKeys()
     writeAll(dir .. "keys.txt", table.concat(out, "\n") .. "\n")
 end
 local curlOpts, phoneSeen = nil, "아직 안 물어봄"
+if isFace then curlOpts = "--connect-timeout 2 -m 5 " end   -- 이 워치의 curl 이 아는 옵션(2026-11-27 확인). 정식판은 옵션 없는 꼴(오래 멈출 수 있음)을 쓰지 않음
 local imageErrors = 0
 local lastAnswer = ""
 local function buildReport()
@@ -338,36 +343,66 @@ local function buildFace()
     f.heart = slots("val", 288, 272, 20, 3)
     f.steps = slots("st", 248, 370, 29, 5)
     face = f
-    statusLabel = lvgl.Label(panel, { x = 190, y = 30, w = 222, h = 26, text = "", text_color = "#ffd166", text_font = font })
-    local keyButton, keyLabel = button(116, "값 시험", "#78d99b")
-    local crownButton, crownLabel = button(224, "용두 켬", "#71b7ff")
-    keyButton:onevent(lvgl.EVENT.CLICKED, function()
-        if not pressOnce() then return end
-        local key = nextKey()
-        if not key then setStatus(keysLine()) return end
-        local result = subscribe(key)
-        setStatus(keyTitle[key] .. " 듣기 " .. result)
-        if not nextKey() then keyLabel:set { text = "값 상태" } end
-        uploadAt = now() + 5
-    end)
-    crownButton:onevent(lvgl.EVENT.CLICKED, function()
-        if not pressOnce() then return end
-        crownOn = not crownOn
-        crownLabel:set { text = crownOn and "용두 켬" or "용두 끔" }
-        note("용두 열기 " .. (crownOn and "켬" or "끔"))
-    end)
+    -- 말풍선 그림 자리를 누르면 RW6 알림 (그림 방식 DK_07 의 253번 버튼 자리). 다른 앱(날씨·심박·타이머 등)은 Lua 에서 열 길이 없음.
+    local chatTap = lvgl.Object(panel, { x = 22, y = 366, w = 96, h = 96, radius = 0, border_width = 0, bg_opa = 0, pad_all = 0 })
+    chatTap:clear_flag(lvgl.FLAG.SCROLLABLE)
+    chatTap:add_flag(lvgl.FLAG.CLICKABLE)
+    if lvgl.FLAG.EVENT_BUBBLE then chatTap:add_flag(lvgl.FLAG.EVENT_BUBBLE) end
+    chatTap:onevent(lvgl.EVENT.CLICKED, function() requestLaunch("터치") end)
+    local keyLabel = nil
+    if not isFace then
+        statusLabel = lvgl.Label(panel, { x = 190, y = 30, w = 222, h = 26, text = "", text_color = "#ffd166", text_font = font })
+        local keyButton
+        keyButton, keyLabel = button(116, "값 시험", "#78d99b")
+        local crownButton, crownLabel = button(224, "용두 켬", "#71b7ff")
+        keyButton:onevent(lvgl.EVENT.CLICKED, function()
+            if not pressOnce() then return end
+            local key = nextKey()
+            if not key then setStatus(keysLine()) return end
+            local result = subscribe(key)
+            setStatus(keyTitle[key] .. " 듣기 " .. result)
+            if not nextKey() then keyLabel:set { text = "값 상태" } end
+            uploadAt = now() + 5
+        end)
+        crownButton:onevent(lvgl.EVENT.CLICKED, function()
+            if not pressOnce() then return end
+            crownOn = not crownOn
+            crownLabel:set { text = crownOn and "용두 켬" or "용두 끔" }
+            note("용두 열기 " .. (crownOn and "켬" or "끔"))
+        end)
+    end
     pcall(drawClock, true)
     pcall(drawValues)
     -- 지난번에 됐던 키는 바로 듣기 시작 (재시작을 일으킨 키는 'trying' 으로 남아 있어 건너뜀)
     for _, key in ipairs(keyOrder) do
-        if keyState[key] == "ok" then subscribe(key) elseif keyState[key] == "trying" then keyState[key] = "bad" saveKeys() end
+        if keyState[key] == "trying" then keyState[key] = "bad" saveKeys()
+        elseif keyState[key] == "ok" or (isFace and keyState[key] == nil) then subscribe(key) end
     end
-    if not nextKey() then keyLabel:set { text = "값 상태" } end
+    if keyLabel and not nextKey() then keyLabel:set { text = "값 상태" } end
     note("화면 만듦, 그림 오류 " .. imageErrors)
+end
+
+---------------------------------------------------------------- 새 판 확인 (정식 워치페이스일 때만) — 다시 설치하지 않고 고칠 수 있게
+local function checkUpdate()
+    if curlOpts == nil then return end                      -- 폰과 한 번도 말이 안 됐으면 인터넷도 없음
+    local got = curlRaw(curlOpts .. FACE_BASE .. "version.txt", "rw6-face-ver.txt")
+    local remote = tonumber(string.match(got, "^(%d+)"))
+    note("새 판 확인: 지금 " .. FACE_VER .. " / 저장소 " .. tostring(remote))
+    if not remote or remote <= FACE_VER then return end
+    local path = tmp .. "rw6-face-new.lua"
+    os.remove(path)
+    safe(os.execute, "curl " .. (curlOpts ~= "" and "--connect-timeout 3 -m 40 " or "") .. FACE_BASE .. "face.lua -o " .. path)
+    local text = readAll(path)
+    local good = text and #text > 1000 and string.find(text, "-- RW6FACE END", 1, true)
+        and string.find(text, "local FACE_VER = " .. remote .. "\n", 1, true) and loadfile(path)
+    os.remove(path)
+    if good and writeAll(dir .. "face.lua", text) then note("새 판 " .. remote .. " 받음 (다음에 켜질 때부터)") else note("새 판 받기 X") end
+    uploadAt = uploadAt or (now() + 3)
 end
 
 ---------------------------------------------------------------- 1초마다
 local weatherAt = 0           -- 다음에 기온을 물어볼 때
+local updateAt = now() + 40   -- 다음에 새 판을 확인할 때
 tick = function()
     local t = now()
     tickCount = tickCount + 1
@@ -388,6 +423,9 @@ tick = function()
         if temp then values.temp = tonumber(temp) pcall(drawValues) elseif #got == 0 then weatherAt = t + 600 end
         note("기온 물음: " .. phoneSeen)
         if not uploadAt then uploadAt = t + 3 end
+    elseif isFace and face and t >= updateAt and t - lastLaunch > 6 then
+        updateAt = t + 6 * 3600
+        safe(checkUpdate)
     elseif uploadAt and t >= uploadAt and t - lastLaunch > 6 then
         uploadAt = nil
         safe(uploadReport)
@@ -456,3 +494,4 @@ else
     end }
 end
 log("Lua 워치페이스 시험판을 띄웠습니다.")
+-- RW6FACE END
