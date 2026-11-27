@@ -4,7 +4,7 @@
 -- 아직 워치에서 안 돌려 본 것은 사용자가 버튼을 누를 때만, 한 번에 하나씩, 부르기 직전에 기록을 남기고 부른다:
 --   '값 시험' = dataman.subscribe(키, 물체, 함수) 한 가지 키. 나가기는 화면 길게 누르기(워치페이스 바꾸기)로 — 사용자 확인 2026-11-27
 local lvgl, root, log, mode = ...
-local FACE_VER = 5
+local FACE_VER = 6
 -- 같은 파일을 두 가지로 씀: 패처 목록의 Test-Face(시험 버튼 있음) / 정식 워치페이스(lua/face7/main.lua 가 "face" 로 부름: 버튼 없음, 스스로 새 판 확인)
 local isFace = (mode == "face")
 local FACE_BASE = "https://raw.githubusercontent.com/Hug-Double-K/RW6-SmallFont-Patcher/main/lua/face7/"
@@ -396,6 +396,7 @@ local function buildFace()
             uploadAt = now() + 5
         end)
     end
+    lvgl.Label(panel, { x = W - 110, y = 62, w = 80, h = 22, text = "판 " .. FACE_VER, text_color = "#5f7896", text_font = font })
     pcall(drawClock, true)
     pcall(drawValues)
     -- 지난번에 됐던 키는 바로 듣기 시작 (재시작을 일으킨 키는 'trying' 으로 남아 있어 건너뜀)
@@ -410,13 +411,16 @@ end
 ---------------------------------------------------------------- 새 판 확인 (정식 워치페이스일 때만) — 다시 설치하지 않고 고칠 수 있게
 local function checkUpdate()
     if curlOpts == nil then return end                      -- 폰과 한 번도 말이 안 됐으면 인터넷도 없음
-    local got = curlRaw(curlOpts .. FACE_BASE .. "version.txt", "rw6-face-ver.txt")
+    -- (5판까지는 폰에 묻는 것과 같은 5초 제한을 썼는데, 저장소는 폰을 거친 HTTPS 라 연결에만 몇 초가 걸려 늘 실패했을 수 있음 → 25초)
+    local limit = (curlOpts ~= "") and "--connect-timeout 6 -m 25 " or ""
+    local before = now()
+    local got = curlRaw(limit .. FACE_BASE .. "version.txt", "rw6-face-ver.txt")
     local remote = tonumber(string.match(got, "^(%d+)"))
-    note("새 판 확인: 지금 " .. FACE_VER .. " / 저장소 " .. tostring(remote))
+    note("새 판 확인: 지금 " .. FACE_VER .. " / 저장소 " .. tostring(remote) .. " (" .. (now() - before) .. "초, 받은 " .. #got .. "바이트)")
     if not remote or remote <= FACE_VER then return end
     local path = tmp .. "rw6-face-new.lua"
     os.remove(path)
-    safe(os.execute, "curl " .. (curlOpts ~= "" and "--connect-timeout 3 -m 40 " or "") .. FACE_BASE .. "face.lua -o " .. path)
+    safe(os.execute, "curl " .. (curlOpts ~= "" and "--connect-timeout 6 -m 120 " or "") .. FACE_BASE .. "face.lua -o " .. path)
     local text = readAll(path)
     local good = text and #text > 1000 and string.find(text, "-- RW6FACE END", 1, true)
         and string.find(text, "local FACE_VER = " .. remote .. "\n", 1, true) and loadfile(path)
@@ -752,6 +756,16 @@ else
         local ok, err = unpack(data)
         if not ok then waitLabel:set { text = "그림 풀기 X\n" .. tostring(err) } end
     end }
+end
+-- 패처 목록(Test-Face)으로 돌렸으면: 방금 받은 이 파일을 정식 워치페이스(DK_07 Lua)가 쓰는 자리에도 넣어 둠 → 그쪽도 다음에 켜질 때 이 판
+if not isFace then
+    pcall(function()
+        local mine = readAll(safe(os.getenv, "RW6FACE_SELF") or "/tmp/rw6-test.lua", 400000)
+        if mine and string.find(mine, "local FACE_VER = " .. FACE_VER .. "\n", 1, true) and string.find(mine, "-- RW6FACE " .. "END", 1, true)
+            and readAll(dir .. "face.lua", 400000) ~= mine then
+            note("정식판 파일을 " .. FACE_VER .. "판으로 바꿔 둠: " .. tostring(writeAll(dir .. "face.lua", mine)))
+        end
+    end)
 end
 log("Lua 워치페이스 시험판을 띄웠습니다.")
 -- RW6FACE END
