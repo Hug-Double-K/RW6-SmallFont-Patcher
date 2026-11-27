@@ -403,6 +403,27 @@ end
 
 -- 2) 폰트선택 (취소 시 메인화면 복귀)
 function selectFont(name)
+    -- 조사용: 목록에서 'Test-…'를 고르면 패치는 하지 않고, 저장소의 lua/<이름>.lua 를 받아 실행만 한다.
+    -- 받은 스크립트에 문법·실행 오류가 있어도 여기서 잡아 화면에 보여 주므로 패처는 그대로 쓸 수 있다.
+    if name and string.match(name, "^Test") then
+        if listView then listView:add_flag(lvgl.FLAG.HIDDEN) end
+        logView:clear_flag(lvgl.FLAG.HIDDEN)
+        log("\n" .. name .. " 받는 중입니다.")
+        later(function()
+            local testPath = "/tmp/rw6-test.lua"
+            os.remove(testPath)
+            os.execute("curl https://raw.githubusercontent.com/Hug-Double-K/RW6-SmallFont-Patcher/main/lua/"
+                .. name .. ".lua -o " .. testPath)
+            local chunk, loadError = loadfile(testPath)
+            if not chunk then
+                log("받지 못했거나 Lua 로드 오류: " .. tostring(loadError))
+                return
+            end
+            local ok, runError = pcall(chunk, lvgl, root, log)
+            if not ok then log("Lua 실행 오류: " .. tostring(runError)) end
+        end)
+        return true
+    end
     selectedFont = name
     itemManifests = manifestsFor(name)
     fileCount = #itemManifests
