@@ -111,7 +111,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
     private View stateDot;
     private TextView placeSub;
     private TextView weatherView, langSub, aiKeySub, setupTitle, logToggle;
-    private android.widget.Switch aiSwitch, voiceSwitch, notiSwitch, diagSwitch;
+    private android.widget.Switch aiSwitch, voiceSwitch, notiSwitch, diagSwitch, netSwitch;
     private LinearLayout setupBox;
     private Button disconnectBtn;
     private boolean updating, logFull;
@@ -215,6 +215,13 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         line(c);
         row(c, "시간 다시 맞추기", "연결할 때마다 자동으로 맞춰요", v -> {
             if (link.isReady()) { link.syncTime(); toast("시간을 맞췄어요"); } else toast("워치가 연결되어 있지 않아요");
+        });
+        line(c);
+        netSwitch = toggle(c, "워치 인터넷", "워치가 폰을 거쳐 인터넷을 써요 (패처 워치페이스 등)", on -> {
+            if (prefs.getBoolean("netRelay", true) == on) return;
+            prefs.edit().putBoolean("netRelay", on).apply();
+            WatchSession.netRelayEnabled = on;
+            log(on ? "워치 인터넷 중계를 켬" : "워치 인터넷 중계를 끔");
         });
         line(c);
         notiSwitch = toggle(c, "상단 연결 알림", "꺼도 연결은 유지돼요", on -> {
@@ -332,6 +339,7 @@ public class MainActivity extends Activity implements WatchLink.StateListener {
         String loc = prefs.getString("locale", "ko_KR");
         langSub.setText(loc.equals("ko_KR") ? "한국어" : loc.equals("zh_CN") ? "中文" : "English");
         notiSwitch.setChecked(LinkService.statusNotification(this));
+        netSwitch.setChecked(prefs.getBoolean("netRelay", true));
         placeSub.setText("지금 위치: " + prefs.getString("place", "서울 광진구 구의1동"));
 
         // 계정 · 연결 정보

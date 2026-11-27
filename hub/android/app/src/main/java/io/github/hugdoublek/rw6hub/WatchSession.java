@@ -48,6 +48,26 @@ public final class WatchSession implements SarLink.Listener {
     private volatile boolean authed = false;
     /** 처리하지 않고 버린 네트워크 채널 패킷 수 (진단용) */
     public volatile int networkIgnored = 0;
+    /** 워치 인터넷 중계를 할지 (Mi Manager 설정 '워치 인터넷', 기본 켬) */
+    public static volatile boolean netRelayEnabled = true;
+    private NetRelay relay;
+
+    private synchronized NetRelay relay() {
+        if (relay == null) {
+            relay = new NetRelay(new NetRelay.Out() {
+                @Override public void send(byte[] ipPacket) {
+                    SarLink l = link;
+                    if (l != null) { try { sendL2Ch(7, OP_WRITE, ipPacket); } catch (RuntimeException ignored) {} }
+                }
+                @Override public void log(String line) { cb.onLog(line); }
+            });
+        }
+        return relay;
+    }
+
+    private synchronized void closeRelay() {
+        if (relay != null) { relay.close(); relay = null; }
+    }
     private volatile boolean dhcpAcked = false;
 
     public WatchSession(byte[] authKey, String phoneName, Callback cb) {
@@ -113,6 +133,8 @@ public final class WatchSession implements SarLink.Listener {
                 if (rep != null) {
                     sendL2Ch(7, OP_WRITE, rep);
                     if (kind[0] == 3 && !dhcpAcked) { dhcpAcked = true; cb.onLog("워치에 IP 주소를 줌 (10.1.10.2)"); }
+                } else if (netRelayEnabled) {
+                    relay().onPacket(body);      // 워치 인터넷 중계 (NetRelay)
                 } else {
                     networkIgnored++;
                 }
@@ -159,6 +181,7 @@ public final class WatchSession implements SarLink.Listener {
 
     @Override
     public void onClosed(String reason) {
+        closeRelay();
         authed = false;
         cb.onClosed(reason);
     }

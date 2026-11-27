@@ -72,6 +72,7 @@ public final class WatchLink {
     private WatchLink(Context app) {
         this.app = app;
         this.prefs = app.getSharedPreferences("hub", Context.MODE_PRIVATE);
+        WatchSession.netRelayEnabled = prefs.getBoolean("netRelay", true);
         HandlerThread t = new HandlerThread("watch-link");
         t.start();
         worker = new Handler(t.getLooper());
