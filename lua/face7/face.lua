@@ -4,7 +4,7 @@
 -- 아직 워치에서 안 돌려 본 것은 사용자가 버튼을 누를 때만, 한 번에 하나씩, 부르기 직전에 기록을 남기고 부른다:
 --   '값 시험' = dataman.subscribe(키, 물체, 함수) 한 가지 키. 나가기는 화면 길게 누르기(워치페이스 바꾸기)로 — 사용자 확인 2026-11-27
 local lvgl, root, log, mode = ...
-local FACE_VER = 4
+local FACE_VER = 5
 -- 같은 파일을 두 가지로 씀: 패처 목록의 Test-Face(시험 버튼 있음) / 정식 워치페이스(lua/face7/main.lua 가 "face" 로 부름: 버튼 없음, 스스로 새 판 확인)
 local isFace = (mode == "face")
 local FACE_BASE = "https://raw.githubusercontent.com/Hug-Double-K/RW6-SmallFont-Patcher/main/lua/face7/"
@@ -421,7 +421,16 @@ local function checkUpdate()
     local good = text and #text > 1000 and string.find(text, "-- RW6FACE END", 1, true)
         and string.find(text, "local FACE_VER = " .. remote .. "\n", 1, true) and loadfile(path)
     os.remove(path)
-    if good and writeAll(dir .. "face.lua", text) then note("새 판 " .. remote .. " 받음 (다음에 켜질 때부터)") else note("새 판 받기 X") end
+    if good and writeAll(dir .. "face.lua", text) then
+        note("새 판 " .. remote .. " 받음 (다음에 켜질 때부터)")
+        -- 지금 화면은 옛 판이므로 알려 줌: 다른 워치페이스로 바꿨다가 다시 고르면 새 판이 뜸
+        pcall(function()
+            versionLabel:set { text = "판 " .. FACE_VER .. " > " .. remote }
+            lvgl.Label(panel, { x = 30, y = 468, w = W - 60, h = 44, text = "새 판을 받았습니다\n워치페이스를 다시 고르면 적용", text_color = "#ffd166", text_font = font })
+        end)
+    else
+        note("새 판 받기 X")
+    end
     uploadAt = uploadAt or (now() + 3)
 end
 
@@ -569,6 +578,7 @@ local backButton = lvgl.Object(listPage, { x = 136, y = H - 66, w = W - 272, h =
 backButton:clear_flag(lvgl.FLAG.SCROLLABLE)
 backButton:add_flag(lvgl.FLAG.CLICKABLE)
 lvgl.Label(backButton, { text = "시계로", align = lvgl.ALIGN.CENTER, text_color = "#71b7ff", text_font = font })
+local versionLabel = lvgl.Label(listPage, { x = 24, y = H - 56, w = 100, h = 24, text = "판 " .. FACE_VER, text_color = "#666b75", text_font = font })
 local scrollToNoted = false
 backButton:onevent(lvgl.EVENT.CLICKED, function()
     local ok, err = pcall(function() scroller:scroll_to { y = 0, anim = true } end)
@@ -648,7 +658,7 @@ end)
 
 ---------------------------------------------------------------- 1초마다
 local weatherAt = 0           -- 다음에 기온을 물어볼 때
-local updateAt = now() + 40   -- 다음에 새 판을 확인할 때
+local updateAt = now() + 8    -- 다음에 새 판을 확인할 때
 tick = function()
     local t = now()
     tickCount = tickCount + 1

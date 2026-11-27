@@ -21,10 +21,10 @@ os.execute = function(cmd)
     if string.find(cmd, "face7/face.lua", 1, true) then
         if SCEN == "M4" then return 1 end
         local text = slurp(REPO .. "face.lua")
-        if string.find(cmd, "-m 40", 1, true) then text = string.gsub(text, "local FACE_VER = 4\n", "local FACE_VER = 5\n") end   -- 새 판 받기
+        if string.find(cmd, "-m 40", 1, true) then text = string.gsub(text, "local FACE_VER = 5\n", "local FACE_VER = 6\n") end   -- 새 판 받기
         put(out, text)
     elseif string.find(cmd, "face7.pak", 1, true) then put(out, slurp(REPO .. "face7.pak"))
-    elseif string.find(cmd, "version.txt", 1, true) then put(out, "5\n")
+    elseif string.find(cmd, "version.txt", 1, true) then put(out, "6\n")
     elseif string.find(cmd, "/do/weather", 1, true) then put(out, "temp 9\n")
     elseif string.find(cmd, "/do/launch-noti", 1, true) then launches = launches + 1 put(out, "ok x\n")
     elseif string.find(cmd, "-T ", 1, true) then uploads[#uploads + 1] = slurp(string.match(cmd, "%-T (%S+)")) put(out, "ok 1\n")
@@ -70,7 +70,7 @@ tap:fire(mock.EVENT.CLICKED) mock.pump()
 assert(launches == 1, "말풍선 터치로 열기")
 -- 새 판 확인(40초 뒤): 저장소 2 → 받아서 저장, 지금 화면은 그대로
 step(45)
-assert(string.find(slurp(DIR .. "face.lua"), "local FACE_VER = 5\n", 1, true), "새 판 저장")
-step(5) assert(string.find(uploads[#uploads], "새 판 5 받음", 1, true), uploads[#uploads])
+assert(string.find(slurp(DIR .. "face.lua"), "local FACE_VER = 6\n", 1, true), "새 판 저장")
+step(5) assert(string.find(uploads[#uploads], "새 판 6 받음", 1, true), uploads[#uploads])
 for _, c in ipairs(curls) do assert(string.find(c, "raw.githubusercontent", 1, true) or string.find(c, "connect-timeout", 1, true), "시간 제한 없는 폰 요청: " .. c) end
 print(SCEN .. " 통과 / curl " .. #curls .. "번")
