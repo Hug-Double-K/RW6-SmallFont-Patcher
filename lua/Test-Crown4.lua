@@ -153,11 +153,13 @@ launch = function(why)
     local now = safe(os.time) or 0
     if now - lastLaunch < 4 then return end        -- 같은 돌림에 여러 번 가지 않게
     lastLaunch = now
+    -- 지난번까지의 기록을 먼저 올리고, '열어 줘' 요청은 맨 마지막에 한다.
+    -- (요청 뒤에 또 오래 걸리는 일을 하면, 앱이 뜨는 동안 워치페이스가 멈춰 있어 워치가 재시작됨 — 2026-11-27 사고)
+    if #launchNotes > 0 then safe(function() uploadText("crown4.txt", buildReport()) end) end
     local before = safe(os.clock) or 0
     local got = curl(phone .. "/do/launch-noti")
     local took = (safe(os.time) or 0) - now
     launchNotes[#launchNotes + 1] = why .. " @" .. (now - startTime) .. "초, 걸린 " .. took .. "초, 답 " .. string.gsub(got, "%s+", " ")
-    safe(function() uploadText("crown4.txt", buildReport()) end)      -- 눌러 본 기록까지 다시 올림
     setStatus(5, "[" .. why .. "] 폰 답: " .. (#got > 0 and string.gsub(got, "%s+$", "") or "없음") .. " (" .. took .. "초, cpu "
         .. string.format("%.2f", (safe(os.clock) or 0) - before) .. ")")
 end
