@@ -409,11 +409,7 @@ public final class WatchSender {
                     prim -> android.os.AsyncTask.THREAD_POOL_EXECUTOR.execute(() -> onAsked(app, nodeId)));
             Wearable.getMessageApi(app).addListener(nodeId, (id, data) -> {
                 String s = new String(data, StandardCharsets.UTF_8);
-                if (s.contains("ack")) { // 워치가 이 이름을 받았다고 확인
-                    java.util.regex.Matcher am = java.util.regex.Pattern.compile("\\d{13}").matcher(s);
-                    if (am.find()) { Runnable r = ACK.remove(am.group()); if (r != null) new Handler(Looper.getMainLooper()).post(r); }
-                    return;
-                }
+                // (0.91) 시간 보고를 '받음 확인'보다 먼저 가려냄: 보고 글 안의 packageName 에 ack 라는 글자가 들어 있어 확인으로 잘못 읽혔음
                 if (s.contains("\"tm\"")) { // 워치 앱이 켜지는 데 걸린 시간(4.9부터): 스크립트 시작부터 화면 준비·폰 답·목록 그림까지 ms
                     java.util.regex.Matcher tm = java.util.regex.Pattern.compile("\"tm\"\\s*:\\s*\"([^\"]*)\"").matcher(s);
                     if (tm.find()) {
@@ -422,8 +418,15 @@ public final class WatchSender {
                         if (askAt > 0 && now - askAt < 20000) extra += " / 상태 물음 뒤 " + (now - askAt) + "ms";
                         if (readyAt > 0 && now - readyAt < 20000) extra += " / 준비 신호 뒤 " + (now - readyAt) + "ms";
                         io.github.hugdoublek.rw6hub.WatchLink.get(app).log("워치 앱 켜짐 시간(ms): " + tm.group(1) + extra);
+                        // 이 줄에 from= 이 있으면 워치 앱은 5.2 이상 (준비 신호가 늦거나 안 와도 버전을 알 수 있게)
+                        if (tm.group(1).contains(" from=")) { Prefs vp2 = new Prefs(app); if (!atLeast(vp2.watchVer(), 5.2)) vp2.setWatchVer("5.2"); }
                         if (tm.group(1).contains("from=phone")) { Prefs fp = new Prefs(app); if (fp.paramFail() != 0) fp.setParamFail(0); }
                     }
+                    return;
+                }
+                if (s.contains("ack")) { // 워치가 이 이름을 받았다고 확인
+                    java.util.regex.Matcher am = java.util.regex.Pattern.compile("\\d{13}").matcher(s);
+                    if (am.find()) { Runnable r = ACK.remove(am.group()); if (r != null) new Handler(Looper.getMainLooper()).post(r); }
                     return;
                 }
                 if (s.contains("ready")) { // 워치 앱 준비됨 → 기다리던 전송 시작
