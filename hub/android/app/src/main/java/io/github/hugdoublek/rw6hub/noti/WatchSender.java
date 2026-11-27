@@ -254,6 +254,27 @@ public final class WatchSender {
     /** 워치페이스(용두·말풍선)가 시켜서 앱을 연 시각 — 앱이 준비됐다고 할 때까지 걸린 시간을 기록하려고 */
     public static volatile long launchAt = 0;
 
+    static volatile long askAt, readyAt;
+
+    /** 워치 앱에 '보낼 알림 없음'(N)을 보냄 → 워치 앱이 기다리지 않고 바로 목록을 띄움. 워치가 받았다고 할 때까지 걸린 시간을 기록. */
+    private static void sendNone(Context app, String nodeId, String when) {
+        final long t0 = System.currentTimeMillis();
+        final io.github.hugdoublek.rw6hub.WatchLink link = io.github.hugdoublek.rw6hub.WatchLink.get(app);
+        try {
+            Wearable.getMessageApi(app).sendMessage(nodeId, "N".getBytes(StandardCharsets.UTF_8))
+                    .addOnSuccessListener(v -> link.log("워치 앱 " + when + ": '없음' 답 보냄 → 워치가 받음 " + (System.currentTimeMillis() - t0) + "ms"))
+                    .addOnFailureListener(e -> link.log("워치 앱 " + when + ": '없음' 답 실패 - " + e.getMessage()));
+        } catch (Exception e) { link.log("워치 앱 " + when + ": '없음' 답 오류 - " + e); }
+    }
+
+    /** 워치 앱이 막 켜져 폰 앱 상태를 물었을 때: 보낼 것이 없으면 준비 신호를 기다리지 않고 미리 '없음'을 답함. */
+    static void onAsked(Context app, String nodeId) {
+        askAt = System.currentTimeMillis();
+        if (readyWaiter != null || !PENDING.isEmpty()) return;
+        if (!atLeast(new Prefs(app).watchVer(), 4.8)) return;
+        sendNone(app, nodeId, "상태 물음 받음");
+    }
+
     private static boolean atLeast(String version, double min) {
         try { return Double.parseDouble(version.trim()) >= min - 1e-9; } catch (Exception e) { return false; }
     }
@@ -361,6 +382,8 @@ public final class WatchSender {
             // 워치가 아직 연결 안 됐으면 다음 전송 때 다시 등록 (예전엔 한 번 실패하면 앱을 다시 켤 때까지 답을 못 들음)
             if (nodes == null || nodes.isEmpty()) { listening = false; return; }
             final String nodeId = nodes.get(0).id;
+            io.github.hugdoublek.rw6hub.QuickApps.get(app).setAskListener(Wearable.WATCH_PACKAGE,
+                    prim -> android.os.AsyncTask.THREAD_POOL_EXECUTOR.execute(() -> onAsked(app, nodeId)));
             Wearable.getMessageApi(app).addListener(nodeId, (id, data) -> {
                 String s = new String(data, StandardCharsets.UTF_8);
                 if (s.contains("ack")) { // 워치가 이 이름을 받았다고 확인
@@ -370,7 +393,13 @@ public final class WatchSender {
                 }
                 if (s.contains("\"tm\"")) { // 워치 앱이 켜지는 데 걸린 시간(4.9부터): 스크립트 시작부터 화면 준비·폰 답·목록 그림까지 ms
                     java.util.regex.Matcher tm = java.util.regex.Pattern.compile("\"tm\"\\s*:\\s*\"([^\"]*)\"").matcher(s);
-                    if (tm.find()) io.github.hugdoublek.rw6hub.WatchLink.get(app).log("워치 앱 켜짐 시간(ms): " + tm.group(1));
+                    if (tm.find()) {
+                        long now = System.currentTimeMillis();
+                        String extra = "";
+                        if (askAt > 0 && now - askAt < 20000) extra += " / 상태 물음 뒤 " + (now - askAt) + "ms";
+                        if (readyAt > 0 && now - readyAt < 20000) extra += " / 준비 신호 뒤 " + (now - readyAt) + "ms";
+                        io.github.hugdoublek.rw6hub.WatchLink.get(app).log("워치 앱 켜짐 시간(ms): " + tm.group(1) + extra);
+                    }
                     return;
                 }
                 if (s.contains("ready")) { // 워치 앱 준비됨 → 기다리던 전송 시작
@@ -383,9 +412,13 @@ public final class WatchSender {
                     Runnable r = readyWaiter;
                     java.util.regex.Matcher vm = java.util.regex.Pattern.compile("\"v\"\\s*:\\s*\"([^\"]*)\"").matcher(s);
                     // 보낼 알림이 하나도 없으면 바로 "N"(없음)이라고 답함 → 워치 앱이 0.7초 기다리지 않고 곧바로 목록을 띄움 (워치 앱 4.8부터 알아들음)
-                    if (r == null && PENDING.isEmpty() && vm.find() && atLeast(vm.group(1), 4.8)) {
-                        Wearable.getMessageApi(app).sendMessage(nodeId, "N".getBytes(StandardCharsets.UTF_8));
-                    }
+                    readyAt = System.currentTimeMillis();
+                    String ver = vm.find() ? vm.group(1) : "";
+                    int pend = PENDING.size();
+                    String why = r != null ? "기다리던 전송 있음" : pend > 0 ? "밀린 알림 " + pend + "개" : !atLeast(ver, 4.8) ? "워치 앱 버전 '" + ver + "'" : null;
+                    String since = askAt > 0 && readyAt - askAt < 20000 ? " (상태 물음 뒤 " + (readyAt - askAt) + "ms)" : "";
+                    if (why == null) sendNone(app, nodeId, "준비 신호 받음" + since);
+                    else io.github.hugdoublek.rw6hub.WatchLink.get(app).log("워치 앱 준비 신호 받음" + since + ": '없음' 답 안 보냄 - " + why);
                     vm.reset();
                     if (r != null) new Handler(Looper.getMainLooper()).post(r);
                     else new Handler(Looper.getMainLooper()).post(WatchSender::kick); // 워치를 직접 열었으면 밀린 알림도

@@ -188,6 +188,10 @@ public final class QuickApps implements WatchLink.PacketListener {
 
     /** 지문(fingerprint)을 모르면 설치 목록을 받아 온 뒤 보낸다. 결과: null = 성공, 아니면 오류 문구. */
     public interface Done { void done(String error); }
+    /** 퀵앱이 폰 앱 상태를 물을 때(= 워치에서 그 앱이 막 켜졌을 때) 불림. */
+    public interface AskListener { void asked(String primaryPkg); }
+    private final java.util.concurrent.ConcurrentHashMap<String, AskListener> askListeners = new java.util.concurrent.ConcurrentHashMap<>();
+    public void setAskListener(String primaryPkg, AskListener l) { askListeners.put(primaryPkg, l); }
 
     private void withFingerprint(String pkg, Done onError, java.util.function.Consumer<byte[]> then) {
         byte[] fp = fingerprint(pkg);
@@ -301,6 +305,11 @@ public final class QuickApps implements WatchLink.PacketListener {
                 if (ours) heardFrom(pkg);
                 syncStatus(pkg, fp, ours ? STATUS_CONNECTED : STATUS_DISCONNECTED);
                 link().log("퀵앱 " + shortName(pkg) + " 이 폰 앱 상태를 물음 → " + (ours ? "연결됨" : "맡지 않음"));
+                if (ours) { // 퀵앱이 막 켜졌다는 가장 이른 신호 → 듣는 쪽에 알림 (메신저 알림: '보낼 것 없음'을 미리 답함)
+                    String prim = primaryOf.containsKey(pkg) ? primaryOf.get(pkg) : pkg;
+                    AskListener al = askListeners.get(prim);
+                    if (al != null) { try { al.asked(prim); } catch (Exception ignored) {} }
+                }
                 break;
             }
             case SEND_WEAR_MESSAGE: {
