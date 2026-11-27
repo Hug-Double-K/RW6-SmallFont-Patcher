@@ -20,7 +20,7 @@ public final class Wearable {
     public static final String WATCH_PACKAGE_ALT = "com.tencent.wechatrtos";
     public static final String LABEL = "RW6 알림";
     /** 워치 퀵앱과 버전을 맞춰 보는 데 쓰는 이 기능의 버전 */
-    public static final String PHONE_VERSION = "4.9";
+    public static final String PHONE_VERSION = "5.0";
 
     private static WearClient client;
 

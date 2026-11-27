@@ -104,6 +104,7 @@ const T0 = Date.now()
 let tInit = 0, tNone = 0, tSent = false
 let closeTimer = null // 도착 화면을 닫는 타이머 (한 번에 하나만)
 let arrivedAt = 0 // 마지막 알림이 도착한 시각
+let shownOnce = false
 let browsing = false // 목록을 직접 만지며 보는 중 (그동안엔 새 알림이 와도 화면을 바꾸거나 앱을 닫지 않음)
 let inDetailAt = 0 // 읽기 화면을 연 시각 (0 = 안 열림). 읽는 동안엔 앱을 자동으로 닫지 않음
 let needS = false // 저장된 설정이 없어 폰에 요청한 상태
@@ -156,7 +157,7 @@ function preview(body) { return body.length > 120 ? body.substr(0, 120) + '…' 
 
 export default {
   private: {
-    mode: 'wait', // wait(검은 화면) → arrive(알림) / list(목록)
+    mode: 'list', // 5.0: 처음부터 목록(머리줄이 바로 보임) → 알림이 오면 arrive
     cur: { name: '', img: '', icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0, sf: '', sw: 0, sh: 0, hf: '', hw: 0, hh: 0 },
     list: [],
     notis: 0,
@@ -171,6 +172,7 @@ export default {
     tInit = Date.now()
     gotSetting = false
     browsing = false
+    shownOnce = false
     needS = false
     inDetailAt = 0
     conn = interconnect.instance()
@@ -185,17 +187,18 @@ export default {
     })
     self.ready()
     pinsLoaded = false
-    self.pinsLoad()
-    // 기다리는 동안 목록을 미리 읽어 둠 → 목록으로 넘어갈 때 바로 그림
-    self.idxLoad(() => {})
-    // 폰이 연 게 아니라 직접 열었으면 잠시 뒤 목록
-    waitTimer = setTimeout(() => { if (self.mode === 'wait') self.showList() }, WAIT_MS)
+    // 5.0: 기다리지 않고 곧바로 목록 화면(머리줄 먼저, 내용은 읽는 대로 — 파일은 한 번씩만 읽음).
+    // 폰이 알림을 보내려고 연 것이면 알림이 도착하는 순간 도착 화면으로 바뀜 (예전엔 그걸 가리려고 0.7초 검은 화면으로 기다렸음)
+    self.mode = 'list'
+    self.pinsLoad(() => self.idxLoad(() => self.applyList()))
   },
 
   onShow() {
     inDetailAt = 0
     this.ready()
-    if (this.mode === 'list') this.refreshList()
+    // 처음 뜰 때는 onInit 이 이미 읽고 있으므로 다시 읽지 않음 (5.0: 두 번 그리던 것 방지), 다른 화면에서 돌아올 때만 새로 읽음
+    if (shownOnce && this.mode === 'list') this.refreshList()
+    shownOnce = true
   },
 
   // 도착 화면에서 뒤로(스와이프) = 목록으로
