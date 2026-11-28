@@ -213,9 +213,9 @@ export default {
     // 그동안 파일을 미리 읽어 둠(한 번씩만). N 이 안 오면 예전처럼 0.7초 뒤 목록.
     self.pinsLoad(() => self.idxLoad(() => {
       // 5.3: 아직 기다리는 중이면 목록을 숨긴 채 미리 만들어 둠 (그리는 데 0.4~0.5초 — 기다리는 시간과 겹치게)
-      // 5.4(비교용): 폰의 답을 기다리지 않고, 파일을 읽자마자 목록을 바로 보임 (끝 글자 I).
-      // 폰이 알림 때문에 연 것이면 목록이 잠깐 보였다가 알림이 도착하는 순간 도착 화면으로 바뀜.
-      if (self.mode === 'wait' && !how) { how = 'I'; tPre = Date.now(); self.showList() }
+      // 5.5(= 5.3 방식으로 확정, 사용자 선택 2026-11-28): 아직 기다리는 중이면 목록을 숨긴 채 미리 만들어 둠
+      // → 폰의 '없음' 답이 오면 보이기만 함. 알림 때문에 열린 경우엔 목록이 보이지 않고 도착 화면만 뜸.
+      if (self.mode === 'wait' && !how) { self.applyList(); prebuilt = true; tPre = Date.now(); self.pre = true }
     }))
     waitTimer = setTimeout(() => { if (self.mode === 'wait') { if (!how) how = 'T'; self.showList() } }, WAIT_MS)
     // 5.2: 실행 주소의 표시로 '폰이 알림 때문에 열었는지'를 켜지는 순간 알아냄
