@@ -164,7 +164,8 @@ public final class WatchSender {
                     // 0.90: 알림 때문에 여는 것임을 실행 주소에 표시(워치 앱 5.2 가 켜지는 순간 알아봄 → 직접 누른 때는 기다림 없이 목록).
                     // 표시 붙인 주소로 앱이 안 뜨면(0.7초 안에 상태 물음·준비·받음 확인이 없음) 보통 주소로 다시 열고, 3번 그러면 표시를 그만 붙임.
                     final Prefs lp = new Prefs(app);
-                    final boolean marked = atLeast(lp.watchVer(), 5.2) && lp.paramFail() < 3;
+                    // 0.94: 표시 붙인 주소는 안 씀 — 표시가 워치 앱에 전달되지 않았고(5.2·5.3 기록), 0.7초 안에 안 떠서 알림이 늦어지기도 했음
+                    final boolean marked = false;
                     final long launchT0 = System.currentTimeMillis();
                     if (marked) main.postDelayed(() -> {
                         if (gen != GEN || acked.get() || askAt >= launchT0 || readyAt >= launchT0) return;
