@@ -24,7 +24,8 @@
     </div>
 
     <!-- 목록: 직접 열었을 때 -->
-    <div if="{{ mode === 'list' }}" class="arrive" @touchstart="listTouch">
+    <!-- 5.3: 폰의 답을 기다리는 동안(검은 화면) 목록을 숨긴 채 미리 만들어 둠(pre) → 답이 오면 보이기만 함 -->
+    <div if="{{ mode === 'list' || pre }}" show="{{ mode === 'list' }}" class="arrive" @touchstart="listTouch">
       <div class="head">
         <div class="head-hit" @click="deleteToggle">
           <text class="head-pill {{ notis ? 'head-pill-on' : '' }}">{{ notis ? (deleteOn ? "X" : "-") : "" }}</text>
@@ -103,6 +104,7 @@ let waitTimer = null
 const T0 = Date.now()
 let tInit = 0, tNone = 0, tSent = false
 let fromSeen = '', srcInfo = '', pgInfo = '' // 진단: 실행 주소 표시, 앱을 연 곳, 화면 정보
+let prebuilt = false, tPre = 0 // 목록을 미리 만들어 뒀는가, 그때의 시각
 let how = '' // 첫 화면이 무엇으로 정해졌나: N(폰의 없음 답) / T(0.7초 지남) / A(알림 도착)
 let closeTimer = null // 도착 화면을 닫는 타이머 (한 번에 하나만)
 let arrivedAt = 0 // 마지막 알림이 도착한 시각
@@ -162,7 +164,7 @@ function reportTm() {
   setTimeout(() => {
     const tDrawn = Date.now()
     const clean = (x) => String(x || '').replace(/"/g, "'").replace(/\\/g, '/').substr(0, 80)
-    const msg = `${tInit - T0},${tNone ? tNone - T0 : 0},${tList - T0},${tDrawn - T0},${(IDX || []).length},${how} from=${clean(fromSeen)} src=${clean(srcInfo)} pg=${clean(pgInfo)}`
+    const msg = `${tInit - T0},${tNone ? tNone - T0 : 0},${tList - T0},${tDrawn - T0},${(IDX || []).length},${how} pre=${tPre ? tPre - T0 : 0} from=${clean(fromSeen)} src=${clean(srcInfo)} pg=${clean(pgInfo)}`
     setTimeout(() => { try { if (conn) conn.send({ data: { tm: msg } }) } catch (e) {} }, Math.max(0, 1500 - (tDrawn - T0)))
   }, 0)
 }
@@ -176,6 +178,7 @@ export default {
   protected: { from: '' },
   private: {
     mode: 'wait', // wait(검은 화면) → arrive(알림) / list(목록)
+    pre: false, // 목록을 숨긴 채 미리 만들어 둠 (5.3)
     cur: { name: '', img: '', icon: '', app: '', sender: '', parts: [], pending: false, e: '', ew: 0, eh: 0, sf: '', sw: 0, sh: 0, hf: '', hw: 0, hh: 0 },
     list: [],
     notis: 0,
@@ -208,7 +211,10 @@ export default {
     // 5.1: 검은 화면으로 잠깐 기다리되(폰이 알림을 띄우려고 연 것이면 목록이 깜빡 보이지 않게),
     // 폰이 '보낼 알림 없음'(N)을 보내면 그 즉시 목록. 폰은 앱이 켜지는 순간(상태 물음)에 N 을 미리 보냄(Mi Manager 0.87부터).
     // 그동안 파일을 미리 읽어 둠(한 번씩만). N 이 안 오면 예전처럼 0.7초 뒤 목록.
-    self.pinsLoad(() => self.idxLoad(() => {}))
+    self.pinsLoad(() => self.idxLoad(() => {
+      // 5.3: 아직 기다리는 중이면 목록을 숨긴 채 미리 만들어 둠 (그리는 데 0.4~0.5초 — 기다리는 시간과 겹치게)
+      if (self.mode === 'wait' && !how) { self.applyList(); prebuilt = true; tPre = Date.now(); self.pre = true }
+    }))
     waitTimer = setTimeout(() => { if (self.mode === 'wait') { if (!how) how = 'T'; self.showList() } }, WAIT_MS)
     // 5.2: 실행 주소의 표시로 '폰이 알림 때문에 열었는지'를 켜지는 순간 알아냄
     //  - 표시가 있으면: 알림을 기다림(목록 안 띄움) + '표시가 전달되는 워치'라고 적어 둠
@@ -216,7 +222,7 @@ export default {
     //  - 표시가 전달된 적이 없으면(모름): 5.1 처럼 폰의 답(N/A)이나 0.7초를 기다림
     try { fromSeen = String(self.from || '') } catch (e) { fromSeen = '' }
     try { srcInfo = JSON.stringify((app.getInfo() || {}).source || '') } catch (e) { srcInfo = 'err' }
-    try { pgInfo = Object.keys(self.$page || {}).join('.') + '/' + JSON.stringify((self.$page || {}).query || '') } catch (e) { pgInfo = 'err' }
+    try { pgInfo = String((self.$page || {}).name) + '|' + String((self.$page || {}).path) + '|' + JSON.stringify((self.$page || {}).query || '') } catch (e) { pgInfo = 'err' }
     if (fromSeen === 'phone') {
       if (waitTimer) clearTimeout(waitTimer)
       waitTimer = setTimeout(() => { if (self.mode === 'wait') { if (!how) how = 'T'; self.showList() } }, 3000)
@@ -385,6 +391,7 @@ export default {
   show(cur) {
     if (waitTimer) { clearTimeout(waitTimer); waitTimer = null }
     this.cur = cur
+    prebuilt = false // 새 알림이 왔으니 미리 만든 목록은 낡음 → 목록으로 갈 때 새로 만듦
     if (!how) how = 'A'
     this.mode = 'arrive'
     reportTm()
@@ -393,6 +400,8 @@ export default {
   showList() {
     if (waitTimer) { clearTimeout(waitTimer); waitTimer = null }
     this.mode = 'list'
+    // 5.3: 기다리는 동안 미리 만들어 둔 목록이 있으면 보이기만 함 (다시 만들면 또 0.4초)
+    if (prebuilt) { prebuilt = false; reportTm(); return }
     // 미리 읽어 둔 게 있으면 파일을 다시 읽지 않고 바로 그림 (4.9: 고정 목록도 이미 읽었으면 다시 안 읽음)
     const go = () => { if (IDX) this.applyList(); else this.idxLoad(() => this.applyList()) }
     if (pinsLoaded) go(); else this.pinsLoad(go)
@@ -631,7 +640,7 @@ export default {
     this.notis = (IDX || []).length // 개수는 늘 '메시지 수' (카드 수가 아님)
     this.loaded = true
     this.report()
-    reportTm()
+    if (this.mode === 'list') reportTm()
   },
 
   scrollToTop() {
