@@ -376,7 +376,8 @@ public class NotiListener extends NotificationListenerService {
         }
         final boolean quiet = WatchSender.quiet(this);
         final String summary = (quiet ? "[조용히] " : "") + sender + (picture == null ? "" : emoticon
-                ? " [이모티콘 " + picture.getWidth() + "→" + Math.min(picture.getWidth(), maxPicW) + "px]" : " [사진]");
+                ? " [이모티콘 " + picture.getWidth() + "→" + Math.min(picture.getWidth(), maxPicW) + "px]"
+                : " [사진 " + picture.getWidth() + "x" + picture.getHeight() + "]");
         final int kb = b64.length() / 1024;
         final String app = appName;
         final String line = sender + ": " + (picture == null ? text : emoticon ? "이모티콘" : "사진");
@@ -475,8 +476,8 @@ public class NotiListener extends NotificationListenerService {
         if (!keepFull) {
             int[] wh = bounds(uri);
             if (wh != null) {
-                int needW = Renderer.WIDTH - 28, needH = 640;
-                // 줄인 뒤에도 '가로 ≥ 404' 또는 '세로 ≥ 640' 중 카드에 맞출 쪽은 유지
+                int needW = Renderer.WIDTH, needH = Renderer.PIC_MAX_H;
+                // 줄인 뒤에도 '가로 ≥ 화면 폭' 또는 '세로 ≥ 한도' 중 카드에 맞출 쪽은 유지
                 float fit = Math.min((float) needW / wh[0], (float) needH / wh[1]);
                 while (fit * sample * 2 <= 1f) sample *= 2;
             }

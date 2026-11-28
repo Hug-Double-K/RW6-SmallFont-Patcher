@@ -28,8 +28,10 @@ public final class Renderer {
     public static final int WIDTH = 432;
     private static final int PAD = 14;          // 카드 안쪽 여백 (기존 18)
     private static final float HEADER_SCALE = 0.85f; // 앱 아이콘·헤더 줄 크기 (기존 대비 85%)
-    /** 사진 세로 한도: 이보다 크면 워치가 받고 푸는 데 느려지거나 실패함 */
-    private static final int PIC_MAX_H = 640;
+    /** 사진 세로 한도. 0.96(사용자 요청 2026-11-28: 사진 가로를 최대로): 640 → 1040.
+     *  세로로 긴 사진(폰 화면 캡처 9:19.5~9:21)도 가로 432 를 꽉 채우게 — 432 폭에서 936~1008.
+     *  카드 전체는 MAX_HEIGHT(1800, 워치에서 됐던 크기) 안. 이보다 더 긴 사진만 비율대로 줄어 가로가 좁아짐. */
+    public static final int PIC_MAX_H = 1040;
     private static final int MAX_HEIGHT = 1800;  // 워치 메모리 한계 (5000으로 했다가 워치가 재시작됨). 글 알림은 이미지가 아니라 글로 보냄
 
     public static Bitmap render(Drawable icon, String appName, String convTitle, String sender,
@@ -70,7 +72,8 @@ public final class Renderer {
         if (picture != null) {
             // 가로를 카드 폭에 꽉 채우고 세로는 비율대로. 세로가 한도(PIC_MAX_H)를 넘는 긴 사진만
             // 잘라내지 않고 전체를 비율 그대로 줄여서 한도 안에 맞춤 (가로가 조금 좁아지고 가운데 정렬)
-            float scale = Math.min((float) contentW / picture.getWidth(), (float) PIC_MAX_H / picture.getHeight());
+            // 0.96: 일반 사진은 옆 여백 없이 화면 폭(432) 전체, 이모티콘(maxPicW > 0)은 예전대로 여백 안쪽
+            float scale = Math.min((float) (maxPicW > 0 ? contentW : WIDTH) / picture.getWidth(), (float) PIC_MAX_H / picture.getHeight());
             if (maxPicW > 0) scale = Math.min(scale, Math.min(1f, (float) maxPicW / picture.getWidth()));
             int pw = Math.max(1, Math.round(picture.getWidth() * scale));
             picH = Math.max(1, Math.round(picture.getHeight() * scale));
@@ -78,7 +81,8 @@ public final class Renderer {
         }
 
         // 본문이 너무 길면 줄 수를 자른다
-        float fixed = y + senderH + (pic != null ? picH + 12 : 0) + PAD;
+        boolean bleed = pic != null && maxPicW <= 0;   // 화면 폭을 꽉 채우는 사진: 아래 여백 없이 카드 끝까지
+        float fixed = y + senderH + (pic != null ? picH + 12 : 0) + (bleed ? 0 : PAD);
         int maxBodyLines = Math.max(1, (int) ((MAX_HEIGHT - fixed) / lhBody));
         if (bodyLines.size() > maxBodyLines) {
             bodyLines = new ArrayList<>(bodyLines.subList(0, maxBodyLines));
@@ -121,8 +125,15 @@ public final class Renderer {
         // 사진
         if (pic != null) {
             cy += 12;
-            // 이모티콘(maxPicW > 0)은 왼쪽 정렬, 일반 사진은 가운데
-            c.drawBitmap(pic, maxPicW > 0 ? PAD : PAD + (contentW - pic.getWidth()) / 2f, cy, null);
+            // 이모티콘(maxPicW > 0)은 왼쪽 정렬, 일반 사진은 화면 폭 가운데(보통 폭 전체), 카드의 둥근 모서리에 맞춰 잘라 그림
+            if (bleed) {
+                c.save();
+                android.graphics.Path clip = new android.graphics.Path();
+                clip.addRoundRect(new RectF(0, 0, WIDTH, height), 28, 28, android.graphics.Path.Direction.CW);
+                c.clipPath(clip);
+                c.drawBitmap(pic, (WIDTH - pic.getWidth()) / 2f, cy, null);
+                c.restore();
+            } else c.drawBitmap(pic, PAD, cy, null);
         }
         return bmp;
     }
